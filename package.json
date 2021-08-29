@@ -1,0 +1,54 @@
+{
+  "name": "three-tiltloader",
+  "version": "0.1.0",
+  "description": "Load Tilt Brush / Open Brush files and derivatives in three.js applications",
+  "scripts": {
+    "dev": "rollup --config --watch",
+    "build": "rollup --config && terser dist/three-tiltloader.js -o dist/three-tiltloader.min.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "main":"dist/three-tiltloader.js",
+  "module":"dist/three-tiltloader.module.js",
+  "author": "Icosa Gallery",
+  "license": "Apache-2.0",
+  "bugs": {
+    "url": "https://github.com/icosa-gallery/three-tiltloader/issues"
+  },
+  "homepage": "https://github.com/icosa-gallery/three-tiltloader#readme",
+  "devDependencies": {
+    "@rollup/plugin-node-resolve": "^11.2.1",
+    "@types/three": "^0.125.3",
+    "rollup": "^2.40.0",
+    "rollup-plugin-typescript2": "^0.30.0",
+    "terser": "^5.7.2",
+    "typescript": "^4.1.3"
+  },
+  "peerDependencies": {
+    "three": "^0.128.0"
+  },
+  "files": [
+    "dist/three-tiltloader.js",
+    "dist/three-tiltloader.min.js",
+    "dist/three-tiltloader.module.js",
+    "LICENSE",
+    "package.json",
+    "README.md",
+    "src"
+  ],
+  "funding": {
+    "type": "opencollective",
+    "url": "https://opencollective.com/icosa"
+  },
+  "keywords": [
+    "three",
+    "three.js",
+    "viewer",
+    "openbrush",
+    "tiltbrush",
+    "creative",
+    "camera",
+    "vr",
+    "ar",
+    "xr"
+  ]
+}
