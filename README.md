@@ -27,10 +27,14 @@ If you would like to support our projects, we are on [Open Collective](https://o
 
 The loader is designed to be used with `three.js`. The library has been tested against `r128`, but may work with other releases.
 
+## Important
+You need to pass the loader a path to a folder containing all the relevant brushes and textures. This has been omitted to reduce package size and leave brush location up to the implementer. You can get a copy of the brushes folder in the root of this project's repository.
+
+
+### Install via npm
 `npm install --save three-tiltloader`
 
 ## Usage
-
 ```js
 import {
     PerspectiveCamera,
@@ -63,7 +67,7 @@ function init() {
     let updateableMeshes;
 
     /* IMPORTANT: Point the loader to a folder of all the brush shaders and textures.
-    *  This is not included by default to reduce package size and leave brush location up to the implementer.
+    *  This has been omitted to reduce package size and leave brush location up to the implementer.
     *  You can get a copy of the brushes folder at this project's repository.
     */
     loader.setBrushDirectory( 'path/to/brush/folder' );
