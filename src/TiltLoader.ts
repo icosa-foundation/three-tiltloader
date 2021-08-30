@@ -12,7 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { Loader, LoadingManager, Material, Mesh, RawShaderMaterial, Object3D, Vector3, Vector4, Matrix4 } from "three";
+import { 
+    LoadingManager, 
+    Loader, 
+    Material, 
+    Matrix4, 
+    Mesh, 
+    Object3D, 
+    RawShaderMaterial 
+} from "three";
+
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader";
 import { TiltLoader as RawTiltLoader }  from "three/examples/jsm/loaders/TiltLoader";
 import { LegacyGLTFLoader } from "./legacy/LegacyGLTFLoader.js";
@@ -20,7 +29,6 @@ import { TiltShaderLoader } from "./TiltShaderLoader.js";
 
 export interface TiltModel {
     scene: Object3D;
-    update(updateableMeshes : Mesh[], elapsedTime : number, cameraPosition : Vector3): void;
     updateableMeshes: Mesh[];
 }
 
@@ -36,8 +44,6 @@ export class TiltLoader extends Loader {
     private updateableMeshes : Mesh[] = [];
 
     private loadedModel? : Object3D;
-
-    private data!: TiltModel;
 
     constructor (manager : LoadingManager) {
         super(manager);
@@ -67,47 +73,13 @@ export class TiltLoader extends Loader {
         onProgress?: ( event: ProgressEvent ) => void,
         onError?: ( event: ErrorEvent ) => void
     ) : Promise<TiltModel> {
-        const scope = this;
         this.loadedModel = (await this.gltfLoader.loadAsync(url)).scene;
         await this.replaceBrushMaterials();
 
-        this.data = { scene: this.loadedModel, update: scope.update, updateableMeshes: this.updateableMeshes };
-        onLoad(this.data);
-        return this.data;
-    }
-
-    public update(updateableMeshes : Mesh[], elapsedTime : number, cameraPosition : Vector3) {
-        // _Time from https://docs.unity3d.com/Manual/SL-UnityShaderVariables.html
-        var time = new Vector4(elapsedTime/20, elapsedTime, elapsedTime*2, elapsedTime*3);
-
-        // Update uniforms of meshes that need it.
-        updateableMeshes.forEach((mesh) => {
-            var material = mesh.material as Material;
-            switch (material.name) {
-                case "material_DiamondHull":
-                    (material as RawShaderMaterial).uniforms!["cameraPosition"].value = cameraPosition;
-                    (material as RawShaderMaterial).uniforms!["u_time"].value = time;
-                    break;
-                case "material_ChromaticWave":
-                case "material_Comet":
-                case "material_Disco":
-                case "material_Electricity":
-                case "material_Embers":
-                case "material_Fire":
-                case "material_Hypercolor":
-                case "material_LightWire":
-                case "material_NeonPulse":
-                case "material_Plasma":
-                case "material_Rainbow":
-                case "material_Snow":
-                case "material_Stars":
-                case "material_Streamers":
-                case "material_Waveform":
-                case "material_WigglyGraphite":
-                    (material as RawShaderMaterial).uniforms!["u_time"].value = time;
-                    break;
-            }
-        });
+        let data : TiltModel;
+        data = { scene: this.loadedModel, updateableMeshes: this.updateableMeshes };
+        onLoad(data);
+        return data;
     }
 
     public async loadTilt(url : string) {

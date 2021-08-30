@@ -1,3 +1,5 @@
+// Adapted from original GLTF 1.0 Loader in three.js r86
+
 import {
     Camera,
 	Loader,
@@ -14,11 +16,9 @@ export interface LegacyGLTF  {
 }
 
 export class LegacyGLTFLoader extends Loader {
-
 	constructor( manager?: LoadingManager );
 	reversed: boolean;
 
 	load( url: string, onLoad: ( json: LegacyGLTF ) => void, onProgress?: ( event: ProgressEvent ) => void, onError?: ( event: ErrorEvent ) => void ): void;
 	parse( arraybuffer: ArrayBuffer ): object;
-
 }

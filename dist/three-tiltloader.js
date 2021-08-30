@@ -10,6 +10,39 @@
 	(global = typeof globalThis !== 'undefined' ? globalThis : global || self, factory(global['three-tiltloader'] = {}, global.three, global.GLTFLoader, global.TiltLoader$1));
 }(this, (function (exports, three, GLTFLoader, TiltLoader$1) { 'use strict';
 
+	function updateBrushes(updateableMeshes, elapsedTime, cameraPosition) {
+	    var time = new three.Vector4(elapsedTime / 20, elapsedTime, elapsedTime * 2, elapsedTime * 3);
+	    updateableMeshes.forEach((mesh) => {
+	        var material = mesh.material;
+	        switch (material.name) {
+	            case "material_DiamondHull":
+	                material.uniforms["cameraPosition"].value = cameraPosition;
+	                material.uniforms["u_time"].value = time;
+	                break;
+	            case "material_ChromaticWave":
+	            case "material_Comet":
+	            case "material_Disco":
+	            case "material_Electricity":
+	            case "material_Embers":
+	            case "material_Fire":
+	            case "material_Hypercolor":
+	            case "material_LightWire":
+	            case "material_NeonPulse":
+	            case "material_Plasma":
+	            case "material_Rainbow":
+	            case "material_Snow":
+	            case "material_Stars":
+	            case "material_Streamers":
+	            case "material_Waveform":
+	            case "material_WigglyGraphite":
+	                material.uniforms["u_time"].value = time;
+	                break;
+	        }
+	    });
+	}
+
+	// Adapted from original GLTF 1.0 Loader in three.js r86
+
 	class LegacyGLTFLoader extends three.Loader {
 
 
@@ -3520,42 +3553,12 @@
 	    }
 	    load(url, onLoad, onProgress, onError) {
 	        return __awaiter(this, void 0, void 0, function* () {
-	            const scope = this;
 	            this.loadedModel = (yield this.gltfLoader.loadAsync(url)).scene;
 	            yield this.replaceBrushMaterials();
-	            this.data = { scene: this.loadedModel, update: scope.update, updateableMeshes: this.updateableMeshes };
-	            onLoad(this.data);
-	            return this.data;
-	        });
-	    }
-	    update(updateableMeshes, elapsedTime, cameraPosition) {
-	        var time = new three.Vector4(elapsedTime / 20, elapsedTime, elapsedTime * 2, elapsedTime * 3);
-	        updateableMeshes.forEach((mesh) => {
-	            var material = mesh.material;
-	            switch (material.name) {
-	                case "material_DiamondHull":
-	                    material.uniforms["cameraPosition"].value = cameraPosition;
-	                    material.uniforms["u_time"].value = time;
-	                    break;
-	                case "material_ChromaticWave":
-	                case "material_Comet":
-	                case "material_Disco":
-	                case "material_Electricity":
-	                case "material_Embers":
-	                case "material_Fire":
-	                case "material_Hypercolor":
-	                case "material_LightWire":
-	                case "material_NeonPulse":
-	                case "material_Plasma":
-	                case "material_Rainbow":
-	                case "material_Snow":
-	                case "material_Stars":
-	                case "material_Streamers":
-	                case "material_Waveform":
-	                case "material_WigglyGraphite":
-	                    material.uniforms["u_time"].value = time;
-	                    break;
-	            }
+	            let data;
+	            data = { scene: this.loadedModel, updateableMeshes: this.updateableMeshes };
+	            onLoad(data);
+	            return data;
 	        });
 	    }
 	    loadTilt(url) {
@@ -4419,6 +4422,7 @@
 	exports.LegacyGLTFLoader = LegacyGLTFLoader;
 	exports.TiltLoader = TiltLoader;
 	exports.TiltShaderLoader = TiltShaderLoader;
+	exports.updateBrushes = updateBrushes;
 
 	Object.defineProperty(exports, '__esModule', { value: true });
 

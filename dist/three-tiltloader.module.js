@@ -4,9 +4,42 @@
  * Copyright (c) 2021 Icosa Gallery
  * Released under the Apache 2.0 Licence.
  */
-import { Loader, LoaderUtils, FileLoader, Color, AmbientLight, SpotLight, PointLight, DirectionalLight, InterleavedBuffer, InterleavedBufferAttribute, BufferAttribute, TextureLoader, RGBAFormat, UnsignedByteType, LinearFilter, NearestMipmapLinearFilter, RepeatWrapping, FrontSide, DoubleSide, LessDepth, CustomBlending, NoBlending, AddEquation, OneFactor, ZeroFactor, MeshBasicMaterial, Group, BufferGeometry, MeshPhongMaterial, Mesh, LineSegments, Line, PerspectiveCamera, Math, OrthographicCamera, Matrix4, QuaternionKeyframeTrack, VectorKeyframeTrack, InterpolateLinear, AnimationUtils, AnimationClip, Bone, Object3D, LineLoop, SkinnedMesh, Skeleton, Scene, Matrix3, Vector2, Vector3, Vector4, Texture, NearestFilter, NearestMipmapNearestFilter, LinearMipmapNearestFilter, LinearMipmapLinearFilter, ClampToEdgeWrapping, MirroredRepeatWrapping, AlphaFormat, RGBFormat, LuminanceFormat, LuminanceAlphaFormat, UnsignedShort4444Type, UnsignedShort5551Type, UnsignedShort565Type, BackSide, NeverDepth, EqualDepth, LessEqualDepth, GreaterEqualDepth, NotEqualDepth, AlwaysDepth, SubtractEquation, ReverseSubtractEquation, SrcColorFactor, OneMinusSrcColorFactor, SrcAlphaFactor, OneMinusSrcAlphaFactor, DstAlphaFactor, OneMinusDstAlphaFactor, DstColorFactor, OneMinusDstColorFactor, SrcAlphaSaturateFactor, InterpolateDiscrete, MeshLambertMaterial, UniformsUtils, RawShaderMaterial } from 'three';
+import { Vector4, Loader, LoaderUtils, FileLoader, Color, AmbientLight, SpotLight, PointLight, DirectionalLight, InterleavedBuffer, InterleavedBufferAttribute, BufferAttribute, TextureLoader, RGBAFormat, UnsignedByteType, LinearFilter, NearestMipmapLinearFilter, RepeatWrapping, FrontSide, DoubleSide, LessDepth, CustomBlending, NoBlending, AddEquation, OneFactor, ZeroFactor, MeshBasicMaterial, Group, BufferGeometry, MeshPhongMaterial, Mesh, LineSegments, Line, PerspectiveCamera, Math, OrthographicCamera, Matrix4, QuaternionKeyframeTrack, VectorKeyframeTrack, InterpolateLinear, AnimationUtils, AnimationClip, Bone, Object3D, LineLoop, SkinnedMesh, Skeleton, Scene, Matrix3, Vector2, Vector3, Texture, NearestFilter, NearestMipmapNearestFilter, LinearMipmapNearestFilter, LinearMipmapLinearFilter, ClampToEdgeWrapping, MirroredRepeatWrapping, AlphaFormat, RGBFormat, LuminanceFormat, LuminanceAlphaFormat, UnsignedShort4444Type, UnsignedShort5551Type, UnsignedShort565Type, BackSide, NeverDepth, EqualDepth, LessEqualDepth, GreaterEqualDepth, NotEqualDepth, AlwaysDepth, SubtractEquation, ReverseSubtractEquation, SrcColorFactor, OneMinusSrcColorFactor, SrcAlphaFactor, OneMinusSrcAlphaFactor, DstAlphaFactor, OneMinusDstAlphaFactor, DstColorFactor, OneMinusDstColorFactor, SrcAlphaSaturateFactor, InterpolateDiscrete, MeshLambertMaterial, UniformsUtils, RawShaderMaterial } from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';
 import { TiltLoader as TiltLoader$1 } from 'three/examples/jsm/loaders/TiltLoader';
+
+function updateBrushes(updateableMeshes, elapsedTime, cameraPosition) {
+    var time = new Vector4(elapsedTime / 20, elapsedTime, elapsedTime * 2, elapsedTime * 3);
+    updateableMeshes.forEach((mesh) => {
+        var material = mesh.material;
+        switch (material.name) {
+            case "material_DiamondHull":
+                material.uniforms["cameraPosition"].value = cameraPosition;
+                material.uniforms["u_time"].value = time;
+                break;
+            case "material_ChromaticWave":
+            case "material_Comet":
+            case "material_Disco":
+            case "material_Electricity":
+            case "material_Embers":
+            case "material_Fire":
+            case "material_Hypercolor":
+            case "material_LightWire":
+            case "material_NeonPulse":
+            case "material_Plasma":
+            case "material_Rainbow":
+            case "material_Snow":
+            case "material_Stars":
+            case "material_Streamers":
+            case "material_Waveform":
+            case "material_WigglyGraphite":
+                material.uniforms["u_time"].value = time;
+                break;
+        }
+    });
+}
+
+// Adapted from original GLTF 1.0 Loader in three.js r86
 
 class LegacyGLTFLoader extends Loader {
 
@@ -3518,42 +3551,12 @@ class TiltLoader extends Loader {
     }
     load(url, onLoad, onProgress, onError) {
         return __awaiter(this, void 0, void 0, function* () {
-            const scope = this;
             this.loadedModel = (yield this.gltfLoader.loadAsync(url)).scene;
             yield this.replaceBrushMaterials();
-            this.data = { scene: this.loadedModel, update: scope.update, updateableMeshes: this.updateableMeshes };
-            onLoad(this.data);
-            return this.data;
-        });
-    }
-    update(updateableMeshes, elapsedTime, cameraPosition) {
-        var time = new Vector4(elapsedTime / 20, elapsedTime, elapsedTime * 2, elapsedTime * 3);
-        updateableMeshes.forEach((mesh) => {
-            var material = mesh.material;
-            switch (material.name) {
-                case "material_DiamondHull":
-                    material.uniforms["cameraPosition"].value = cameraPosition;
-                    material.uniforms["u_time"].value = time;
-                    break;
-                case "material_ChromaticWave":
-                case "material_Comet":
-                case "material_Disco":
-                case "material_Electricity":
-                case "material_Embers":
-                case "material_Fire":
-                case "material_Hypercolor":
-                case "material_LightWire":
-                case "material_NeonPulse":
-                case "material_Plasma":
-                case "material_Rainbow":
-                case "material_Snow":
-                case "material_Stars":
-                case "material_Streamers":
-                case "material_Waveform":
-                case "material_WigglyGraphite":
-                    material.uniforms["u_time"].value = time;
-                    break;
-            }
+            let data;
+            data = { scene: this.loadedModel, updateableMeshes: this.updateableMeshes };
+            onLoad(data);
+            return data;
         });
     }
     loadTilt(url) {
@@ -4414,4 +4417,4 @@ class TiltLoader extends Loader {
     }
 }
 
-export { LegacyGLTFLoader, TiltLoader, TiltShaderLoader };
+export { LegacyGLTFLoader, TiltLoader, TiltShaderLoader, updateBrushes };

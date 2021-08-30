@@ -1,3 +1,5 @@
+// Adapted from original GLTF 1.0 Loader in three.js r86
+
 import { 
     Vector2,
     Vector3,
