@@ -2192,78 +2192,96 @@
 		};
 	}
 
-	// Copyright 2021 Icosa Gallery
+	/*! *****************************************************************************
+	Copyright (c) Microsoft Corporation.
 
-	class TiltShaderLoader extends three.Loader {
-	    constructor( manager ) {
-	        super( manager );
-	    }
-	    
-	    async load(brushName, onLoad, onProgress, onError ) {
-	        const scope = this;
+	Permission to use, copy, modify, and/or distribute this software for any
+	purpose with or without fee is hereby granted.
 
-	        const isAlreadyLoaded = loadedMaterials[brushName];
-	        
-	        if (isAlreadyLoaded !== undefined) {
-	            onLoad( scope.parse( isAlreadyLoaded ) );
-	            return;
-	        }
-	        
-			const loader = new three.FileLoader( this.manager );
-			loader.setPath( this.path );
-			loader.setResponseType( 'text' );
-			loader.setWithCredentials( this.withCredentials );
+	THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+	REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
+	AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
+	INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
+	LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
+	OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+	PERFORMANCE OF THIS SOFTWARE.
+	***************************************************************************** */
 
-	        const textureLoader = new three.TextureLoader(this.manager);
-	        textureLoader.setPath(this.path);
-	        textureLoader.setWithCredentials( this.withCredentials );
-
-	        const materialParams = tiltBrushMaterialParams[brushName];
-
-	        materialParams.vertexShader = await loader.loadAsync(materialParams.vertexShader);
-	        materialParams.fragmentShader = await loader.loadAsync(materialParams.fragmentShader);
-
-	        if (materialParams.uniforms.u_MainTex) {
-	            const mainTex = await textureLoader.loadAsync(materialParams.uniforms.u_MainTex.value);
-	            mainTex.name = `${brushName}_MainTex`;
-	            mainTex.wrapS = three.RepeatWrapping;
-	            mainTex.wrapT = three.RepeatWrapping;
-	            mainTex.flipY = false;
-	            materialParams.uniforms.u_MainTex.value = mainTex;
-	        }
-
-	        if (materialParams.uniforms.u_BumpMap) {
-	            const bumpMap = await textureLoader.loadAsync(materialParams.uniforms.u_BumpMap.value);
-	            bumpMap.name = `${brushName}_BumpMap`;
-	            bumpMap.wrapS = three.RepeatWrapping;
-	            bumpMap.wrapT = three.RepeatWrapping;
-	            bumpMap.flipY = false;
-	            materialParams.uniforms.u_BumpMap.value = bumpMap;
-	        }
-
-	        if (materialParams.uniforms.u_AlphaMask) {
-	            const alphaMask = await textureLoader.loadAsync(materialParams.uniforms.u_AlphaMask.value);
-	            alphaMask.name = `${brushName}_AlphaMask`;
-	            alphaMask.wrapS = three.RepeatWrapping;
-	            alphaMask.wrapT = three.RepeatWrapping;
-	            alphaMask.flipY = false;
-	            materialParams.uniforms.u_AlphaMask.value = alphaMask;
-	        }
-
-	        loadedMaterials[brushName] = materialParams;
-
-	        onLoad( scope.parse( materialParams ) );
-	    }
-
-	    parse( materialParams ) {
-	        return new three.RawShaderMaterial( materialParams );
-	    }
+	function __awaiter(thisArg, _arguments, P, generator) {
+	    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+	    return new (P || (P = Promise))(function (resolve, reject) {
+	        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+	        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+	        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+	        step((generator = generator.apply(thisArg, _arguments || [])).next());
+	    });
 	}
 
+	class TiltShaderLoader extends three.Loader {
+	    constructor(manager) {
+	        super(manager);
+	    }
+	    load(brushName, onLoad, onProgress, onError) {
+	        var _a, _b, _c;
+	        return __awaiter(this, void 0, void 0, function* () {
+	            const scope = this;
+	            const isAlreadyLoaded = loadedMaterials[brushName];
+	            if (isAlreadyLoaded !== undefined) {
+	                let material = scope.parse(isAlreadyLoaded);
+	                onLoad(material);
+	            }
+	            const loader = new three.FileLoader(this.manager);
+	            loader.setPath(this.path);
+	            loader.setResponseType('text');
+	            loader.setWithCredentials(this.withCredentials);
+	            const textureLoader = new three.TextureLoader(this.manager);
+	            textureLoader.setPath(this.path);
+	            textureLoader.setWithCredentials(this.withCredentials);
+	            const materialParams = tiltBrushMaterialParams[brushName];
+	            let loadedVertex = yield loader.loadAsync(materialParams.vertexShader);
+	            let loadedFragment = yield loader.loadAsync(materialParams.fragmentShader);
+	            if (typeof (loadedVertex) === 'string') {
+	                materialParams.vertexShader = loadedVertex;
+	            }
+	            if (typeof (loadedFragment) === 'string') {
+	                materialParams.fragmentShader = loadedFragment;
+	            }
+	            if ((_a = materialParams.uniforms) === null || _a === void 0 ? void 0 : _a.u_MainTex) {
+	                const mainTex = yield textureLoader.loadAsync(materialParams.uniforms.u_MainTex.value);
+	                mainTex.name = `${brushName}_MainTex`;
+	                mainTex.wrapS = three.RepeatWrapping;
+	                mainTex.wrapT = three.RepeatWrapping;
+	                mainTex.flipY = false;
+	                materialParams.uniforms.u_MainTex.value = mainTex;
+	            }
+	            if ((_b = materialParams.uniforms) === null || _b === void 0 ? void 0 : _b.u_BumpMap) {
+	                const bumpMap = yield textureLoader.loadAsync(materialParams.uniforms.u_BumpMap.value);
+	                bumpMap.name = `${brushName}_BumpMap`;
+	                bumpMap.wrapS = three.RepeatWrapping;
+	                bumpMap.wrapT = three.RepeatWrapping;
+	                bumpMap.flipY = false;
+	                materialParams.uniforms.u_BumpMap.value = bumpMap;
+	            }
+	            if ((_c = materialParams.uniforms) === null || _c === void 0 ? void 0 : _c.u_AlphaMask) {
+	                const alphaMask = yield textureLoader.loadAsync(materialParams.uniforms.u_AlphaMask.value);
+	                alphaMask.name = `${brushName}_AlphaMask`;
+	                alphaMask.wrapS = three.RepeatWrapping;
+	                alphaMask.wrapT = three.RepeatWrapping;
+	                alphaMask.flipY = false;
+	                materialParams.uniforms.u_AlphaMask.value = alphaMask;
+	            }
+	            loadedMaterials[brushName] = materialParams;
+	            let material = scope.parse(materialParams);
+	            onLoad(material);
+	        });
+	    }
+	    parse(materialParams) {
+	        return new three.RawShaderMaterial(materialParams);
+	    }
+	}
 	const loadedMaterials = {};
-
 	const tiltBrushMaterialParams = {
-	    "BlocksBasic" : {
+	    "BlocksBasic": {
 	        uniforms: {
 	            u_SceneLight_0_matrix: { value: [0.2931, 0.5524, -0.7803, 0, -0.8769, 0.4805, 0.0107, 0, 0.3809, 0.6811, 0.6253, 0, -4.9937, 8.1874, -46.2828, 1] },
 	            u_SceneLight_1_matrix: { value: [0.1816, -0.1369, -0.9738, 0, -0.7915, -0.6080, -0.0621, 0, -0.5835, 0.7821, -0.2188, 0, -5.6205, 8.2530, -46.8315, 1] },
@@ -2284,21 +2302,21 @@
 	        depthTest: true,
 	        blending: 0
 	    },
-	    "BlocksGem" : {
+	    "BlocksGem": {
 	        uniforms: {
-	            u_SceneLight_0_matrix: {value: [0.2931, 0.5524, -0.7803, 0, -0.8769, 0.4805, 0.0107, 0, 0.3809, 0.6811, 0.6253, 0, -4.9937, 8.1874, -46.2828, 1]},
-	            u_SceneLight_1_matrix: {value: [0.1816, -0.1369, -0.9738, 0, -0.7915, -0.6080, -0.0621, 0, -0.5835, 0.7821, -0.2188, 0, -5.6205, 8.2530, -46.8315, 1]},
-	            u_ambient_light_color: {value: new three.Vector4(0.3922, 0.3922, 0.3922, 1)},
-	            u_SceneLight_0_color: {value: new three.Vector4(0.7780, 0.8157, 0.9914, 1)},
-	            u_SceneLight_1_color: {value: new three.Vector4(0.4282, 0.4212, 0.3459, 1)},
+	            u_SceneLight_0_matrix: { value: [0.2931, 0.5524, -0.7803, 0, -0.8769, 0.4805, 0.0107, 0, 0.3809, 0.6811, 0.6253, 0, -4.9937, 8.1874, -46.2828, 1] },
+	            u_SceneLight_1_matrix: { value: [0.1816, -0.1369, -0.9738, 0, -0.7915, -0.6080, -0.0621, 0, -0.5835, 0.7821, -0.2188, 0, -5.6205, 8.2530, -46.8315, 1] },
+	            u_ambient_light_color: { value: new three.Vector4(0.3922, 0.3922, 0.3922, 1) },
+	            u_SceneLight_0_color: { value: new three.Vector4(0.7780, 0.8157, 0.9914, 1) },
+	            u_SceneLight_1_color: { value: new three.Vector4(0.4282, 0.4212, 0.3459, 1) },
 	            u_Color: { value: new three.Vector4(1, 1, 1, 1) },
 	            u_Shininess: { value: 0.9 },
 	            u_RimIntensity: { value: 0.5 },
 	            u_RimPower: { value: 2 },
 	            u_Frequency: { value: 2 },
 	            u_Jitter: { value: 1 },
-	            u_fogColor: {value: new three.Vector3(0.0196, 0.0196, 0.0196)},
-	            u_fogDensity: {value: 0 }
+	            u_fogColor: { value: new three.Vector3(0.0196, 0.0196, 0.0196) },
+	            u_fogDensity: { value: 0 }
 	        },
 	        vertexShader: "BlocksGem-232998f8-d357-47a2-993a-53415df9be10/BlocksGem-232998f8-d357-47a2-993a-53415df9be10-v10.0-vertex.glsl",
 	        fragmentShader: "BlocksGem-232998f8-d357-47a2-993a-53415df9be10/BlocksGem-232998f8-d357-47a2-993a-53415df9be10-v10.0-fragment.glsl",
@@ -2309,7 +2327,7 @@
 	        depthTest: true,
 	        blending: 0
 	    },
-	    "BlocksGlass" : {
+	    "BlocksGlass": {
 	        uniforms: {
 	            u_SceneLight_0_matrix: { value: [0.2931, 0.5524, -0.7803, 0, -0.8769, 0.4805, 0.0107, 0, 0.3809, 0.6811, 0.6253, 0, -4.9937, 8.1874, -46.2828, 1] },
 	            u_SceneLight_1_matrix: { value: [0.1816, -0.1369, -0.9738, 0, -0.7915, -0.6080, -0.0621, 0, -0.5835, 0.7821, -0.2188, 0, -5.6205, 8.2530, -46.8315, 1] },
@@ -2332,7 +2350,7 @@
 	        depthTest: true,
 	        blending: 2
 	    },
-	    "Bubbles" : {
+	    "Bubbles": {
 	        uniforms: {
 	            u_SceneLight_0_matrix: { value: [0.2931, 0.5524, -0.7803, 0, -0.8769, 0.4805, 0.0107, 0, 0.3809, 0.6811, 0.6253, 0, -4.9937, 8.1874, -46.2828, 1] },
 	            u_SceneLight_1_matrix: { value: [0.1816, -0.1369, -0.9738, 0, -0.7915, -0.6080, -0.0621, 0, -0.5835, 0.7821, -0.2188, 0, -5.6205, 8.2530, -46.8315, 1] },
@@ -2347,7 +2365,7 @@
 	        depthTest: true,
 	        blending: 2
 	    },
-	    "CelVinyl" : {
+	    "CelVinyl": {
 	        uniforms: {
 	            u_SceneLight_0_matrix: { value: [0.2931, 0.5524, -0.7803, 0, -0.8769, 0.4805, 0.0107, 0, 0.3809, 0.6811, 0.6253, 0, -4.9937, 8.1874, -46.2828, 1] },
 	            u_SceneLight_1_matrix: { value: [0.1816, -0.1369, -0.9738, 0, -0.7915, -0.6080, -0.0621, 0, -0.5835, 0.7821, -0.2188, 0, -5.6205, 8.2530, -46.8315, 1] },
@@ -2365,7 +2383,7 @@
 	        depthTest: true,
 	        blending: 0
 	    },
-	    "ChromaticWave" : {
+	    "ChromaticWave": {
 	        uniforms: {
 	            u_SceneLight_0_matrix: { value: [0.2931, 0.5524, -0.7803, 0, -0.8769, 0.4805, 0.0107, 0, 0.3809, 0.6811, 0.6253, 0, -4.9937, 8.1874, -46.2828, 1] },
 	            u_SceneLight_1_matrix: { value: [0.1816, -0.1369, -0.9738, 0, -0.7915, -0.6080, -0.0621, 0, -0.5835, 0.7821, -0.2188, 0, -5.6205, 8.2530, -46.8315, 1] },
@@ -2389,7 +2407,7 @@
 	        blendSrcAlpha: 201,
 	        blendSrc: 201
 	    },
-	    "CoarseBristles" : {
+	    "CoarseBristles": {
 	        uniforms: {
 	            u_SceneLight_0_matrix: { value: [0.2931, 0.5524, -0.7803, 0, -0.8769, 0.4805, 0.0107, 0, 0.3809, 0.6811, 0.6253, 0, -4.9937, 8.1874, -46.2828, 1] },
 	            u_SceneLight_1_matrix: { value: [0.1816, -0.1369, -0.9738, 0, -0.7915, -0.6080, -0.0621, 0, -0.5835, 0.7821, -0.2188, 0, -5.6205, 8.2530, -46.8315, 1] },
@@ -2410,13 +2428,13 @@
 	        depthTest: true,
 	        blending: 0
 	    },
-	    "Comet" : {
+	    "Comet": {
 	        uniforms: {
 	            u_SceneLight_0_matrix: { value: [0.2931, 0.5524, -0.7803, 0, -0.8769, 0.4805, 0.0107, 0, 0.3809, 0.6811, 0.6253, 0, -4.9937, 8.1874, -46.2828, 1] },
 	            u_SceneLight_1_matrix: { value: [0.1816, -0.1369, -0.9738, 0, -0.7915, -0.6080, -0.0621, 0, -0.5835, 0.7821, -0.2188, 0, -5.6205, 8.2530, -46.8315, 1] },
 	            u_MainTex: { value: "Comet-1caa6d7d-f015-3f54-3a4b-8b5354d39f81/Comet-1caa6d7d-f015-3f54-3a4b-8b5354d39f81-v10.0-MainTex.png" },
 	            u_AlphaMask: { value: "Comet-1caa6d7d-f015-3f54-3a4b-8b5354d39f81/Comet-1caa6d7d-f015-3f54-3a4b-8b5354d39f81-v10.0-AlphaMask.png" },
-	            u_AlphaMask_TexelSize: { value: new three.Vector4(0.0156, 1, 64, 1)},
+	            u_AlphaMask_TexelSize: { value: new three.Vector4(0.0156, 1, 64, 1) },
 	            u_time: { value: new three.Vector4() },
 	            u_Speed: { value: 1 },
 	            u_EmissionGain: { value: 0.5 },
@@ -2432,7 +2450,7 @@
 	        depthTest: true,
 	        blending: 2
 	    },
-	    "DiamondHull" : {
+	    "DiamondHull": {
 	        uniforms: {
 	            u_SceneLight_0_matrix: { value: [0.2931, 0.5524, -0.7803, 0, -0.8769, 0.4805, 0.0107, 0, 0.3809, 0.6811, 0.6253, 0, -4.9937, 8.1874, -46.2828, 1] },
 	            u_SceneLight_1_matrix: { value: [0.1816, -0.1369, -0.9738, 0, -0.7915, -0.6080, -0.0621, 0, -0.5835, 0.7821, -0.2188, 0, -5.6205, 8.2530, -46.8315, 1] },
@@ -2460,7 +2478,7 @@
 	        blendSrcAlpha: 201,
 	        blendSrc: 201,
 	    },
-	    "Disco" : {
+	    "Disco": {
 	        uniforms: {
 	            u_SceneLight_0_matrix: { value: [0.2931, 0.5524, -0.7803, 0, -0.8769, 0.4805, 0.0107, 0, 0.3809, 0.6811, 0.6253, 0, -4.9937, 8.1874, -46.2828, 1] },
 	            u_SceneLight_1_matrix: { value: [0.1816, -0.1369, -0.9738, 0, -0.7915, -0.6080, -0.0621, 0, -0.5835, 0.7821, -0.2188, 0, -5.6205, 8.2530, -46.8315, 1] },
@@ -2482,7 +2500,7 @@
 	        depthTest: true,
 	        blending: 0
 	    },
-	    "DotMarker" : {
+	    "DotMarker": {
 	        uniforms: {
 	            u_SceneLight_0_matrix: { value: [0.2931, 0.5524, -0.7803, 0, -0.8769, 0.4805, 0.0107, 0, 0.3809, 0.6811, 0.6253, 0, -4.9937, 8.1874, -46.2828, 1] },
 	            u_SceneLight_1_matrix: { value: [0.1816, -0.1369, -0.9738, 0, -0.7915, -0.6080, -0.0621, 0, -0.5835, 0.7821, -0.2188, 0, -5.6205, 8.2530, -46.8315, 1] },
@@ -2498,9 +2516,8 @@
 	        depthWrite: true,
 	        depthTest: true,
 	        blending: 0,
-	        
 	    },
-	    "Dots" : {
+	    "Dots": {
 	        uniforms: {
 	            u_SceneLight_0_matrix: { value: [0.2931, 0.5524, -0.7803, 0, -0.8769, 0.4805, 0.0107, 0, 0.3809, 0.6811, 0.6253, 0, -4.9937, 8.1874, -46.2828, 1] },
 	            u_SceneLight_1_matrix: { value: [0.1816, -0.1369, -0.9738, 0, -0.7915, -0.6080, -0.0621, 0, -0.5835, 0.7821, -0.2188, 0, -5.6205, 8.2530, -46.8315, 1] },
@@ -2518,7 +2535,7 @@
 	        depthTest: true,
 	        blending: 2
 	    },
-	    "DoubleTaperedFlat" : {
+	    "DoubleTaperedFlat": {
 	        uniforms: {
 	            u_SceneLight_0_matrix: { value: [0.2931, 0.5524, -0.7803, 0, -0.8769, 0.4805, 0.0107, 0, 0.3809, 0.6811, 0.6253, 0, -4.9937, 8.1874, -46.2828, 1] },
 	            u_SceneLight_1_matrix: { value: [0.1816, -0.1369, -0.9738, 0, -0.7915, -0.6080, -0.0621, 0, -0.5835, 0.7821, -0.2188, 0, -5.6205, 8.2530, -46.8315, 1] },
@@ -2539,7 +2556,7 @@
 	        depthTest: true,
 	        blending: 0
 	    },
-	    "DoubleTaperedMarker" : {
+	    "DoubleTaperedMarker": {
 	        uniforms: {
 	            u_SceneLight_0_matrix: { value: [0.2931, 0.5524, -0.7803, 0, -0.8769, 0.4805, 0.0107, 0, 0.3809, 0.6811, 0.6253, 0, -4.9937, 8.1874, -46.2828, 1] },
 	            u_SceneLight_1_matrix: { value: [0.1816, -0.1369, -0.9738, 0, -0.7915, -0.6080, -0.0621, 0, -0.5835, 0.7821, -0.2188, 0, -5.6205, 8.2530, -46.8315, 1] },
@@ -2555,7 +2572,7 @@
 	        depthTest: true,
 	        blending: 0
 	    },
-	    "DuctTape" : {
+	    "DuctTape": {
 	        uniforms: {
 	            u_SceneLight_0_matrix: { value: [0.2931, 0.5524, -0.7803, 0, -0.8769, 0.4805, 0.0107, 0, 0.3809, 0.6811, 0.6253, 0, -4.9937, 8.1874, -46.2828, 1] },
 	            u_SceneLight_1_matrix: { value: [0.1816, -0.1369, -0.9738, 0, -0.7915, -0.6080, -0.0621, 0, -0.5835, 0.7821, -0.2188, 0, -5.6205, 8.2530, -46.8315, 1] },
@@ -2580,7 +2597,7 @@
 	        depthTest: true,
 	        blending: 0
 	    },
-	    "Electricity" : {
+	    "Electricity": {
 	        uniforms: {
 	            u_time: { value: new three.Vector4() },
 	            u_DisplacementIntensity: { value: 2.0 },
@@ -2595,7 +2612,7 @@
 	        depthTest: true,
 	        blending: 2
 	    },
-	    "Embers" : {
+	    "Embers": {
 	        uniforms: {
 	            u_time: { value: new three.Vector4() },
 	            u_ScrollRate: { value: 0.6 },
@@ -2615,7 +2632,7 @@
 	        depthTest: true,
 	        blending: 2
 	    },
-	    "EnvironmentDiffuse" : {
+	    "EnvironmentDiffuse": {
 	        uniforms: {
 	            u_SceneLight_0_matrix: { value: [0.2931, 0.5524, -0.7803, 0, -0.8769, 0.4805, 0.0107, 0, 0.3809, 0.6811, 0.6253, 0, -4.9937, 8.1874, -46.2828, 1] },
 	            u_SceneLight_1_matrix: { value: [0.1816, -0.1369, -0.9738, 0, -0.7915, -0.6080, -0.0621, 0, -0.5835, 0.7821, -0.2188, 0, -5.6205, 8.2530, -46.8315, 1] },
@@ -2637,7 +2654,7 @@
 	        depthTest: true,
 	        blending: 0
 	    },
-	    "EnvironmentDiffuseLightMap" : {
+	    "EnvironmentDiffuseLightMap": {
 	        uniforms: {
 	            u_SceneLight_0_matrix: { value: [0.2931, 0.5524, -0.7803, 0, -0.8769, 0.4805, 0.0107, 0, 0.3809, 0.6811, 0.6253, 0, -4.9937, 8.1874, -46.2828, 1] },
 	            u_SceneLight_1_matrix: { value: [0.1816, -0.1369, -0.9738, 0, -0.7915, -0.6080, -0.0621, 0, -0.5835, 0.7821, -0.2188, 0, -5.6205, 8.2530, -46.8315, 1] },
@@ -2659,7 +2676,7 @@
 	        depthTest: true,
 	        blending: 0
 	    },
-	    "Fire" : {
+	    "Fire": {
 	        uniforms: {
 	            u_SceneLight_0_matrix: { value: [0.2931, 0.5524, -0.7803, 0, -0.8769, 0.4805, 0.0107, 0, 0.3809, 0.6811, 0.6253, 0, -4.9937, 8.1874, -46.2828, 1] },
 	            u_SceneLight_1_matrix: { value: [0.1816, -0.1369, -0.9738, 0, -0.7915, -0.6080, -0.0621, 0, -0.5835, 0.7821, -0.2188, 0, -5.6205, 8.2530, -46.8315, 1] },
@@ -2682,7 +2699,7 @@
 	        blendSrcAlpha: 201,
 	        blendSrc: 201
 	    },
-	    "Flat" : {
+	    "Flat": {
 	        uniforms: {
 	            u_SceneLight_0_matrix: { value: [0.2931, 0.5524, -0.7803, 0, -0.8769, 0.4805, 0.0107, 0, 0.3809, 0.6811, 0.6253, 0, -4.9937, 8.1874, -46.2828, 1] },
 	            u_SceneLight_1_matrix: { value: [0.1816, -0.1369, -0.9738, 0, -0.7915, -0.6080, -0.0621, 0, -0.5835, 0.7821, -0.2188, 0, -5.6205, 8.2530, -46.8315, 1] },
@@ -2708,7 +2725,7 @@
 	        blendSrcAlpha: 201,
 	        blendSrc: 201,
 	    },
-	    "Highlighter" : {
+	    "Highlighter": {
 	        uniforms: {
 	            u_SceneLight_0_matrix: { value: [0.2931, 0.5524, -0.7803, 0, -0.8769, 0.4805, 0.0107, 0, 0.3809, 0.6811, 0.6253, 0, -4.9937, 8.1874, -46.2828, 1] },
 	            u_SceneLight_1_matrix: { value: [0.1816, -0.1369, -0.9738, 0, -0.7915, -0.6080, -0.0621, 0, -0.5835, 0.7821, -0.2188, 0, -5.6205, 8.2530, -46.8315, 1] },
@@ -2724,7 +2741,7 @@
 	        depthTest: true,
 	        blending: 2
 	    },
-	    "Hypercolor" : {
+	    "Hypercolor": {
 	        uniforms: {
 	            u_SceneLight_0_matrix: { value: [0.2931, 0.5524, -0.7803, 0, -0.8769, 0.4805, 0.0107, 0, 0.3809, 0.6811, 0.6253, 0, -4.9937, 8.1874, -46.2828, 1] },
 	            u_SceneLight_1_matrix: { value: [0.1816, -0.1369, -0.9738, 0, -0.7915, -0.6080, -0.0621, 0, -0.5835, 0.7821, -0.2188, 0, -5.6205, 8.2530, -46.8315, 1] },
@@ -2750,7 +2767,7 @@
 	        depthTest: true,
 	        blending: 0
 	    },
-	    "HyperGrid" : {
+	    "HyperGrid": {
 	        uniforms: {
 	            u_SceneLight_0_matrix: { value: [0.2931, 0.5524, -0.7803, 0, -0.8769, 0.4805, 0.0107, 0, 0.3809, 0.6811, 0.6253, 0, -4.9937, 8.1874, -46.2828, 1] },
 	            u_SceneLight_1_matrix: { value: [0.1816, -0.1369, -0.9738, 0, -0.7915, -0.6080, -0.0621, 0, -0.5835, 0.7821, -0.2188, 0, -5.6205, 8.2530, -46.8315, 1] },
@@ -2766,7 +2783,7 @@
 	        depthTest: true,
 	        blending: 2
 	    },
-	    "Icing" : {
+	    "Icing": {
 	        uniforms: {
 	            u_SceneLight_0_matrix: { value: [0.2931, 0.5524, -0.7803, 0, -0.8769, 0.4805, 0.0107, 0, 0.3809, 0.6811, 0.6253, 0, -4.9937, 8.1874, -46.2828, 1] },
 	            u_SceneLight_1_matrix: { value: [0.1816, -0.1369, -0.9738, 0, -0.7915, -0.6080, -0.0621, 0, -0.5835, 0.7821, -0.2188, 0, -5.6205, 8.2530, -46.8315, 1] },
@@ -2791,7 +2808,7 @@
 	        depthTest: true,
 	        blending: 0
 	    },
-	    "Ink" : {
+	    "Ink": {
 	        uniforms: {
 	            u_SceneLight_0_matrix: { value: [0.2931, 0.5524, -0.7803, 0, -0.8769, 0.4805, 0.0107, 0, 0.3809, 0.6811, 0.6253, 0, -4.9937, 8.1874, -46.2828, 1] },
 	            u_SceneLight_1_matrix: { value: [0.1816, -0.1369, -0.9738, 0, -0.7915, -0.6080, -0.0621, 0, -0.5835, 0.7821, -0.2188, 0, -5.6205, 8.2530, -46.8315, 1] },
@@ -2816,7 +2833,7 @@
 	        depthTest: true,
 	        blending: 0
 	    },
-	    "Leaves" : {
+	    "Leaves": {
 	        uniforms: {
 	            u_SceneLight_0_matrix: { value: [0.2931, 0.5524, -0.7803, 0, -0.8769, 0.4805, 0.0107, 0, 0.3809, 0.6811, 0.6253, 0, -4.9937, 8.1874, -46.2828, 1] },
 	            u_SceneLight_1_matrix: { value: [0.1816, -0.1369, -0.9738, 0, -0.7915, -0.6080, -0.0621, 0, -0.5835, 0.7821, -0.2188, 0, -5.6205, 8.2530, -46.8315, 1] },
@@ -2841,7 +2858,7 @@
 	        depthTest: true,
 	        blending: 0
 	    },
-	    "Light" : {
+	    "Light": {
 	        uniforms: {
 	            u_SceneLight_0_matrix: { value: [0.2931, 0.5524, -0.7803, 0, -0.8769, 0.4805, 0.0107, 0, 0.3809, 0.6811, 0.6253, 0, -4.9937, 8.1874, -46.2828, 1] },
 	            u_SceneLight_1_matrix: { value: [0.1816, -0.1369, -0.9738, 0, -0.7915, -0.6080, -0.0621, 0, -0.5835, 0.7821, -0.2188, 0, -5.6205, 8.2530, -46.8315, 1] },
@@ -2863,7 +2880,7 @@
 	        blendSrcAlpha: 201,
 	        blendSrc: 201,
 	    },
-	    "LightWire" : {
+	    "LightWire": {
 	        uniforms: {
 	            u_SceneLight_0_matrix: { value: [0.2931, 0.5524, -0.7803, 0, -0.8769, 0.4805, 0.0107, 0, 0.3809, 0.6811, 0.6253, 0, -4.9937, 8.1874, -46.2828, 1] },
 	            u_SceneLight_1_matrix: { value: [0.1816, -0.1369, -0.9738, 0, -0.7915, -0.6080, -0.0621, 0, -0.5835, 0.7821, -0.2188, 0, -5.6205, 8.2530, -46.8315, 1] },
@@ -2885,7 +2902,7 @@
 	        depthTest: true,
 	        blending: 0
 	    },
-	    "Lofted" : {
+	    "Lofted": {
 	        uniforms: {
 	            u_SceneLight_0_matrix: { value: [0.2931, 0.5524, -0.7803, 0, -0.8769, 0.4805, 0.0107, 0, 0.3809, 0.6811, 0.6253, 0, -4.9937, 8.1874, -46.2828, 1] },
 	            u_SceneLight_1_matrix: { value: [0.1816, -0.1369, -0.9738, 0, -0.7915, -0.6080, -0.0621, 0, -0.5835, 0.7821, -0.2188, 0, -5.6205, 8.2530, -46.8315, 1] },
@@ -2904,7 +2921,7 @@
 	        depthTest: true,
 	        blending: 0
 	    },
-	    "Marker" : {
+	    "Marker": {
 	        uniforms: {
 	            u_SceneLight_0_matrix: { value: [0.2931, 0.5524, -0.7803, 0, -0.8769, 0.4805, 0.0107, 0, 0.3809, 0.6811, 0.6253, 0, -4.9937, 8.1874, -46.2828, 1] },
 	            u_SceneLight_1_matrix: { value: [0.1816, -0.1369, -0.9738, 0, -0.7915, -0.6080, -0.0621, 0, -0.5835, 0.7821, -0.2188, 0, -5.6205, 8.2530, -46.8315, 1] },
@@ -2921,9 +2938,8 @@
 	        depthWrite: true,
 	        depthTest: true,
 	        blending: 0,
-	        
 	    },
-	    "MatteHull" : {
+	    "MatteHull": {
 	        uniforms: {
 	            u_SceneLight_0_matrix: { value: [0.2931, 0.5524, -0.7803, 0, -0.8769, 0.4805, 0.0107, 0, 0.3809, 0.6811, 0.6253, 0, -4.9937, 8.1874, -46.2828, 1] },
 	            u_SceneLight_1_matrix: { value: [0.1816, -0.1369, -0.9738, 0, -0.7915, -0.6080, -0.0621, 0, -0.5835, 0.7821, -0.2188, 0, -5.6205, 8.2530, -46.8315, 1] },
@@ -2942,7 +2958,7 @@
 	        depthTest: true,
 	        blending: 0,
 	    },
-	    "NeonPulse" : {
+	    "NeonPulse": {
 	        uniforms: {
 	            u_SceneLight_0_matrix: { value: [0.2931, 0.5524, -0.7803, 0, -0.8769, 0.4805, 0.0107, 0, 0.3809, 0.6811, 0.6253, 0, -4.9937, 8.1874, -46.2828, 1] },
 	            u_SceneLight_1_matrix: { value: [0.1816, -0.1369, -0.9738, 0, -0.7915, -0.6080, -0.0621, 0, -0.5835, 0.7821, -0.2188, 0, -5.6205, 8.2530, -46.8315, 1] },
@@ -2991,7 +3007,7 @@
 	        depthTest: true,
 	        blending: 0
 	    },
-	    "Paper" : {
+	    "Paper": {
 	        uniforms: {
 	            u_SceneLight_0_matrix: { value: [0.2931, 0.5524, -0.7803, 0, -0.8769, 0.4805, 0.0107, 0, 0.3809, 0.6811, 0.6253, 0, -4.9937, 8.1874, -46.2828, 1] },
 	            u_SceneLight_1_matrix: { value: [0.1816, -0.1369, -0.9738, 0, -0.7915, -0.6080, -0.0621, 0, -0.5835, 0.7821, -0.2188, 0, -5.6205, 8.2530, -46.8315, 1] },
@@ -3016,7 +3032,7 @@
 	        depthTest: true,
 	        blending: 0
 	    },
-	    "PbrTemplate" : {
+	    "PbrTemplate": {
 	        uniforms: {
 	            u_SceneLight_0_matrix: { value: [0.2931, 0.5524, -0.7803, 0, -0.8769, 0.4805, 0.0107, 0, 0.3809, 0.6811, 0.6253, 0, -4.9937, 8.1874, -46.2828, 1] },
 	            u_SceneLight_1_matrix: { value: [0.1816, -0.1369, -0.9738, 0, -0.7915, -0.6080, -0.0621, 0, -0.5835, 0.7821, -0.2188, 0, -5.6205, 8.2530, -46.8315, 1] },
@@ -3038,7 +3054,7 @@
 	        depthTest: true,
 	        blending: 0
 	    },
-	    "PbrTransparentTemplate" : {
+	    "PbrTransparentTemplate": {
 	        uniforms: {
 	            u_SceneLight_0_matrix: { value: [0.2931, 0.5524, -0.7803, 0, -0.8769, 0.4805, 0.0107, 0, 0.3809, 0.6811, 0.6253, 0, -4.9937, 8.1874, -46.2828, 1] },
 	            u_SceneLight_1_matrix: { value: [0.1816, -0.1369, -0.9738, 0, -0.7915, -0.6080, -0.0621, 0, -0.5835, 0.7821, -0.2188, 0, -5.6205, 8.2530, -46.8315, 1] },
@@ -3060,7 +3076,7 @@
 	        depthTest: true,
 	        blending: 0
 	    },
-	    "Petal" : {
+	    "Petal": {
 	        uniforms: {
 	            u_SceneLight_0_matrix: { value: [0.2931, 0.5524, -0.7803, 0, -0.8769, 0.4805, 0.0107, 0, 0.3809, 0.6811, 0.6253, 0, -4.9937, 8.1874, -46.2828, 1] },
 	            u_SceneLight_1_matrix: { value: [0.1816, -0.1369, -0.9738, 0, -0.7915, -0.6080, -0.0621, 0, -0.5835, 0.7821, -0.2188, 0, -5.6205, 8.2530, -46.8315, 1] },
@@ -3081,8 +3097,7 @@
 	        depthTest: true,
 	        blending: 0
 	    },
-	    // How did an experimental brush end up here?
-	    "Plasma" : {
+	    "Plasma": {
 	        uniforms: {
 	            u_SceneLight_0_matrix: { value: [0.2931, 0.5524, -0.7803, 0, -0.8769, 0.4805, 0.0107, 0, 0.3809, 0.6811, 0.6253, 0, -4.9937, 8.1874, -46.2828, 1] },
 	            u_SceneLight_1_matrix: { value: [0.1816, -0.1369, -0.9738, 0, -0.7915, -0.6080, -0.0621, 0, -0.5835, 0.7821, -0.2188, 0, -5.6205, 8.2530, -46.8315, 1] },
@@ -3098,7 +3113,7 @@
 	        depthTest: true,
 	        blending: 0
 	    },
-	    "Rainbow" : {
+	    "Rainbow": {
 	        uniforms: {
 	            u_SceneLight_0_matrix: { value: [0.2931, 0.5524, -0.7803, 0, -0.8769, 0.4805, 0.0107, 0, 0.3809, 0.6811, 0.6253, 0, -4.9937, 8.1874, -46.2828, 1] },
 	            u_SceneLight_1_matrix: { value: [0.1816, -0.1369, -0.9738, 0, -0.7915, -0.6080, -0.0621, 0, -0.5835, 0.7821, -0.2188, 0, -5.6205, 8.2530, -46.8315, 1] },
@@ -3120,7 +3135,7 @@
 	        blendSrcAlpha: 201,
 	        blendSrc: 201,
 	    },
-	    "ShinyHull" : {
+	    "ShinyHull": {
 	        uniforms: {
 	            u_SceneLight_0_matrix: { value: [0.2931, 0.5524, -0.7803, 0, -0.8769, 0.4805, 0.0107, 0, 0.3809, 0.6811, 0.6253, 0, -4.9937, 8.1874, -46.2828, 1] },
 	            u_SceneLight_1_matrix: { value: [0.1816, -0.1369, -0.9738, 0, -0.7915, -0.6080, -0.0621, 0, -0.5835, 0.7821, -0.2188, 0, -5.6205, 8.2530, -46.8315, 1] },
@@ -3158,7 +3173,7 @@
 	        depthTest: true,
 	        blending: 2
 	    },
-	    "Snow" : {
+	    "Snow": {
 	        uniforms: {
 	            u_time: { value: new three.Vector4() },
 	            u_ScrollRate: { value: 0.2 },
@@ -3177,7 +3192,7 @@
 	        depthTest: true,
 	        blending: 2
 	    },
-	    "SoftHighlighter" : {
+	    "SoftHighlighter": {
 	        uniforms: {
 	            u_SceneLight_0_matrix: { value: [0.2931, 0.5524, -0.7803, 0, -0.8769, 0.4805, 0.0107, 0, 0.3809, 0.6811, 0.6253, 0, -4.9937, 8.1874, -46.2828, 1] },
 	            u_SceneLight_1_matrix: { value: [0.1816, -0.1369, -0.9738, 0, -0.7915, -0.6080, -0.0621, 0, -0.5835, 0.7821, -0.2188, 0, -5.6205, 8.2530, -46.8315, 1] },
@@ -3198,7 +3213,7 @@
 	        blendSrcAlpha: 201,
 	        blendSrc: 201,
 	    },
-	    "Spikes" : {
+	    "Spikes": {
 	        uniforms: {
 	            u_SceneLight_0_matrix: { value: [0.2931, 0.5524, -0.7803, 0, -0.8769, 0.4805, 0.0107, 0, 0.3809, 0.6811, 0.6253, 0, -4.9937, 8.1874, -46.2828, 1] },
 	            u_SceneLight_1_matrix: { value: [0.1816, -0.1369, -0.9738, 0, -0.7915, -0.6080, -0.0621, 0, -0.5835, 0.7821, -0.2188, 0, -5.6205, 8.2530, -46.8315, 1] },
@@ -3217,7 +3232,7 @@
 	        depthTest: true,
 	        blending: 0
 	    },
-	    "Splatter" : {
+	    "Splatter": {
 	        uniforms: {
 	            u_SceneLight_0_matrix: { value: [0.2931, 0.5524, -0.7803, 0, -0.8769, 0.4805, 0.0107, 0, 0.3809, 0.6811, 0.6253, 0, -4.9937, 8.1874, -46.2828, 1] },
 	            u_SceneLight_1_matrix: { value: [0.1816, -0.1369, -0.9738, 0, -0.7915, -0.6080, -0.0621, 0, -0.5835, 0.7821, -0.2188, 0, -5.6205, 8.2530, -46.8315, 1] },
@@ -3238,7 +3253,7 @@
 	        depthTest: true,
 	        blending: 0
 	    },
-	    "Stars" : {
+	    "Stars": {
 	        uniforms: {
 	            u_SceneLight_0_matrix: { value: [0.2931, 0.5524, -0.7803, 0, -0.8769, 0.4805, 0.0107, 0, 0.3809, 0.6811, 0.6253, 0, -4.9937, 8.1874, -46.2828, 1] },
 	            u_SceneLight_1_matrix: { value: [0.1816, -0.1369, -0.9738, 0, -0.7915, -0.6080, -0.0621, 0, -0.5835, 0.7821, -0.2188, 0, -5.6205, 8.2530, -46.8315, 1] },
@@ -3255,7 +3270,7 @@
 	        depthTest: true,
 	        blending: 2
 	    },
-	    "Streamers" : {
+	    "Streamers": {
 	        uniforms: {
 	            u_SceneLight_0_matrix: { value: [0.2931, 0.5524, -0.7803, 0, -0.8769, 0.4805, 0.0107, 0, 0.3809, 0.6811, 0.6253, 0, -4.9937, 8.1874, -46.2828, 1] },
 	            u_SceneLight_1_matrix: { value: [0.1816, -0.1369, -0.9738, 0, -0.7915, -0.6080, -0.0621, 0, -0.5835, 0.7821, -0.2188, 0, -5.6205, 8.2530, -46.8315, 1] },
@@ -3272,7 +3287,7 @@
 	        depthTest: true,
 	        blending: 2
 	    },
-	    "Taffy" : {
+	    "Taffy": {
 	        uniforms: {
 	            u_SceneLight_0_matrix: { value: [0.2931, 0.5524, -0.7803, 0, -0.8769, 0.4805, 0.0107, 0, 0.3809, 0.6811, 0.6253, 0, -4.9937, 8.1874, -46.2828, 1] },
 	            u_SceneLight_1_matrix: { value: [0.1816, -0.1369, -0.9738, 0, -0.7915, -0.6080, -0.0621, 0, -0.5835, 0.7821, -0.2188, 0, -5.6205, 8.2530, -46.8315, 1] },
@@ -3289,7 +3304,7 @@
 	        depthTest: true,
 	        blending: 0
 	    },
-	    "TaperedFlat" : {
+	    "TaperedFlat": {
 	        uniforms: {
 	            u_SceneLight_0_matrix: { value: [0.2931, 0.5524, -0.7803, 0, -0.8769, 0.4805, 0.0107, 0, 0.3809, 0.6811, 0.6253, 0, -4.9937, 8.1874, -46.2828, 1] },
 	            u_SceneLight_1_matrix: { value: [0.1816, -0.1369, -0.9738, 0, -0.7915, -0.6080, -0.0621, 0, -0.5835, 0.7821, -0.2188, 0, -5.6205, 8.2530, -46.8315, 1] },
@@ -3310,7 +3325,7 @@
 	        depthTest: true,
 	        blending: 0
 	    },
-	    "TaperedMarker" : {
+	    "TaperedMarker": {
 	        uniforms: {
 	            u_SceneLight_0_matrix: { value: [0.2931, 0.5524, -0.7803, 0, -0.8769, 0.4805, 0.0107, 0, 0.3809, 0.6811, 0.6253, 0, -4.9937, 8.1874, -46.2828, 1] },
 	            u_SceneLight_1_matrix: { value: [0.1816, -0.1369, -0.9738, 0, -0.7915, -0.6080, -0.0621, 0, -0.5835, 0.7821, -0.2188, 0, -5.6205, 8.2530, -46.8315, 1] },
@@ -3327,7 +3342,7 @@
 	        depthTest: true,
 	        blending: 0
 	    },
-	    "TaperedMarker_Flat" : {
+	    "TaperedMarker_Flat": {
 	        uniforms: {
 	            u_SceneLight_0_matrix: { value: [0.2931, 0.5524, -0.7803, 0, -0.8769, 0.4805, 0.0107, 0, 0.3809, 0.6811, 0.6253, 0, -4.9937, 8.1874, -46.2828, 1] },
 	            u_SceneLight_1_matrix: { value: [0.1816, -0.1369, -0.9738, 0, -0.7915, -0.6080, -0.0621, 0, -0.5835, 0.7821, -0.2188, 0, -5.6205, 8.2530, -46.8315, 1] },
@@ -3350,7 +3365,7 @@
 	        depthTest: true,
 	        blending: 0
 	    },
-	    "ThickPaint" : {
+	    "ThickPaint": {
 	        uniforms: {
 	            u_SceneLight_0_matrix: { value: [0.2931, 0.5524, -0.7803, 0, -0.8769, 0.4805, 0.0107, 0, 0.3809, 0.6811, 0.6253, 0, -4.9937, 8.1874, -46.2828, 1] },
 	            u_SceneLight_1_matrix: { value: [0.1816, -0.1369, -0.9738, 0, -0.7915, -0.6080, -0.0621, 0, -0.5835, 0.7821, -0.2188, 0, -5.6205, 8.2530, -46.8315, 1] },
@@ -3375,7 +3390,7 @@
 	        depthTest: true,
 	        blending: 0
 	    },
-	    "Toon" : {
+	    "Toon": {
 	        uniforms: {
 	            u_SceneLight_0_matrix: { value: [0.2931, 0.5524, -0.7803, 0, -0.8769, 0.4805, 0.0107, 0, 0.3809, 0.6811, 0.6253, 0, -4.9937, 8.1874, -46.2828, 1] },
 	            u_SceneLight_1_matrix: { value: [0.1816, -0.1369, -0.9738, 0, -0.7915, -0.6080, -0.0621, 0, -0.5835, 0.7821, -0.2188, 0, -5.6205, 8.2530, -46.8315, 1] },
@@ -3391,7 +3406,7 @@
 	        depthTest: true,
 	        blending: 0,
 	    },
-	    "UnlitHull" : {
+	    "UnlitHull": {
 	        uniforms: {
 	            u_SceneLight_0_matrix: { value: [0.2931, 0.5524, -0.7803, 0, -0.8769, 0.4805, 0.0107, 0, 0.3809, 0.6811, 0.6253, 0, -4.9937, 8.1874, -46.2828, 1] },
 	            u_SceneLight_1_matrix: { value: [0.1816, -0.1369, -0.9738, 0, -0.7915, -0.6080, -0.0621, 0, -0.5835, 0.7821, -0.2188, 0, -5.6205, 8.2530, -46.8315, 1] },
@@ -3407,7 +3422,7 @@
 	        depthTest: true,
 	        blending: 0,
 	    },
-	    "VelvetInk" : {
+	    "VelvetInk": {
 	        uniforms: {
 	            u_SceneLight_0_matrix: { value: [0.2931, 0.5524, -0.7803, 0, -0.8769, 0.4805, 0.0107, 0, 0.3809, 0.6811, 0.6253, 0, -4.9937, 8.1874, -46.2828, 1] },
 	            u_SceneLight_1_matrix: { value: [0.1816, -0.1369, -0.9738, 0, -0.7915, -0.6080, -0.0621, 0, -0.5835, 0.7821, -0.2188, 0, -5.6205, 8.2530, -46.8315, 1] },
@@ -3424,7 +3439,7 @@
 	        depthTest: true,
 	        blending: 2
 	    },
-	    "Waveform" : {
+	    "Waveform": {
 	        uniforms: {
 	            u_SceneLight_0_matrix: { value: [0.2931, 0.5524, -0.7803, 0, -0.8769, 0.4805, 0.0107, 0, 0.3809, 0.6811, 0.6253, 0, -4.9937, 8.1874, -46.2828, 1] },
 	            u_SceneLight_1_matrix: { value: [0.1816, -0.1369, -0.9738, 0, -0.7915, -0.6080, -0.0621, 0, -0.5835, 0.7821, -0.2188, 0, -5.6205, 8.2530, -46.8315, 1] },
@@ -3441,7 +3456,7 @@
 	        depthTest: true,
 	        blending: 2
 	    },
-	    "WetPaint" : {
+	    "WetPaint": {
 	        uniforms: {
 	            u_SceneLight_0_matrix: { value: [0.2931, 0.5524, -0.7803, 0, -0.8769, 0.4805, 0.0107, 0, 0.3809, 0.6811, 0.6253, 0, -4.9937, 8.1874, -46.2828, 1] },
 	            u_SceneLight_1_matrix: { value: [0.1816, -0.1369, -0.9738, 0, -0.7915, -0.6080, -0.0621, 0, -0.5835, 0.7821, -0.2188, 0, -5.6205, 8.2530, -46.8315, 1] },
@@ -3466,7 +3481,7 @@
 	        depthTest: true,
 	        blending: 0
 	    },
-	    "WigglyGraphite" : {
+	    "WigglyGraphite": {
 	        uniforms: {
 	            u_SceneLight_0_matrix: { value: [0.2931, 0.5524, -0.7803, 0, -0.8769, 0.4805, 0.0107, 0, 0.3809, 0.6811, 0.6253, 0, -4.9937, 8.1874, -46.2828, 1] },
 	            u_SceneLight_1_matrix: { value: [0.1816, -0.1369, -0.9738, 0, -0.7915, -0.6080, -0.0621, 0, -0.5835, 0.7821, -0.2188, 0, -5.6205, 8.2530, -46.8315, 1] },
@@ -3488,7 +3503,7 @@
 	        depthTest: true,
 	        blending: 0
 	    },
-	    "Wire" : {
+	    "Wire": {
 	        uniforms: {
 	            u_SceneLight_0_matrix: { value: [0.2931, 0.5524, -0.7803, 0, -0.8769, 0.4805, 0.0107, 0, 0.3809, 0.6811, 0.6253, 0, -4.9937, 8.1874, -46.2828, 1] },
 	            u_SceneLight_1_matrix: { value: [0.1816, -0.1369, -0.9738, 0, -0.7915, -0.6080, -0.0621, 0, -0.5835, 0.7821, -0.2188, 0, -5.6205, 8.2530, -46.8315, 1] },
@@ -3505,31 +3520,6 @@
 	        blending: 0,
 	    },
 	};
-
-	/*! *****************************************************************************
-	Copyright (c) Microsoft Corporation.
-
-	Permission to use, copy, modify, and/or distribute this software for any
-	purpose with or without fee is hereby granted.
-
-	THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
-	REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
-	AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
-	INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
-	LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
-	OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
-	PERFORMANCE OF THIS SOFTWARE.
-	***************************************************************************** */
-
-	function __awaiter(thisArg, _arguments, P, generator) {
-	    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
-	    return new (P || (P = Promise))(function (resolve, reject) {
-	        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
-	        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
-	        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
-	        step((generator = generator.apply(thisArg, _arguments || [])).next());
-	    });
-	}
 
 	class TiltLoader extends three.Loader {
 	    constructor(manager) {
@@ -3551,7 +3541,12 @@
 	        this.tiltShaderLoader.setPath(path);
 	        return this;
 	    }
-	    load(url, onLoad, onProgress, onError) {
+	    load(url, onLoad) {
+	        return __awaiter(this, void 0, void 0, function* () {
+	            return yield this.loadGltf2(url, onLoad);
+	        });
+	    }
+	    loadGltf2(url, onLoad) {
 	        return __awaiter(this, void 0, void 0, function* () {
 	            this.loadedModel = (yield this.gltfLoader.loadAsync(url)).scene;
 	            yield this.replaceBrushMaterials();
@@ -3561,36 +3556,35 @@
 	            return data;
 	        });
 	    }
-	    loadTilt(url) {
+	    loadTilt(url, onLoad) {
 	        return __awaiter(this, void 0, void 0, function* () {
-	            const tilt = yield this.rawTiltLoader.loadAsync(url);
-	            this.loadedModel = tilt;
+	            this.loadedModel = yield this.rawTiltLoader.loadAsync(url);
+	            let data;
+	            data = { scene: this.loadedModel, updateableMeshes: [] };
+	            onLoad(data);
+	            return data;
 	        });
 	    }
-	    loadBrushGltf2(url) {
+	    loadGltf1(url, onLoad) {
 	        return __awaiter(this, void 0, void 0, function* () {
-	            const gltf = yield this.gltfLoader.loadAsync(url);
-	            this.loadedModel = gltf.scene;
-	            yield this.replaceBrushMaterials();
-	        });
-	    }
-	    loadBrushGltf1(url) {
-	        return __awaiter(this, void 0, void 0, function* () {
-	            const gltf = yield this.legacygltf.loadAsync(url);
-	            this.loadedModel = gltf.scene;
+	            this.loadedModel = (yield this.gltfLoader.loadAsync(url)).scene;
 	            this.isGltfLegacy = true;
 	            yield this.replaceBrushMaterials();
+	            let data;
+	            data = { scene: this.loadedModel, updateableMeshes: this.updateableMeshes };
+	            onLoad(data);
+	            return data;
 	        });
 	    }
 	    replaceBrushMaterials() {
-	        var _a, _b;
+	        var _a, _b, _c, _d;
 	        return __awaiter(this, void 0, void 0, function* () {
 	            if (!this.loadedModel)
 	                return;
-	            let light0transform = new three.Matrix4().identity;
-	            let light1transform = new three.Matrix4().identity;
-	            light0transform = (_a = this.loadedModel.getObjectByName("node_SceneLight_0")) === null || _a === void 0 ? void 0 : _a.matrix;
-	            light1transform = (_b = this.loadedModel.getObjectByName("node_SceneLight_1")) === null || _b === void 0 ? void 0 : _b.matrix;
+	            let light0transform = new three.Matrix4().identity();
+	            let light1transform = new three.Matrix4().identity();
+	            light0transform = (_b = (_a = this.loadedModel.getObjectByName("node_SceneLight_0")) === null || _a === void 0 ? void 0 : _a.matrix) !== null && _b !== void 0 ? _b : light0transform;
+	            light1transform = (_d = (_c = this.loadedModel.getObjectByName("node_SceneLight_1")) === null || _c === void 0 ? void 0 : _c.matrix) !== null && _d !== void 0 ? _d : light1transform;
 	            if (!light0transform || !light1transform) {
 	                this.loadedModel.traverse((object) => {
 	                    if (object.name.startsWith("node_SceneLight_0")) {

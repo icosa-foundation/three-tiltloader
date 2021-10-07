@@ -4,6 +4,7 @@
     "outDir": "./dist",
     "target": "es6",
     "strict": true,
+    "declaration": true,
     "removeComments": true,
     "noImplicitAny": true,
     "noImplicitThis": true,
