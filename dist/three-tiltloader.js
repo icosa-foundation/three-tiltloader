@@ -3571,7 +3571,9 @@
 	    }
 	    loadGltf1(url, onLoad) {
 	        return __awaiter(this, void 0, void 0, function* () {
-	            this.loadedModel = (yield this.gltfLoader.loadAsync(url)).scene;
+	            this.loadedModel = (yield this.legacygltf.loadAsync(url)).scene;
+	            if (!this.loadedModel)
+	                return Promise.reject();
 	            this.isGltfLegacy = true;
 	            yield this.replaceBrushMaterials();
 	            let data;

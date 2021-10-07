@@ -105,7 +105,11 @@ export class TiltLoader extends Loader {
     public async loadGltf1(url : string,
         onLoad?: (response: TiltModel) => void
     ): Promise<TiltModel> {
-        this.loadedModel = (await this.gltfLoader.loadAsync(url)).scene;
+        this.loadedModel = (await this.legacygltf.loadAsync(url)).scene;
+
+        if(!this.loadedModel)
+            return Promise.reject();
+
         this.isGltfLegacy = true;
         await this.replaceBrushMaterials();
 
