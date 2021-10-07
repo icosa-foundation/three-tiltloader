@@ -24,8 +24,8 @@ import {
 
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader";
 import { TiltLoader as RawTiltLoader }  from "three/examples/jsm/loaders/TiltLoader";
-import { LegacyGLTFLoader } from "./legacy/LegacyGLTFLoader.js";
-import { TiltShaderLoader } from "./TiltShaderLoader.js";
+import { LegacyGLTFLoader } from "./legacy/LegacyGLTFLoader";
+import { TiltShaderLoader } from "./TiltShaderLoader";
 
 export interface TiltModel {
     scene: Object3D;

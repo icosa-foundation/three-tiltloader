@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-export { updateBrushes } from './helpers.js';
-export { LegacyGLTFLoader } from './legacy/LegacyGLTFLoader.js';
-export { TiltShaderLoader } from './TiltShaderLoader.js';
-export { TiltModel, TiltLoader } from './TiltLoader.js';
+export { updateBrushes } from './helpers';
+export { LegacyGLTFLoader } from './legacy/LegacyGLTFLoader';
+export { TiltShaderLoader } from './TiltShaderLoader';
+export { TiltModel, TiltLoader } from './TiltLoader';
