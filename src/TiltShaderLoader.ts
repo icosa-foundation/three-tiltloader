@@ -12,21 +12,26 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { Loader, FileLoader, RawShaderMaterial, RepeatWrapping, TextureLoader, Vector3, Vector4 } from "three";
+import { Loader, FileLoader, RawShaderMaterial, RepeatWrapping, TextureLoader, Vector3, Vector4, LoadingManager, ShaderMaterialParameters } from "three";
 
 export class TiltShaderLoader extends Loader {
-    constructor( manager ) {
+    constructor( manager: LoadingManager ) {
         super( manager );
     }
     
-    async load(brushName, onLoad, onProgress, onError ) {
+    async load(
+        brushName: string, 
+        onLoad: (response: RawShaderMaterial) => void, 
+        onProgress?: ( event: ProgressEvent ) => void,
+        onError?: ( event: ErrorEvent ) => void
+        ): Promise<void> {
         const scope = this;
 
         const isAlreadyLoaded = loadedMaterials[brushName];
         
         if (isAlreadyLoaded !== undefined) {
-            onLoad( scope.parse( isAlreadyLoaded ) );
-            return;
+            let material = scope.parse( isAlreadyLoaded );
+            onLoad( material );
         }
         
 		const loader = new FileLoader( this.manager );
@@ -40,10 +45,18 @@ export class TiltShaderLoader extends Loader {
 
         const materialParams = tiltBrushMaterialParams[brushName];
 
-        materialParams.vertexShader = await loader.loadAsync(materialParams.vertexShader);
-        materialParams.fragmentShader = await loader.loadAsync(materialParams.fragmentShader);
+        let loadedVertex: string | ArrayBuffer = await loader.loadAsync(materialParams.vertexShader!);
+        let loadedFragment: string | ArrayBuffer = await loader.loadAsync(materialParams.fragmentShader!);
 
-        if (materialParams.uniforms.u_MainTex) {
+        if(typeof(loadedVertex) === 'string') {
+            materialParams.vertexShader = loadedVertex;
+        }
+
+        if(typeof(loadedFragment) === 'string') {
+            materialParams.fragmentShader = loadedFragment;
+        }
+
+        if (materialParams.uniforms?.u_MainTex) {
             const mainTex = await textureLoader.loadAsync(materialParams.uniforms.u_MainTex.value);
             mainTex.name = `${brushName}_MainTex`;
             mainTex.wrapS = RepeatWrapping;
@@ -52,7 +65,7 @@ export class TiltShaderLoader extends Loader {
             materialParams.uniforms.u_MainTex.value = mainTex;
         }
 
-        if (materialParams.uniforms.u_BumpMap) {
+        if (materialParams.uniforms?.u_BumpMap) {
             const bumpMap = await textureLoader.loadAsync(materialParams.uniforms.u_BumpMap.value);
             bumpMap.name = `${brushName}_BumpMap`;
             bumpMap.wrapS = RepeatWrapping;
@@ -61,7 +74,7 @@ export class TiltShaderLoader extends Loader {
             materialParams.uniforms.u_BumpMap.value = bumpMap;
         }
 
-        if (materialParams.uniforms.u_AlphaMask) {
+        if (materialParams.uniforms?.u_AlphaMask) {
             const alphaMask = await textureLoader.loadAsync(materialParams.uniforms.u_AlphaMask.value);
             alphaMask.name = `${brushName}_AlphaMask`;
             alphaMask.wrapS = RepeatWrapping;
@@ -72,17 +85,18 @@ export class TiltShaderLoader extends Loader {
 
         loadedMaterials[brushName] = materialParams;
 
-        onLoad( scope.parse( materialParams ) );
+        let material = scope.parse( materialParams );
+        onLoad( material );
     }
 
-    parse( materialParams ) {
+    parse( materialParams: ShaderMaterialParameters): RawShaderMaterial {
         return new RawShaderMaterial( materialParams );
     }
 }
 
-const loadedMaterials = {}
+const loadedMaterials: { [id: string]: ShaderMaterialParameters } = {}
 
-const tiltBrushMaterialParams = {
+const tiltBrushMaterialParams: { [id: string]: ShaderMaterialParameters } = {
     "BlocksBasic" : {
         uniforms: {
             u_SceneLight_0_matrix: { value: [0.2931, 0.5524, -0.7803, 0, -0.8769, 0.4805, 0.0107, 0, 0.3809, 0.6811, 0.6253, 0, -4.9937, 8.1874, -46.2828, 1] },
