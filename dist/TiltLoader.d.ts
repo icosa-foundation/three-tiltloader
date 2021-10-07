@@ -15,8 +15,8 @@ export declare class TiltLoader extends Loader {
     setPath(path: string): this;
     setBrushDirectory(path: string): this;
     load(url: string, onLoad: (response: TiltModel) => void): Promise<TiltModel>;
-    loadGltf2(url: string, onLoad: (response: TiltModel) => void): Promise<TiltModel>;
-    loadTilt(url: string, onLoad: (response: TiltModel) => void): Promise<TiltModel>;
-    loadGltf1(url: string, onLoad: (response: TiltModel) => void): Promise<TiltModel>;
+    loadGltf2(url: string, onLoad?: (response: TiltModel) => void): Promise<TiltModel>;
+    loadTilt(url: string, onLoad?: (response: TiltModel) => void): Promise<TiltModel>;
+    loadGltf1(url: string, onLoad?: (response: TiltModel) => void): Promise<TiltModel>;
     private replaceBrushMaterials;
 }

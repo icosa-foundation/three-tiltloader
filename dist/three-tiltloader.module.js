@@ -3550,7 +3550,9 @@ class TiltLoader extends Loader {
             yield this.replaceBrushMaterials();
             let data;
             data = { scene: this.loadedModel, updateableMeshes: this.updateableMeshes };
-            onLoad(data);
+            if (onLoad) {
+                onLoad(data);
+            }
             return data;
         });
     }
@@ -3559,7 +3561,9 @@ class TiltLoader extends Loader {
             this.loadedModel = yield this.rawTiltLoader.loadAsync(url);
             let data;
             data = { scene: this.loadedModel, updateableMeshes: [] };
-            onLoad(data);
+            if (onLoad) {
+                onLoad(data);
+            }
             return data;
         });
     }
@@ -3570,7 +3574,9 @@ class TiltLoader extends Loader {
             yield this.replaceBrushMaterials();
             let data;
             data = { scene: this.loadedModel, updateableMeshes: this.updateableMeshes };
-            onLoad(data);
+            if (onLoad) {
+                onLoad(data);
+            }
             return data;
         });
     }

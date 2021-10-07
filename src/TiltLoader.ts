@@ -76,30 +76,34 @@ export class TiltLoader extends Loader {
 
     public async loadGltf2(
         url: string, 
-        onLoad: (response: TiltModel) => void
+        onLoad?: (response: TiltModel) => void
     ): Promise<TiltModel> {
         this.loadedModel = (await this.gltfLoader.loadAsync(url)).scene;
         await this.replaceBrushMaterials();
 
         let data: TiltModel;
         data = { scene: this.loadedModel, updateableMeshes: this.updateableMeshes };
-        onLoad(data);
+        if (onLoad) {
+            onLoad(data);
+        }
         return data;
     }
 
     public async loadTilt(url: string,
-        onLoad: (response: TiltModel) => void
+        onLoad?: (response: TiltModel) => void
     ): Promise<TiltModel> {
         this.loadedModel = await this.rawTiltLoader.loadAsync(url);
         
         let data: TiltModel;
         data = { scene: this.loadedModel, updateableMeshes: [] };
-        onLoad(data);
+        if(onLoad) {
+            onLoad(data);
+        }
         return data;
     }
 
     public async loadGltf1(url : string,
-        onLoad: (response: TiltModel) => void
+        onLoad?: (response: TiltModel) => void
     ): Promise<TiltModel> {
         this.loadedModel = (await this.gltfLoader.loadAsync(url)).scene;
         this.isGltfLegacy = true;
@@ -107,7 +111,9 @@ export class TiltLoader extends Loader {
 
         let data: TiltModel;
         data = { scene: this.loadedModel, updateableMeshes: this.updateableMeshes };
-        onLoad(data);
+        if(onLoad) {
+            onLoad(data);
+        }
         return data;
     }
 
