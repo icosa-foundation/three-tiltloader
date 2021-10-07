@@ -1,5 +1,6 @@
 import typescript from 'rollup-plugin-typescript2';
 import { nodeResolve } from '@rollup/plugin-node-resolve';
+import copy from 'rollup-plugin-copy'
 
 const license = `/*!
  * three-tiltloader
@@ -33,5 +34,10 @@ export default {
 	plugins: [
 		nodeResolve(),
 		typescript( { typescript: require( 'typescript' ) } ),
+		copy({
+			targets: [
+				{ src: 'src/legacy/LegacyGLTFLoader.d.ts', dest: 'dist/legacy' }
+			]
+		}),
 	]
 };

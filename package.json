@@ -7,8 +7,8 @@
     "build": "rollup --config && terser dist/three-tiltloader.js -o dist/three-tiltloader.min.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "main":"dist/three-tiltloader.js",
-  "module":"dist/three-tiltloader.module.js",
+  "main": "dist/three-tiltloader.js",
+  "module": "dist/three-tiltloader.module.js",
   "author": "Icosa Gallery",
   "license": "Apache-2.0",
   "bugs": {
@@ -19,6 +19,7 @@
     "@rollup/plugin-node-resolve": "^11.2.1",
     "@types/three": "^0.125.3",
     "rollup": "^2.40.0",
+    "rollup-plugin-copy": "^3.4.0",
     "rollup-plugin-typescript2": "^0.30.0",
     "terser": "^5.7.2",
     "typescript": "^4.1.3"
