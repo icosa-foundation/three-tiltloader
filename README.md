@@ -13,17 +13,17 @@ The loader is still a work in progress and subject to change. Please join the [D
 
 If you would like to support our projects, we are on [Open Collective](https://opencollective.com/icosa)!
 
-## Supported Formats
+# Supported Formats
 
 |Format|Compatability|
 |-|-|
 | GLTF 2.0 (glb, exported directly from Tilt Brush/Open Brush) | ✅ |
 | GLTF 1.0 (gltf+bin, Google Poly legacy format) | ✅ |
-| TILT | In Progress, renders control points. |
+| TILT | In progress, renders control points. |
 | FBX | Not Implemented |
 | OBJ | Not Implemented |
 
-## Installation
+# Installation
 
 The loader is designed to be used with `three.js`. The library has been tested against `r128`, but may work with other releases.
 
@@ -31,10 +31,12 @@ The loader is designed to be used with `three.js`. The library has been tested a
 You need to pass the loader a path to a folder containing all the relevant brushes and textures. This has been omitted to reduce package size and leave brush location up to the implementer. You can get a copy of the brushes folder in the root of this project's repository.
 
 
-### Install via npm
+## Install via npm
 `npm install --save three-tiltloader`
 
-## Example Usage
+# Example Usage
+The following is an example implementation for loading in a glTF 2.0 model exported from Tilt Brush / Open Brush. Depending on the model, you may have to adjust the camera to see it fully.
+
 ```js
 import {
     PerspectiveCamera,

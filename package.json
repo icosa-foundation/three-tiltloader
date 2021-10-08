@@ -1,6 +1,6 @@
 {
   "name": "three-tiltloader",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Load Tilt Brush / Open Brush files and derivatives in three.js applications",
   "repository": {
     "type": "git",
@@ -54,8 +54,5 @@
     "vr",
     "ar",
     "xr"
-  ],
-  "dependencies": {
-    "three": "^0.133.1"
-  }
+  ]
 }
