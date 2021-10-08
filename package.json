@@ -1,14 +1,18 @@
 {
   "name": "three-tiltloader",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Load Tilt Brush / Open Brush files and derivatives in three.js applications",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/icosa-gallery/three-tiltloader.git"
+  },
   "scripts": {
     "dev": "rollup --config --watch",
     "build": "rollup --config && terser dist/three-tiltloader.js -o dist/three-tiltloader.min.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "main":"dist/three-tiltloader.js",
-  "module":"dist/three-tiltloader.module.js",
+  "main": "dist/three-tiltloader.js",
+  "module": "dist/three-tiltloader.module.js",
   "author": "Icosa Gallery",
   "license": "Apache-2.0",
   "bugs": {
@@ -19,17 +23,17 @@
     "@rollup/plugin-node-resolve": "^11.2.1",
     "@types/three": "^0.125.3",
     "rollup": "^2.40.0",
+    "rollup-plugin-copy": "^3.4.0",
     "rollup-plugin-typescript2": "^0.30.0",
     "terser": "^5.7.2",
     "typescript": "^4.1.3"
   },
+  "types": "dist/index.d.ts",
   "peerDependencies": {
     "three": "^0.128.0"
   },
   "files": [
-    "dist/three-tiltloader.js",
-    "dist/three-tiltloader.min.js",
-    "dist/three-tiltloader.module.js",
+    "dist",
     "LICENSE",
     "package.json",
     "README.md",
@@ -50,5 +54,8 @@
     "vr",
     "ar",
     "xr"
-  ]
+  ],
+  "dependencies": {
+    "three": "^0.133.1"
+  }
 }

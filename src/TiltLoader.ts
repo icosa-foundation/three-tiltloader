@@ -24,8 +24,8 @@ import {
 
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader";
 import { TiltLoader as RawTiltLoader }  from "three/examples/jsm/loaders/TiltLoader";
-import { LegacyGLTFLoader } from "./legacy/LegacyGLTFLoader.js";
-import { TiltShaderLoader } from "./TiltShaderLoader.js";
+import { LegacyGLTFLoader } from "./legacy/LegacyGLTFLoader";
+import { TiltShaderLoader } from "./TiltShaderLoader";
 
 export interface TiltModel {
     scene: Object3D;
@@ -33,19 +33,19 @@ export interface TiltModel {
 }
 
 export class TiltLoader extends Loader {
-    private rawTiltLoader : RawTiltLoader;
-    private gltfLoader : GLTFLoader;
-    private legacygltf : LegacyGLTFLoader;
+    private rawTiltLoader: RawTiltLoader;
+    private gltfLoader: GLTFLoader;
+    private legacygltf: LegacyGLTFLoader;
     
-    private tiltShaderLoader : TiltShaderLoader;
+    private tiltShaderLoader: TiltShaderLoader;
 
     private isGltfLegacy: boolean = false;
 
-    private updateableMeshes : Mesh[] = [];
+    private updateableMeshes: Mesh[] = [];
 
-    private loadedModel? : Object3D;
+    private loadedModel?: Object3D;
 
-    constructor (manager : LoadingManager) {
+    constructor (manager: LoadingManager) {
         super(manager);
 
         this.rawTiltLoader = new RawTiltLoader(manager);
@@ -55,49 +55,70 @@ export class TiltLoader extends Loader {
         this.tiltShaderLoader = new TiltShaderLoader(manager);
     }
 
-    public setPath(path: string) : this {
+    public setPath(path: string): this {
         this.rawTiltLoader.setPath(path);
         this.gltfLoader.setPath(path);
         this.legacygltf.setPath(path);
         return this;
     }
 
-    public setBrushDirectory(path: string) : this {
+    public setBrushDirectory(path: string): this {
         this.tiltShaderLoader.setPath(path);
         return this;
     }
 
-    async load(
-        url : string, 
-        onLoad: (response: TiltModel) => void,
-        onProgress?: ( event: ProgressEvent ) => void,
-        onError?: ( event: ErrorEvent ) => void
-    ) : Promise<TiltModel> {
+    public async load(
+        url: string, 
+        onLoad: (response: TiltModel) => void
+    ): Promise<TiltModel> {
+        return await this.loadGltf2(url, onLoad);
+    }
+
+    public async loadGltf2(
+        url: string, 
+        onLoad?: (response: TiltModel) => void
+    ): Promise<TiltModel> {
         this.loadedModel = (await this.gltfLoader.loadAsync(url)).scene;
         await this.replaceBrushMaterials();
 
-        let data : TiltModel;
+        let data: TiltModel;
         data = { scene: this.loadedModel, updateableMeshes: this.updateableMeshes };
-        onLoad(data);
+        if (onLoad) {
+            onLoad(data);
+        }
         return data;
     }
 
-    public async loadTilt(url : string) {
-        const tilt = await this.rawTiltLoader.loadAsync(url);
-        this.loadedModel = tilt;
+    public async loadTilt(url: string,
+        onLoad?: (response: TiltModel) => void
+    ): Promise<TiltModel> {
+        this.loadedModel = await this.rawTiltLoader.loadAsync(url);
+        
+        let data: TiltModel;
+        data = { scene: this.loadedModel, updateableMeshes: [] };
+        if(onLoad) {
+            onLoad(data);
+        }
+        return data;
     }
 
-    public async loadBrushGltf2(url : string) {
-        const gltf = await this.gltfLoader.loadAsync(url);
-        this.loadedModel = gltf.scene;
-        await this.replaceBrushMaterials();
-    }
+    public async loadGltf1(url : string,
+        onLoad?: (response: TiltModel) => void
+    ): Promise<TiltModel> {
+        this.loadedModel = (await this.legacygltf.loadAsync(url)).scene;
 
-    public async loadBrushGltf1(url : string) {
-        const gltf = await this.legacygltf.loadAsync(url);
-        this.loadedModel = gltf.scene;
+        if(!this.loadedModel)
+            return Promise.reject();
+
         this.isGltfLegacy = true;
         await this.replaceBrushMaterials();
+
+        let data: TiltModel;
+        data = { scene: this.loadedModel, updateableMeshes: this.updateableMeshes };
+        if(onLoad) {
+            onLoad(data);
+        }
+        return data;
     }
 
     private async replaceBrushMaterials() {
@@ -105,11 +126,11 @@ export class TiltLoader extends Loader {
             return;
 
         // Attempt to set and fetch light settings.
-        let light0transform : any = new Matrix4().identity;
-        let light1transform : any = new Matrix4().identity;
+        let light0transform = new Matrix4().identity();
+        let light1transform = new Matrix4().identity();
         
-        light0transform = this.loadedModel.getObjectByName("node_SceneLight_0")?.matrix;
-        light1transform = this.loadedModel.getObjectByName("node_SceneLight_1")?.matrix;
+        light0transform = this.loadedModel.getObjectByName("node_SceneLight_0")?.matrix ?? light0transform;
+        light1transform = this.loadedModel.getObjectByName("node_SceneLight_1")?.matrix ?? light1transform;
 
         if(!light0transform || !light1transform) {
             this.loadedModel.traverse((object : Object3D) => {
@@ -122,13 +143,13 @@ export class TiltLoader extends Loader {
             });
         }
 
-        this.loadedModel.traverse(async (object : Object3D) => {
+        this.loadedModel.traverse(async (object: Object3D) => {
             if(object.type === "Mesh") {
-                var targetFilter : string = "";
+                var targetFilter: string = "";
 
                 var mesh = object as Mesh;
                 var material = mesh.material as Material;
-                var shader : RawShaderMaterial
+                var shader: RawShaderMaterial
 
                 // GLTF1 models need to be handled differently
                 if(!this.isGltfLegacy) {
