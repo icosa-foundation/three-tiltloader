@@ -1,7 +1,11 @@
 {
   "name": "three-tiltloader",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Load Tilt Brush / Open Brush files and derivatives in three.js applications",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/icosa-gallery/three-tiltloader.git"
+  },
   "scripts": {
     "dev": "rollup --config --watch",
     "build": "rollup --config && terser dist/three-tiltloader.js -o dist/three-tiltloader.min.js",
@@ -50,5 +54,8 @@
     "vr",
     "ar",
     "xr"
-  ]
+  ],
+  "dependencies": {
+    "three": "^0.133.1"
+  }
 }

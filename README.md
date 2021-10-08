@@ -7,7 +7,7 @@
 
 Custom three.js loader for various Tilt Brush/Open Brush formats. The loader will inject the relevant shaders and textures for correct rendering of the file.
 
-This project aims to provide a simple way to add raw .tilt files and the various export formats on the web, using the three.js library.
+This project aims to provide a simple way to load and render raw .tilt files and the various export formats on the web, using the three.js library.
 
 The loader is still a work in progress and subject to change. Please join the [Discord](https://discord.gg/W7NCEYnEfy) to discuss the project!
 
@@ -17,9 +17,9 @@ If you would like to support our projects, we are on [Open Collective](https://o
 
 |Format|Compatability|
 |-|-|
-| GLTF 2.0 (glb, exported direct from Tilt Brush/Open Brush) | ✅ |
-| GLTF 1.0 (gltf+bin, Google Poly legacy format) | In Progress |
-| TILT | In Progress |
+| GLTF 2.0 (glb, exported directly from Tilt Brush/Open Brush) | ✅ |
+| GLTF 1.0 (gltf+bin, Google Poly legacy format) | ✅ |
+| TILT | In Progress, renders control points. |
 | FBX | Not Implemented |
 | OBJ | Not Implemented |
 
@@ -34,7 +34,7 @@ You need to pass the loader a path to a folder containing all the relevant brush
 ### Install via npm
 `npm install --save three-tiltloader`
 
-## Usage
+## Example Usage
 ```js
 import {
     PerspectiveCamera,
