@@ -1,16 +1,20 @@
-/*!
- * three-tiltloader
- * https://github.com/icosa-gallery/three-tiltloader
- * Copyright (c) 2021-2022 Icosa Gallery
- * Released under the Apache 2.0 Licence.
- */
-import { Loader, FileLoader, Group, Mesh, BufferGeometry, Vector3, Quaternion, BufferAttribute } from 'three';
+// Adapted from initial TiltLoader implementation in three.js r128
+// https://github.com/mrdoob/three.js/blob/r128/examples/jsm/loaders/TiltLoader.js
+
+import {
+	BufferAttribute,
+	BufferGeometry,
+	FileLoader,
+	Group,
+	Loader,
+	Mesh,
+	Quaternion,
+	Vector3
+} from 'three';
 import * as fflate from 'three/examples/libs/fflate.module.js';
 import { TiltShaderLoader } from 'three-icosa';
 
-// Adapted from initial TiltLoader implementation in three.js r128
-
-class TiltLoader extends Loader {
+export class TiltLoader extends Loader {
 
 	load( url, onLoad, onProgress, onError ) {
 
@@ -61,7 +65,7 @@ class TiltLoader extends Loader {
 		document.body.appendChild( img );
 		*/
 
-		JSON.parse( fflate.strFromU8( zip[ 'metadata.json' ] ) );
+		const metadata = JSON.parse( fflate.strFromU8( zip[ 'metadata.json' ] ) );
 
 		/*
 		const blob = new Blob( [ zip[ 'data.sketch' ].buffer ], { type: 'application/octet-stream' } );
@@ -253,5 +257,3 @@ class StrokeGeometry extends BufferGeometry {
 	}
 
 }
-
-export { TiltLoader };
