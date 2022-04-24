@@ -4,13 +4,17 @@
  * Copyright (c) 2021-2022 Icosa Gallery
  * Released under the Apache 2.0 Licence.
  */
-import { Loader, FileLoader, Group, Mesh, BufferGeometry, Vector3, Quaternion, BufferAttribute } from 'three';
-import * as fflate from 'three/examples/libs/fflate.module.js';
+import { Loader, FileLoader, Group, Clock, Mesh, Vector4, BufferGeometry, Vector3, Quaternion, BufferAttribute } from 'three';
+import * as fflate from 'three/examples/jsm/libs/fflate.module.js';
 import { TiltShaderLoader } from 'three-icosa';
 
 // Adapted from initial TiltLoader implementation in three.js r128
 
 class TiltLoader extends Loader {
+	constructor(manager) {
+		super(manager);
+		this.tiltShaderLoader = new TiltShaderLoader(manager);
+	}
 
 	load( url, onLoad, onProgress, onError ) {
 
@@ -47,7 +51,7 @@ class TiltLoader extends Loader {
 
 	}
 
-	parse( buffer ) {
+	async parse( buffer ) {
 
 		const group = new Group();
 		// https://docs.google.com/document/d/11ZsHozYn9FnWG7y3s3WAyKIACfbfwb4PbaS8cZ_xjvo/edit#
@@ -61,7 +65,7 @@ class TiltLoader extends Loader {
 		document.body.appendChild( img );
 		*/
 
-		JSON.parse( fflate.strFromU8( zip[ 'metadata.json' ] ) );
+		const metadata = JSON.parse( fflate.strFromU8( zip[ 'metadata.json' ] ) );
 
 		/*
 		const blob = new Blob( [ zip[ 'data.sketch' ].buffer ], { type: 'application/octet-stream' } );
@@ -142,17 +146,44 @@ class TiltLoader extends Loader {
 
 		}
 
+		const clock = new Clock();
+
 		for ( const brush_index in brushes ) {
 
 			const geometry = new StrokeGeometry( brushes[ brush_index ] );
-			const material = TiltShaderLoader.getMaterial(brushes[ brush_index ]);
+			const materialName = this.tiltShaderLoader.lookupMaterialName(metadata.BrushIndex[ brush_index ]);
 
-			group.add( new Mesh( geometry, material ) );
+			const material = await this.tiltShaderLoader.loadAsync(materialName);
+			const mesh = new Mesh( geometry, material );
 
+			mesh.onBeforeRender = (renderer, scene, camera, geometry, material, group) => {
+				if(material.uniforms["u_time"]) {
+					const elapsedTime = clock.getElapsedTime();
+					// _Time from https://docs.unity3d.com/Manual/SL-UnityShaderVariables.html
+                	const time = new Vector4(elapsedTime/20, elapsedTime, elapsedTime*2, elapsedTime*3);
+
+					material.uniforms["u_time"].value = time;
+				}
+
+				if (material.uniforms["cameraPosition"]) {
+                    material.uniforms["cameraPosition"].value = camera.position;
+                }
+			};
+
+			group.add( mesh );
 		}
 
 		return group;
 
+	}
+
+	setBrushPath(path) {
+		// Quick repair of path if required
+		if (path.slice(path.length - 1) !== "/") {
+			path += "/";
+		}
+
+		this.tiltShaderLoader.setPath(path);
 	}
 
 }
@@ -212,13 +243,13 @@ class StrokeGeometry extends BufferGeometry {
 				vector4.applyQuaternion( prevQuaternion );
 				vector4.add( prevPosition );
 
-				vertices.push( vector1.x, vector1.y, - vector1.z );
-				vertices.push( vector2.x, vector2.y, - vector2.z );
-				vertices.push( vector4.x, vector4.y, - vector4.z );
+				vertices.push( vector1.x, vector1.y, - vector1.z, 1 );
+				vertices.push( vector2.x, vector2.y, - vector2.z, 1 );
+				vertices.push( vector4.x, vector4.y, - vector4.z, 1 );
 
-				vertices.push( vector2.x, vector2.y, - vector2.z );
-				vertices.push( vector3.x, vector3.y, - vector3.z );
-				vertices.push( vector4.x, vector4.y, - vector4.z );
+				vertices.push( vector2.x, vector2.y, - vector2.z, 1 );
+				vertices.push( vector3.x, vector3.y, - vector3.z, 1 );
+				vertices.push( vector4.x, vector4.y, - vector4.z, 1 );
 
 				prevPosition.copy( position );
 				prevQuaternion.copy( quaternion );
@@ -246,10 +277,14 @@ class StrokeGeometry extends BufferGeometry {
 
 		}
 
-		this.setAttribute( 'position', new BufferAttribute( new Float32Array( vertices ), 3 ) );
+		this.setAttribute( 'position', new BufferAttribute( new Float32Array( vertices ), 4 ) );
 		this.setAttribute( 'color', new BufferAttribute( new Float32Array( colors ), 4 ) );
 		this.setAttribute( 'uv', new BufferAttribute( new Float32Array( uvs ), 2 ) );
 
+		this.setAttribute('a_position', this.getAttribute('position'));
+		this.setAttribute('a_color', this.getAttribute('color'));
+		this.setAttribute("a_texcoord0", this.getAttribute("uv"));
+		//this.setAttribute("_tb_unity_texcoord_0", this.getAttribute("uv"));
 	}
 
 }

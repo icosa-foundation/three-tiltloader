@@ -13,7 +13,7 @@ export default [
 		external: [
 			'three',
 			'three-icosa',
-			'three/examples/libs/fflate.module.js'
+			'three/examples/jsm/libs/fflate.module.js'
 		],
 		output: [
 			{
@@ -25,7 +25,7 @@ export default [
 				globals: {
 					'three': 'three',
 					'three-icosa': 'three-icosa',
-					'three/examples/libs/fflate.module.js': 'three/examples/libs/fflate.module.js'
+					'three/examples/jsm/libs/fflate.module.js': 'three/examples/jsm/libs/fflate.module.js'
 				}
 			},
 			{

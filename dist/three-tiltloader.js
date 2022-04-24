@@ -5,9 +5,9 @@
  * Released under the Apache 2.0 Licence.
  */
 (function (global, factory) {
-	typeof exports === 'object' && typeof module !== 'undefined' ? factory(exports, require('three'), require('three/examples/libs/fflate.module.js'), require('three-icosa')) :
-	typeof define === 'function' && define.amd ? define(['exports', 'three', 'three/examples/libs/fflate.module.js', 'three-icosa'], factory) :
-	(global = typeof globalThis !== 'undefined' ? globalThis : global || self, factory(global['three-tiltloader'] = {}, global.three, global['three/examples/libs/fflate'].module.js, global['three-icosa']));
+	typeof exports === 'object' && typeof module !== 'undefined' ? factory(exports, require('three'), require('three/examples/jsm/libs/fflate.module.js'), require('three-icosa')) :
+	typeof define === 'function' && define.amd ? define(['exports', 'three', 'three/examples/jsm/libs/fflate.module.js', 'three-icosa'], factory) :
+	(global = typeof globalThis !== 'undefined' ? globalThis : global || self, factory(global['three-tiltloader'] = {}, global.three, global['three/examples/jsm/libs/fflate'].module.js, global['three-icosa']));
 }(this, (function (exports, three, fflate, threeIcosa) { 'use strict';
 
 	function _interopNamespace(e) {
@@ -35,6 +35,10 @@
 	// Adapted from initial TiltLoader implementation in three.js r128
 
 	class TiltLoader extends three.Loader {
+		constructor(manager) {
+			super(manager);
+			this.tiltShaderLoader = new threeIcosa.TiltShaderLoader(manager);
+		}
 
 		load( url, onLoad, onProgress, onError ) {
 
@@ -71,7 +75,7 @@
 
 		}
 
-		parse( buffer ) {
+		async parse( buffer ) {
 
 			const group = new three.Group();
 			// https://docs.google.com/document/d/11ZsHozYn9FnWG7y3s3WAyKIACfbfwb4PbaS8cZ_xjvo/edit#
@@ -85,7 +89,7 @@
 			document.body.appendChild( img );
 			*/
 
-			JSON.parse( fflate__namespace.strFromU8( zip[ 'metadata.json' ] ) );
+			const metadata = JSON.parse( fflate__namespace.strFromU8( zip[ 'metadata.json' ] ) );
 
 			/*
 			const blob = new Blob( [ zip[ 'data.sketch' ].buffer ], { type: 'application/octet-stream' } );
@@ -166,17 +170,44 @@
 
 			}
 
+			const clock = new three.Clock();
+
 			for ( const brush_index in brushes ) {
 
 				const geometry = new StrokeGeometry( brushes[ brush_index ] );
-				const material = threeIcosa.TiltShaderLoader.getMaterial(brushes[ brush_index ]);
+				const materialName = this.tiltShaderLoader.lookupMaterialName(metadata.BrushIndex[ brush_index ]);
 
-				group.add( new three.Mesh( geometry, material ) );
+				const material = await this.tiltShaderLoader.loadAsync(materialName);
+				const mesh = new three.Mesh( geometry, material );
 
+				mesh.onBeforeRender = (renderer, scene, camera, geometry, material, group) => {
+					if(material.uniforms["u_time"]) {
+						const elapsedTime = clock.getElapsedTime();
+						// _Time from https://docs.unity3d.com/Manual/SL-UnityShaderVariables.html
+	                	const time = new three.Vector4(elapsedTime/20, elapsedTime, elapsedTime*2, elapsedTime*3);
+
+						material.uniforms["u_time"].value = time;
+					}
+
+					if (material.uniforms["cameraPosition"]) {
+	                    material.uniforms["cameraPosition"].value = camera.position;
+	                }
+				};
+
+				group.add( mesh );
 			}
 
 			return group;
 
+		}
+
+		setBrushPath(path) {
+			// Quick repair of path if required
+			if (path.slice(path.length - 1) !== "/") {
+				path += "/";
+			}
+
+			this.tiltShaderLoader.setPath(path);
 		}
 
 	}
@@ -236,13 +267,13 @@
 					vector4.applyQuaternion( prevQuaternion );
 					vector4.add( prevPosition );
 
-					vertices.push( vector1.x, vector1.y, - vector1.z );
-					vertices.push( vector2.x, vector2.y, - vector2.z );
-					vertices.push( vector4.x, vector4.y, - vector4.z );
+					vertices.push( vector1.x, vector1.y, - vector1.z, 1 );
+					vertices.push( vector2.x, vector2.y, - vector2.z, 1 );
+					vertices.push( vector4.x, vector4.y, - vector4.z, 1 );
 
-					vertices.push( vector2.x, vector2.y, - vector2.z );
-					vertices.push( vector3.x, vector3.y, - vector3.z );
-					vertices.push( vector4.x, vector4.y, - vector4.z );
+					vertices.push( vector2.x, vector2.y, - vector2.z, 1 );
+					vertices.push( vector3.x, vector3.y, - vector3.z, 1 );
+					vertices.push( vector4.x, vector4.y, - vector4.z, 1 );
 
 					prevPosition.copy( position );
 					prevQuaternion.copy( quaternion );
@@ -270,10 +301,14 @@
 
 			}
 
-			this.setAttribute( 'position', new three.BufferAttribute( new Float32Array( vertices ), 3 ) );
+			this.setAttribute( 'position', new three.BufferAttribute( new Float32Array( vertices ), 4 ) );
 			this.setAttribute( 'color', new three.BufferAttribute( new Float32Array( colors ), 4 ) );
 			this.setAttribute( 'uv', new three.BufferAttribute( new Float32Array( uvs ), 2 ) );
 
+			this.setAttribute('a_position', this.getAttribute('position'));
+			this.setAttribute('a_color', this.getAttribute('color'));
+			this.setAttribute("a_texcoord0", this.getAttribute("uv"));
+			//this.setAttribute("_tb_unity_texcoord_0", this.getAttribute("uv"));
 		}
 
 	}

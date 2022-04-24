@@ -13,7 +13,7 @@ declare class TiltLoader extends Loader {
         onError?: (event: ErrorEvent) => void,
     ): void;
     loadAsync(url: string, onProgress?: (event: ProgressEvent) => void): Promise<Group>;
-    parse(data: ArrayBuffer): Group;
+    setBrushPath(brushPath: string): void;
 }
 
 export { TiltLoader };
