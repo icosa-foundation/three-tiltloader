@@ -1,15 +1,17 @@
 {
   "compilerOptions": {
+    "allowJs": true,
+    "declaration": true,
     "baseUrl": "src",
     "outDir": "./dist",
     "target": "es6",
     "strict": true,
-    "declaration": true,
     "removeComments": true,
     "noImplicitAny": true,
     "noImplicitThis": true,
     "noImplicitReturns": true,
-    "noFallthroughCasesInSwitch": true
+    "noFallthroughCasesInSwitch": true,
+    "moduleResolution": "node"
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules"]

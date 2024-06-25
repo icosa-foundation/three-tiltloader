@@ -1,18 +1,7 @@
 // Adapted from initial TiltLoader implementation in three.js r128
 // https://github.com/mrdoob/three.js/blob/r128/examples/jsm/loaders/TiltLoader.js
 
-import {
-	BufferAttribute,
-	BufferGeometry,
-	Clock,
-	FileLoader,
-	Group,
-	Loader,
-	Mesh,
-	Quaternion,
-	Vector3,
-	Vector4
-} from 'three';
+import {Vector3, Vector4} from "three";
 import * as fflate from 'three/examples/jsm/libs/fflate.module.js';
 import { TiltShaderLoader } from 'three-icosa';
 
