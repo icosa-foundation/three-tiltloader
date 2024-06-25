@@ -14,7 +14,7 @@
   "license": "Apache-2.0",
   "module": "dist/three-tiltloader.module.js",
   "default": "dist/three-tiltloader.js",
-  "source": "src/TiltLoader.d.ts",
+  "source": "src/TiltLoader.js",
   "bugs": {
     "url": "https://github.com/icosa-foundation/three-tiltloader/issues"
   },
