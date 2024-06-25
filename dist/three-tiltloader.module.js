@@ -1,4 +1,4 @@
-import {Vector4 as $rINUR$Vector4, Vector3 as $rINUR$Vector3} from "three";
+import {FileLoader as $rINUR$FileLoader, Group as $rINUR$Group, Clock as $rINUR$Clock, Mesh as $rINUR$Mesh, Vector4 as $rINUR$Vector4, Loader as $rINUR$Loader, Vector3 as $rINUR$Vector3, Quaternion as $rINUR$Quaternion, BufferAttribute as $rINUR$BufferAttribute, BufferGeometry as $rINUR$BufferGeometry} from "three";
 import {unzipSync as $rINUR$unzipSync, strFromU8 as $rINUR$strFromU8} from "three/examples/jsm/libs/fflate.module.js";
 import {TiltShaderLoader as $rINUR$TiltShaderLoader} from "three-icosa";
 
@@ -7,14 +7,14 @@ import {TiltShaderLoader as $rINUR$TiltShaderLoader} from "three-icosa";
 
 
 
-class $8fc1e38b542b44db$export$36ca96fcead4fad7 extends Loader {
+class $8fc1e38b542b44db$export$36ca96fcead4fad7 extends (0, $rINUR$Loader) {
     constructor(manager){
         super(manager);
         this.tiltShaderLoader = new (0, $rINUR$TiltShaderLoader)(manager);
     }
     load(url, onLoad, onProgress, onError) {
         const scope = this;
-        const loader = new FileLoader(this.manager);
+        const loader = new (0, $rINUR$FileLoader)(this.manager);
         loader.setPath(this.path);
         loader.setResponseType("arraybuffer");
         loader.setWithCredentials(this.withCredentials);
@@ -29,7 +29,7 @@ class $8fc1e38b542b44db$export$36ca96fcead4fad7 extends Loader {
         }, onProgress, onError);
     }
     async parse(buffer) {
-        const group = new Group();
+        const group = new (0, $rINUR$Group)();
         // https://docs.google.com/document/d/11ZsHozYn9FnWG7y3s3WAyKIACfbfwb4PbaS8cZ_xjvo/edit#
         const zip = $rINUR$unzipSync(new Uint8Array(buffer.slice(16)));
         /*
@@ -90,12 +90,12 @@ class $8fc1e38b542b44db$export$36ca96fcead4fad7 extends Loader {
                 brush_color
             ]);
         }
-        const clock = new Clock();
+        const clock = new (0, $rINUR$Clock)();
         for(const brush_index in brushes){
             const geometry = new $8fc1e38b542b44db$var$StrokeGeometry(brushes[brush_index]);
             const materialName = this.tiltShaderLoader.lookupMaterialName(metadata.BrushIndex[brush_index]);
             const material = await this.tiltShaderLoader.loadAsync(materialName);
-            const mesh = new Mesh(geometry, material);
+            const mesh = new (0, $rINUR$Mesh)(geometry, material);
             const scope = this;
             mesh.onBeforeRender = (renderer, scene, camera, geometry, material, group)=>{
                 if (material.uniforms["u_time"]) {
@@ -116,7 +116,7 @@ class $8fc1e38b542b44db$export$36ca96fcead4fad7 extends Loader {
         this.tiltShaderLoader.setPath(path);
     }
 }
-class $8fc1e38b542b44db$var$StrokeGeometry extends BufferGeometry {
+class $8fc1e38b542b44db$var$StrokeGeometry extends (0, $rINUR$BufferGeometry) {
     constructor(strokes){
         super();
         const vertices = [];
@@ -124,8 +124,8 @@ class $8fc1e38b542b44db$var$StrokeGeometry extends BufferGeometry {
         const uvs = [];
         const position = new (0, $rINUR$Vector3)();
         const prevPosition = new (0, $rINUR$Vector3)();
-        const quaternion = new Quaternion();
-        const prevQuaternion = new Quaternion();
+        const quaternion = new (0, $rINUR$Quaternion)();
+        const prevQuaternion = new (0, $rINUR$Quaternion)();
         const vector1 = new (0, $rINUR$Vector3)();
         const vector2 = new (0, $rINUR$Vector3)();
         const vector3 = new (0, $rINUR$Vector3)();
@@ -178,9 +178,9 @@ class $8fc1e38b542b44db$var$StrokeGeometry extends BufferGeometry {
                 uvs.push(p2, 0);
             }
         }
-        this.setAttribute("position", new BufferAttribute(new Float32Array(vertices), 4));
-        this.setAttribute("color", new BufferAttribute(new Float32Array(colors), 4));
-        this.setAttribute("uv", new BufferAttribute(new Float32Array(uvs), 2));
+        this.setAttribute("position", new (0, $rINUR$BufferAttribute)(new Float32Array(vertices), 4));
+        this.setAttribute("color", new (0, $rINUR$BufferAttribute)(new Float32Array(colors), 4));
+        this.setAttribute("uv", new (0, $rINUR$BufferAttribute)(new Float32Array(uvs), 2));
         this.setAttribute("a_position", this.getAttribute("position"));
         this.setAttribute("a_color", this.getAttribute("color"));
         this.setAttribute("a_texcoord0", this.getAttribute("uv"));
