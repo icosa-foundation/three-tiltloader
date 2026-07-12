@@ -432,7 +432,7 @@ function $6fafcf15f6b61d60$var$generateRibbonGeometry(stroke, family, options, o
     if (usesQuadStripTriangleSoup) {
         $6fafcf15f6b61d60$var$expandRibbonTriangleSoup(out, ribbonBreakBefore, renderPointCount, frontVertexCount, frontIndexCount, hasBackfaces, vertexCount);
         $6fafcf15f6b61d60$var$applyQuadStripPositionQuads(out, stroke, options, ribbonBreakBefore, renderPointCount);
-        $6fafcf15f6b61d60$var$applyQuadStripMidpointFusion(out, ribbonBreakBefore, renderPointCount, frontIndexCount / 6, hasBackfaces, options.generatorClass);
+        $6fafcf15f6b61d60$var$applyQuadStripMidpointFusion(out, ribbonBreakBefore, renderPointCount, frontIndexCount / 6, hasBackfaces, options.generatorClass, tileRate);
         if (options.generatorClass === "QuadStripBrushDistanceUV") $6fafcf15f6b61d60$var$applyQuadStripDistanceOpacityFade(out, ribbonBreakBefore, renderPointCount, frontIndexCount / 6, hasBackfaces);
     }
     out.family = family;
@@ -558,6 +558,7 @@ function $6fafcf15f6b61d60$var$applyQuadStripPositionQuads(out, stroke, options,
         $6fafcf15f6b61d60$var$writeColor(out.colors, vertex + 4, stroke.color, opacity);
         $6fafcf15f6b61d60$var$writeColor(out.colors, vertex + 5, stroke.color, opacity);
         if (out.uv1Size === 3) $6fafcf15f6b61d60$var$writeQuadStripVectorOffset(out.vectorUvs, vertex, halfRightX, halfRightY, halfRightZ);
+        out.ribbonSectionLengths[solid] = size;
         previousOpacity = opacity;
         previousRight[0] = right[0];
         previousRight[1] = right[1];
@@ -588,7 +589,7 @@ const $6fafcf15f6b61d60$var$QUAD_STRIP_CORNER_SIDES = [
     -1,
     1
 ];
-function $6fafcf15f6b61d60$var$applyQuadStripMidpointFusion(out, breakBefore, pointCount, frontSolidCount, hasBackfaces, generatorClass) {
+function $6fafcf15f6b61d60$var$applyQuadStripMidpointFusion(out, breakBefore, pointCount, frontSolidCount, hasBackfaces, generatorClass, tileRate) {
     let solid = 0;
     let sectionStart = 0;
     for(let segment = 0; segment < pointCount - 1; segment += 1){
@@ -603,6 +604,7 @@ function $6fafcf15f6b61d60$var$applyQuadStripMidpointFusion(out, breakBefore, po
             $6fafcf15f6b61d60$var$fuseQuadStripSolids(out, solid - 2, solid - 1);
             $6fafcf15f6b61d60$var$fuseQuadStripSolids(out, solid - 1, solid);
         }
+        if (generatorClass === "QuadStripBrushDistanceUV") $6fafcf15f6b61d60$var$updateQuadStripDistanceUvsForAppend(out, sectionStart, solid + 1, out.ribbonSectionLengths[solid], tileRate);
         solid += 1;
     }
     if (generatorClass === "QuadStripBrushStretchUV") $6fafcf15f6b61d60$var$applyQuadStripStretchUvs(out, breakBefore, pointCount);
@@ -646,6 +648,21 @@ function $6fafcf15f6b61d60$var$applyQuadStripStretchUvs(out, breakBefore, pointC
         solid += 1;
     }
     $6fafcf15f6b61d60$var$applyQuadStripStretchUvSection(out, sectionStart, solid);
+}
+function $6fafcf15f6b61d60$var$updateQuadStripDistanceUvsForAppend(out, sectionStart, sectionEnd, pressuredSize, tileRate) {
+    const firstUpdatedSolid = Math.max(sectionStart, sectionEnd - 3);
+    const size = Math.max(pressuredSize, $6fafcf15f6b61d60$var$EPSILON);
+    for(let solid = firstUpdatedSolid; solid < sectionEnd; solid += 1){
+        const vertex = solid * 6;
+        const previousU = solid === sectionStart ? out.uvs[vertex * 2] : out.uvs[((solid - 1) * 6 + 1) * 2];
+        const nextU = previousU + tileRate * $6fafcf15f6b61d60$var$getQuadStripSolidLength(out.positions, solid) / size;
+        out.uvs[vertex * 2] = previousU;
+        out.uvs[(vertex + 2) * 2] = previousU;
+        out.uvs[(vertex + 3) * 2] = previousU;
+        out.uvs[(vertex + 1) * 2] = nextU;
+        out.uvs[(vertex + 4) * 2] = nextU;
+        out.uvs[(vertex + 5) * 2] = nextU;
+    }
 }
 function $6fafcf15f6b61d60$var$applyQuadStripStretchUvSection(out, firstSolid, endSolid) {
     let sectionLength = 0;
@@ -1096,7 +1113,7 @@ function $6fafcf15f6b61d60$var$generateUnitizedRibbonGeometry(stroke, family, op
     }
     $6fafcf15f6b61d60$var$expandUnitizedRibbonTriangleSoup(out, segmentCount, sourceFrontVertexCount, frontIndexCount, hasBackfaces, vertexCount);
     $6fafcf15f6b61d60$var$applyQuadStripPositionQuads(out, stroke, options, out.ribbonBreakBefore, pointCount);
-    $6fafcf15f6b61d60$var$applyQuadStripMidpointFusion(out, out.ribbonBreakBefore, pointCount, segmentCount, hasBackfaces, options.generatorClass);
+    $6fafcf15f6b61d60$var$applyQuadStripMidpointFusion(out, out.ribbonBreakBefore, pointCount, segmentCount, hasBackfaces, options.generatorClass, $6fafcf15f6b61d60$var$normalizeTileRate(options.geometryParams?.tileRate));
     out.family = family;
     out.vertexCount = vertexCount;
     out.indexCount = indexCount;

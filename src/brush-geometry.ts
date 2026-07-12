@@ -638,6 +638,7 @@ function generateRibbonGeometry(
       frontIndexCount / 6,
       hasBackfaces,
       options.generatorClass,
+      tileRate,
     );
     if (options.generatorClass === "QuadStripBrushDistanceUV") {
       applyQuadStripDistanceOpacityFade(
@@ -841,6 +842,7 @@ function applyQuadStripPositionQuads(
         halfRightZ,
       );
     }
+    out.ribbonSectionLengths[solid] = size;
     previousOpacity = opacity;
     previousRight[0] = right[0];
     previousRight[1] = right[1];
@@ -888,6 +890,7 @@ function applyQuadStripMidpointFusion(
   frontSolidCount: number,
   hasBackfaces: boolean,
   generatorClass: string | undefined,
+  tileRate: number,
 ): void {
   let solid = 0;
   let sectionStart = 0;
@@ -903,6 +906,15 @@ function applyQuadStripMidpointFusion(
       averageQuadStripSolid(out, solid - 2, solid - 1, solid);
       fuseQuadStripSolids(out, solid - 2, solid - 1);
       fuseQuadStripSolids(out, solid - 1, solid);
+    }
+    if (generatorClass === "QuadStripBrushDistanceUV") {
+      updateQuadStripDistanceUvsForAppend(
+        out,
+        sectionStart,
+        solid + 1,
+        out.ribbonSectionLengths[solid],
+        tileRate,
+      );
     }
     solid += 1;
   }
@@ -977,6 +989,32 @@ function applyQuadStripStretchUvs(
     solid += 1;
   }
   applyQuadStripStretchUvSection(out, sectionStart, solid);
+}
+
+function updateQuadStripDistanceUvsForAppend(
+  out: BrushGeometryArrays,
+  sectionStart: number,
+  sectionEnd: number,
+  pressuredSize: number,
+  tileRate: number,
+): void {
+  const firstUpdatedSolid = Math.max(sectionStart, sectionEnd - 3);
+  const size = Math.max(pressuredSize, EPSILON);
+  for (let solid = firstUpdatedSolid; solid < sectionEnd; solid += 1) {
+    const vertex = solid * 6;
+    const previousU =
+      solid === sectionStart
+        ? out.uvs[vertex * 2]
+        : out.uvs[((solid - 1) * 6 + 1) * 2];
+    const nextU =
+      previousU + (tileRate * getQuadStripSolidLength(out.positions, solid)) / size;
+    out.uvs[vertex * 2] = previousU;
+    out.uvs[(vertex + 2) * 2] = previousU;
+    out.uvs[(vertex + 3) * 2] = previousU;
+    out.uvs[(vertex + 1) * 2] = nextU;
+    out.uvs[(vertex + 4) * 2] = nextU;
+    out.uvs[(vertex + 5) * 2] = nextU;
+  }
 }
 
 function applyQuadStripStretchUvSection(
@@ -1635,6 +1673,7 @@ function generateUnitizedRibbonGeometry(
     segmentCount,
     hasBackfaces,
     options.generatorClass,
+    normalizeTileRate(options.geometryParams?.tileRate),
   );
 
   out.family = family;

@@ -93,6 +93,48 @@ test( 'preserves distance and unitized ribbon UV modes', () => {
 
 } );
 
+test( 'replays DistanceUV updates over the newest three fused solids', () => {
+
+	const stroke = createStroke();
+	stroke.brushSize = 1;
+	stroke.controlPoints[ 0 ].pressure = 0;
+	stroke.controlPoints[ 1 ].pressure = 0.2;
+	stroke.controlPoints.push(
+		{
+			position: [ 2, 0, 0 ],
+			orientation: [ 0, 0, 0, 1 ],
+			pressure: 0.6,
+			timestampMs: 32
+		},
+		{
+			position: [ 3, 0, 0 ],
+			orientation: [ 0, 0, 0, 1 ],
+			pressure: 1,
+			timestampMs: 48
+		}
+	);
+	const geometry = generateBrushGeometry( stroke, 'ribbon', {
+		generatorClass: 'QuadStripBrushDistanceUV',
+		pressureSizeRange: [ 0.5, 1 ],
+		geometryParams: { tileRate: 2 }
+	} );
+	const position = ( vertex ) => geometry.positions.slice( vertex * 3, vertex * 3 + 3 );
+	const distance = ( first, second ) => Math.hypot( ...Array.from( position( first ),
+		( value, axis ) => position( second )[ axis ] - value ) );
+	const solidLength = ( solid ) => {
+		const vertex = solid * 6;
+		return ( distance( vertex, vertex + 1 ) + distance( vertex + 3, vertex + 5 ) ) * 0.5;
+	};
+	const finalSize = distance( 13, 17 );
+	const initialU = geometry.uvs[ 0 ];
+	let expectedU = initialU;
+	for ( let solid = 0; solid < 3; solid += 1 ) {
+		expectedU += 2 * solidLength( solid ) / finalSize;
+		assertClose( geometry.uvs[ ( solid * 6 + 1 ) * 2 ], expectedU );
+	}
+
+} );
+
 test( 'preserves reversal breaks and explicit backfaces', () => {
 
 	const stroke = createStroke();
