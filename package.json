@@ -4,7 +4,8 @@
   "description": "Load Tilt Brush / Open Brush files in three.js applications",
   "scripts": {
     "watch": "parcel watch",
-    "build": "parcel build --no-cache"
+    "build": "parcel build --no-cache",
+    "test": "node --test test/*.test.mjs"
   },
   "repository": {
     "type": "git",
@@ -15,6 +16,10 @@
   "module": "dist/three-tiltloader.module.js",
   "default": "dist/three-tiltloader.js",
   "source": "src/TiltLoader.js",
+  "types": "src/TiltLoader.d.ts",
+  "targets": {
+    "types": false
+  },
   "bugs": {
     "url": "https://github.com/icosa-foundation/three-tiltloader/issues"
   },
@@ -29,7 +34,9 @@
     "three": ">=0.139.0"
   },
   "files": [
-    "dist"
+    "dist",
+    "src/*.d.ts",
+    "src/*.d.mts"
   ],
   "funding": {
     "type": "opencollective",

@@ -1,10 +1,35 @@
-import {FileLoader as $rINUR$FileLoader, Group as $rINUR$Group, Clock as $rINUR$Clock, Mesh as $rINUR$Mesh, Vector4 as $rINUR$Vector4, Loader as $rINUR$Loader, Vector3 as $rINUR$Vector3, Quaternion as $rINUR$Quaternion, BufferAttribute as $rINUR$BufferAttribute, BufferGeometry as $rINUR$BufferGeometry} from "three";
+import {FileLoader as $rINUR$FileLoader, Group as $rINUR$Group, Clock as $rINUR$Clock, Mesh as $rINUR$Mesh, Vector4 as $rINUR$Vector4, Loader as $rINUR$Loader, Vector3 as $rINUR$Vector3, Quaternion as $rINUR$Quaternion, BufferAttribute as $rINUR$BufferAttribute, BufferGeometry as $rINUR$BufferGeometry, Box3 as $rINUR$Box3} from "three";
 import {unzipSync as $rINUR$unzipSync, strFromU8 as $rINUR$strFromU8} from "three/examples/jsm/libs/fflate.module.js";
 import {TiltShaderLoader as $rINUR$TiltShaderLoader} from "three-icosa";
 
 // Adapted from initial TiltLoader implementation in three.js r128
 // https://github.com/mrdoob/three.js/blob/r128/examples/jsm/loaders/TiltLoader.js
 
+
+
+
+function $8da93982032879e2$var$validateAttribute(name, attribute) {
+    if (!ArrayBuffer.isView(attribute.array) || attribute.array instanceof DataView) throw new TypeError(`Geometry attribute "${name}" must use a typed array.`);
+    if (!Number.isInteger(attribute.itemSize) || attribute.itemSize < 1) throw new RangeError(`Geometry attribute "${name}" must have a positive integer itemSize.`);
+    if (attribute.array.length % attribute.itemSize !== 0) throw new RangeError(`Geometry attribute "${name}" length must be divisible by itemSize.`);
+}
+function $8da93982032879e2$export$c58992c2d0e506a0(result, target = new (0, $rINUR$BufferGeometry)()) {
+    if (!result || typeof result !== "object" || !result.attributes) throw new TypeError("Geometry result must contain an attributes object.");
+    for (const [name, attribute] of Object.entries(result.attributes))$8da93982032879e2$var$validateAttribute(name, attribute);
+    if (result.index !== undefined && !(result.index instanceof Uint16Array || result.index instanceof Uint32Array)) throw new TypeError("Geometry index must be a Uint16Array or Uint32Array.");
+    for (const name of Object.keys(target.attributes))target.deleteAttribute(name);
+    for (const [name, attribute] of Object.entries(result.attributes))target.setAttribute(name, new (0, $rINUR$BufferAttribute)(attribute.array, attribute.itemSize, attribute.normalized === true));
+    if (result.index !== undefined) target.setIndex(new (0, $rINUR$BufferAttribute)(result.index, 1));
+    else target.setIndex(null);
+    target.clearGroups();
+    for (const group of result.groups || [])target.addGroup(group.start, group.count, group.materialIndex || 0);
+    if (result.drawRange) target.setDrawRange(result.drawRange.start, result.drawRange.count);
+    else target.setDrawRange(0, Infinity);
+    if (result.bounds) target.boundingBox = new (0, $rINUR$Box3)(new (0, $rINUR$Vector3)().fromArray(result.bounds.min), new (0, $rINUR$Vector3)().fromArray(result.bounds.max));
+    else target.boundingBox = null;
+    target.boundingSphere = null;
+    return target;
+}
 
 
 class $8fc1e38b542b44db$export$36ca96fcead4fad7 extends (0, $rINUR$Loader) {
@@ -189,5 +214,5 @@ class $8fc1e38b542b44db$var$StrokeGeometry extends (0, $rINUR$BufferGeometry) {
 }
 
 
-export {$8fc1e38b542b44db$export$36ca96fcead4fad7 as TiltLoader};
+export {$8fc1e38b542b44db$export$36ca96fcead4fad7 as TiltLoader, $8da93982032879e2$export$c58992c2d0e506a0 as createBufferGeometry};
 //# sourceMappingURL=three-tiltloader.module.js.map

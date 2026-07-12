@@ -16,6 +16,8 @@ import {
 import * as fflate from 'three/examples/jsm/libs/fflate.module.js';
 import { TiltShaderLoader } from 'three-icosa';
 
+export { createBufferGeometry } from './geometry-api.mjs';
+
 export class TiltLoader extends Loader {
 	constructor(manager) {
 		super(manager);
