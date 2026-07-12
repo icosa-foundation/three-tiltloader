@@ -54,6 +54,7 @@ function $6fafcf15f6b61d60$export$cbaccd875830d3d0() {
         tubeRadii: new Float32Array($6fafcf15f6b61d60$var$INITIAL_VERTEX_CAPACITY),
         tubeRingUs: new Float32Array($6fafcf15f6b61d60$var$INITIAL_VERTEX_CAPACITY),
         tubeOpacities: new Float32Array($6fafcf15f6b61d60$var$INITIAL_VERTEX_CAPACITY),
+        tubeSmoothedPressures: new Float32Array($6fafcf15f6b61d60$var$INITIAL_VERTEX_CAPACITY),
         ribbonBreakBefore: new Uint8Array($6fafcf15f6b61d60$var$INITIAL_VERTEX_CAPACITY),
         ribbonRunningLengths: new Float32Array($6fafcf15f6b61d60$var$INITIAL_VERTEX_CAPACITY),
         ribbonSectionLengths: new Float32Array($6fafcf15f6b61d60$var$INITIAL_VERTEX_CAPACITY),
@@ -100,6 +101,7 @@ function $6fafcf15f6b61d60$var$ensureTubeScratchCapacity(out, pointCount) {
     out.tubeRadii = new Float32Array(capacity);
     out.tubeRingUs = new Float32Array(capacity);
     out.tubeOpacities = new Float32Array(capacity);
+    out.tubeSmoothedPressures = new Float32Array(capacity);
 }
 function $6fafcf15f6b61d60$var$ensureRibbonScratchCapacity(out, pointCount) {
     if (pointCount > out.ribbonBreakBefore.length) {
@@ -1491,7 +1493,8 @@ function $6fafcf15f6b61d60$var$generateTubeGeometry(stroke, options, out) {
     const maximumIndexCount = segmentCount * sideCount * 6 + (hasCaps ? maximumSectionCount * 2 * sideCount * 3 : 0);
     const reallocated = $6fafcf15f6b61d60$var$ensureGeometryCapacity(out, maximumVertexCount, maximumIndexCount);
     $6fafcf15f6b61d60$var$ensureTubeScratchCapacity(out, pointCount);
-    const { positions: positions, normals: normals, tangents: tangents, colors: colors, uvs: uvs, packedUvs: packedUvs, indices: indices, bounds: bounds, tubeBreakBefore: tubeBreakBefore, tubeFrameRights: tubeFrameRights, tubeFrameUps: tubeFrameUps, tubeTangents: tubeTangents, tubeRadii: tubeRadii, tubeRingUs: tubeRingUs, tubeOpacities: tubeOpacities } = out;
+    $6fafcf15f6b61d60$var$prepareTubeSmoothedPressures(stroke, options, out);
+    const { positions: positions, normals: normals, tangents: tangents, colors: colors, uvs: uvs, packedUvs: packedUvs, indices: indices, bounds: bounds, tubeBreakBefore: tubeBreakBefore, tubeFrameRights: tubeFrameRights, tubeFrameUps: tubeFrameUps, tubeTangents: tubeTangents, tubeRadii: tubeRadii, tubeRingUs: tubeRingUs, tubeOpacities: tubeOpacities, tubeSmoothedPressures: tubeSmoothedPressures } = out;
     const pressureSizeMin = $6fafcf15f6b61d60$var$normalizePressureSizeMin(options.pressureSizeRange?.[0]);
     const pressureOpacityMin = $6fafcf15f6b61d60$var$normalizePressureOpacityMin(options.pressureOpacityRange);
     const pressureOpacityMax = $6fafcf15f6b61d60$var$normalizePressureOpacityMax(options.pressureOpacityRange);
@@ -1560,7 +1563,7 @@ function $6fafcf15f6b61d60$var$generateTubeGeometry(stroke, options, out) {
     ];
     for(let pointIndex = 0; pointIndex < pointCount; pointIndex += 1){
         const point = stroke.controlPoints[pointIndex];
-        const radius = localBrushSize * $6fafcf15f6b61d60$var$getPressureSizeMultiplier(point.pressure, pressureSizeMin) * 0.5;
+        const radius = localBrushSize * $6fafcf15f6b61d60$var$getPressureSizeMultiplier(tubeSmoothedPressures[pointIndex], pressureSizeMin) * 0.5;
         let segmentLength = 0;
         if (pointIndex > 0) {
             segmentLength = $6fafcf15f6b61d60$var$distanceBetweenControlPoints(stroke.controlPoints[pointIndex - 1], point);
@@ -1570,8 +1573,8 @@ function $6fafcf15f6b61d60$var$generateTubeGeometry(stroke, options, out) {
         }
         const progress = totalStrokeLength > $6fafcf15f6b61d60$var$EPSILON ? runningDistance / totalStrokeLength : 0;
         const shapeScale = $6fafcf15f6b61d60$var$getTubeShapeScale(shapeModifier, progress, pointIndex, pointCount, options.geometryParams?.tubeTaperScalar);
-        const petalOffset = shapeModifier === 5 ? Math.pow(progress, $6fafcf15f6b61d60$var$normalizeTubePetalExponent(options.geometryParams?.tubePetalDisplacementExponent)) * $6fafcf15f6b61d60$var$normalizeTubePetalAmount(options.geometryParams?.tubePetalDisplacementAmount) * localBrushSize * $6fafcf15f6b61d60$var$clamp01(point.pressure) : 0;
-        const opacity = $6fafcf15f6b61d60$var$getPressureOpacityMultiplier(point.pressure, pressureOpacityMin, pressureOpacityMax) * descriptorOpacity;
+        const petalOffset = shapeModifier === 5 ? Math.pow(progress, $6fafcf15f6b61d60$var$normalizeTubePetalExponent(options.geometryParams?.tubePetalDisplacementExponent)) * $6fafcf15f6b61d60$var$normalizeTubePetalAmount(options.geometryParams?.tubePetalDisplacementAmount) * localBrushSize * tubeSmoothedPressures[pointIndex] : 0;
+        const opacity = $6fafcf15f6b61d60$var$getPressureOpacityMultiplier(tubeSmoothedPressures[pointIndex], pressureOpacityMin, pressureOpacityMax) * descriptorOpacity;
         $6fafcf15f6b61d60$var$writeCentralDifferenceTangent(stroke, pointIndex, previousTangent, tangent);
         if (pointIndex === 0) $6fafcf15f6b61d60$var$initializeTubeFrame(point.orientation, tangent, bootstrapUp, frameRight, frameUp);
         else {
@@ -2279,6 +2282,18 @@ function $6fafcf15f6b61d60$var$prepareRibbonSmoothedPressures(stroke, options, o
     if (pointCount === 0) return;
     pressures[0] = $6fafcf15f6b61d60$var$clamp01(stroke.controlPoints[0].pressure);
     const windowMeters = options.generatorClass === "FlatGeometryBrush" && options.geometryParams?.m11Compatibility === true ? 0.1 : 0.2;
+    for(let index = 1; index < pointCount; index += 1){
+        const distance = $6fafcf15f6b61d60$var$distanceBetweenControlPoints(stroke.controlPoints[index - 1], stroke.controlPoints[index]);
+        const retained = Math.pow(0.1, distance / windowMeters);
+        pressures[index] = retained * pressures[index - 1] + (1 - retained) * $6fafcf15f6b61d60$var$clamp01(stroke.controlPoints[index].pressure);
+    }
+}
+function $6fafcf15f6b61d60$var$prepareTubeSmoothedPressures(stroke, options, out) {
+    const pointCount = stroke.controlPoints.length;
+    const pressures = out.tubeSmoothedPressures;
+    if (pointCount === 0) return;
+    pressures[0] = $6fafcf15f6b61d60$var$clamp01(stroke.controlPoints[0].pressure);
+    const windowMeters = options.geometryParams?.m11Compatibility === true ? 0.1 : 0.2;
     for(let index = 1; index < pointCount; index += 1){
         const distance = $6fafcf15f6b61d60$var$distanceBetweenControlPoints(stroke.controlPoints[index - 1], stroke.controlPoints[index]);
         const retained = Math.pow(0.1, distance / windowMeters);

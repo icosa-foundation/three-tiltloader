@@ -58,6 +58,7 @@ export interface BrushGeometryArrays {
   tubeRadii: Float32Array;
   tubeRingUs: Float32Array;
   tubeOpacities: Float32Array;
+  tubeSmoothedPressures: Float32Array;
   ribbonBreakBefore: Uint8Array;
   ribbonRunningLengths: Float32Array;
   ribbonSectionLengths: Float32Array;
@@ -94,6 +95,7 @@ export function createBrushGeometryArrays(): BrushGeometryArrays {
     tubeRadii: new Float32Array(INITIAL_VERTEX_CAPACITY),
     tubeRingUs: new Float32Array(INITIAL_VERTEX_CAPACITY),
     tubeOpacities: new Float32Array(INITIAL_VERTEX_CAPACITY),
+    tubeSmoothedPressures: new Float32Array(INITIAL_VERTEX_CAPACITY),
     ribbonBreakBefore: new Uint8Array(INITIAL_VERTEX_CAPACITY),
     ribbonRunningLengths: new Float32Array(INITIAL_VERTEX_CAPACITY),
     ribbonSectionLengths: new Float32Array(INITIAL_VERTEX_CAPACITY),
@@ -158,6 +160,7 @@ function ensureTubeScratchCapacity(
   out.tubeRadii = new Float32Array(capacity);
   out.tubeRingUs = new Float32Array(capacity);
   out.tubeOpacities = new Float32Array(capacity);
+  out.tubeSmoothedPressures = new Float32Array(capacity);
 }
 
 function ensureRibbonScratchCapacity(
@@ -1759,6 +1762,7 @@ function generateTubeGeometry(
     maximumIndexCount,
   );
   ensureTubeScratchCapacity(out, pointCount);
+  prepareTubeSmoothedPressures(stroke, options, out);
   const {
     positions,
     normals,
@@ -1775,6 +1779,7 @@ function generateTubeGeometry(
     tubeRadii,
     tubeRingUs,
     tubeOpacities,
+    tubeSmoothedPressures,
   } = out;
   const pressureSizeMin = normalizePressureSizeMin(options.pressureSizeRange?.[0]);
   const pressureOpacityMin = normalizePressureOpacityMin(
@@ -1822,7 +1827,7 @@ function generateTubeGeometry(
     const point = stroke.controlPoints[pointIndex];
     const radius =
       localBrushSize *
-      getPressureSizeMultiplier(point.pressure, pressureSizeMin) *
+      getPressureSizeMultiplier(tubeSmoothedPressures[pointIndex], pressureSizeMin) *
       0.5;
     let segmentLength = 0;
     if (pointIndex > 0) {
@@ -1855,10 +1860,10 @@ function generateTubeGeometry(
             options.geometryParams?.tubePetalDisplacementAmount,
           ) *
           localBrushSize *
-          clamp01(point.pressure)
+          tubeSmoothedPressures[pointIndex]
         : 0;
     const opacity = getPressureOpacityMultiplier(
-      point.pressure,
+      tubeSmoothedPressures[pointIndex],
       pressureOpacityMin,
       pressureOpacityMax,
     ) * descriptorOpacity;
@@ -3009,6 +3014,32 @@ function prepareRibbonSmoothedPressures(
     options.geometryParams?.m11Compatibility === true
       ? 0.1
       : 0.2;
+  for (let index = 1; index < pointCount; index += 1) {
+    const distance = distanceBetweenControlPoints(
+      stroke.controlPoints[index - 1],
+      stroke.controlPoints[index],
+    );
+    const retained = Math.pow(0.1, distance / windowMeters);
+    pressures[index] =
+      retained * pressures[index - 1] +
+      (1 - retained) * clamp01(stroke.controlPoints[index].pressure);
+  }
+}
+
+function prepareTubeSmoothedPressures(
+  stroke: StrokeData,
+  options: BrushGeometryOptions,
+  out: BrushGeometryArrays,
+): void {
+  const pointCount = stroke.controlPoints.length;
+  const pressures = out.tubeSmoothedPressures;
+  if (pointCount === 0) {
+    return;
+  }
+  pressures[0] = clamp01(stroke.controlPoints[0].pressure);
+  const windowMeters = options.geometryParams?.m11Compatibility === true
+    ? 0.1
+    : 0.2;
   for (let index = 1; index < pointCount; index += 1) {
     const distance = distanceBetweenControlPoints(
       stroke.controlPoints[index - 1],

@@ -186,6 +186,38 @@ test( 'smooths ribbon pressure over the Open Brush distance window', () => {
 
 } );
 
+test( 'smooths tube pressure over the GeometryBrush distance window', () => {
+
+	const stroke = createStroke();
+	stroke.brushSize = 1;
+	stroke.controlPoints[ 0 ].pressure = 0;
+	stroke.controlPoints[ 1 ].pressure = 1;
+	stroke.controlPoints[ 1 ].position = [ 0.1, 0, 0 ];
+	const tube = generateBrushGeometry( stroke, 'tube', {
+		pressureSizeRange: [ 0, 1 ],
+		generatorClass: 'TubeBrush',
+		geometryParams: { tubeSideCount: 4, tubeEndCaps: false }
+	} );
+	const tubeM11 = generateBrushGeometry( stroke, 'tube', {
+		pressureSizeRange: [ 0, 1 ],
+		generatorClass: 'TubeBrush',
+		geometryParams: {
+			m11Compatibility: true,
+			tubeSideCount: 4,
+			tubeEndCaps: false
+		}
+	} );
+	const radiusAtSecondRing = ( geometry ) => Math.max(
+		...Array.from( { length: 5 }, ( _, side ) => {
+			const offset = ( 5 + side ) * 3;
+			return Math.hypot( geometry.positions[ offset + 1 ], geometry.positions[ offset + 2 ] );
+		} )
+	);
+	assertClose( radiusAtSecondRing( tube ), ( 1 - Math.pow( 0.1, 0.5 ) ) * 0.5 );
+	assertClose( radiusAtSecondRing( tubeM11 ), 0.45 );
+
+} );
+
 test( 'generates outward-facing 3D-print triangles for Three.js', () => {
 
 	const stroke = createStroke();
