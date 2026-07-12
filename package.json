@@ -14,9 +14,15 @@
   "author": "Icosa Foundation",
   "license": "Apache-2.0",
   "module": "dist/three-tiltloader.module.js",
-  "default": "dist/three-tiltloader.js",
   "source": "src/TiltLoader.js",
   "types": "src/TiltLoader.d.ts",
+  "exports": {
+    ".": {
+      "types": "./src/TiltLoader.d.ts",
+      "import": "./dist/three-tiltloader.module.js",
+      "default": "./dist/three-tiltloader.module.js"
+    }
+  },
   "targets": {
     "types": false
   },
