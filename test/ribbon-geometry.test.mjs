@@ -124,6 +124,31 @@ test( 'smooths FlatGeometryBrush centers like Open Brush', () => {
 
 } );
 
+test( 'clips non-M11 flat width growth to distance travelled', () => {
+
+	const stroke = createStroke();
+	stroke.brushSize = 2;
+	stroke.controlPoints[ 0 ].pressure = 0.1;
+	stroke.controlPoints[ 1 ].position = [ 0.1, 0, 0 ];
+	const clipped = generateBrushGeometry( stroke, 'ribbon', {
+		generatorClass: 'FlatGeometryBrush',
+		pressureSizeRange: [ 0.1, 1 ],
+		geometryParams: { m11Compatibility: false }
+	} );
+	const retained = generateBrushGeometry( stroke, 'ribbon', {
+		generatorClass: 'FlatGeometryBrush',
+		pressureSizeRange: [ 0.1, 1 ],
+		geometryParams: { m11Compatibility: true }
+	} );
+	const clippedWidth = Math.abs( clipped.positions[ 10 ] - clipped.positions[ 7 ] );
+	const retainedWidth = Math.abs( retained.positions[ 10 ] - retained.positions[ 7 ] );
+	// Pressure 0.1 maps to a 0.38 initial width; the smoothed second center
+	// travels 0.07, so Open Brush caps the next width at 0.45.
+	assertClose( clippedWidth, 0.45 );
+	assertClose( retainedWidth, 2 );
+
+} );
+
 test( 'generates outward-facing 3D-print triangles for Three.js', () => {
 
 	const stroke = createStroke();

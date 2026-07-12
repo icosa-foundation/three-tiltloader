@@ -338,6 +338,11 @@ function generateRibbonGeometry(
   const pointerUp: Vec3 = [0, 0, 0];
   const right: Vec3 = [0, 0, 0];
   const normal: Vec3 = [0, 0, 0];
+  const previousFlatNormal: Vec3 = [0, 0, 0];
+  const previousFlatCenter: Vec3 = [0, 0, 0];
+  const previousFlatForward: Vec3 = [0, 0, 0];
+  const flatEdge: Vec3 = [0, 0, 0];
+  let previousFlatSize = 0;
   const flatHalfRights = usesFlatGeometrySmoothing
     ? new Float32Array(pointCount * 3)
     : undefined;
@@ -361,10 +366,9 @@ function generateRibbonGeometry(
       v0 = atlasRow / atlasRows;
       v1 = (atlasRow + 1) / atlasRows;
     }
-    const width =
+    let size =
       localBrushSize *
-      getPressureSizeMultiplier(point.pressure, pressureSizeMin) *
-      0.5;
+      getPressureSizeMultiplier(point.pressure, pressureSizeMin);
 
     writeCentralDifferenceTangent(stroke, index, previousTangent, tangent);
     rotateByQuaternion(point.orientation, VEC_FORWARD, pointerForward);
@@ -378,6 +382,52 @@ function generateRibbonGeometry(
       right,
       normal,
     );
+    if (
+      usesFlatGeometrySmoothing &&
+      options.geometryParams?.m11Compatibility !== true &&
+      index > 0 &&
+      ribbonBreakBefore[index] === 0
+    ) {
+      cross(previousRight, previousFlatNormal, previousFlatForward);
+      flatEdge[0] = center[0] + 0.5 * size * right[0] - previousFlatCenter[0];
+      flatEdge[1] = center[1] + 0.5 * size * right[1] - previousFlatCenter[1];
+      flatEdge[2] = center[2] + 0.5 * size * right[2] - previousFlatCenter[2];
+      const dotRight = dotVec3(previousFlatForward, flatEdge);
+      flatEdge[0] = center[0] - 0.5 * size * right[0] - previousFlatCenter[0];
+      flatEdge[1] = center[1] - 0.5 * size * right[1] - previousFlatCenter[1];
+      flatEdge[2] = center[2] - 0.5 * size * right[2] - previousFlatCenter[2];
+      const dotLeft = dotVec3(previousFlatForward, flatEdge);
+      if ((dotLeft < 0 && dotRight > 0) || (dotLeft > 0 && dotRight < 0)) {
+        const turnSign = dotLeft < 0 ? -1 : 1;
+        flatEdge[0] =
+          previousFlatCenter[0] +
+          turnSign * 0.5 * previousFlatSize * previousRight[0] -
+          center[0];
+        flatEdge[1] =
+          previousFlatCenter[1] +
+          turnSign * 0.5 * previousFlatSize * previousRight[1] -
+          center[1];
+        flatEdge[2] =
+          previousFlatCenter[2] +
+          turnSign * 0.5 * previousFlatSize * previousRight[2] -
+          center[2];
+        size = Math.sqrt(dotVec3(flatEdge, flatEdge));
+      }
+      const moveLength = Math.sqrt(
+        (center[0] - previousFlatCenter[0]) ** 2 +
+          (center[1] - previousFlatCenter[1]) ** 2 +
+          (center[2] - previousFlatCenter[2]) ** 2,
+      );
+      size = Math.min(size, previousFlatSize + moveLength);
+    }
+    const width = size * 0.5;
+    previousFlatSize = size;
+    previousFlatCenter[0] = center[0];
+    previousFlatCenter[1] = center[1];
+    previousFlatCenter[2] = center[2];
+    previousFlatNormal[0] = normal[0];
+    previousFlatNormal[1] = normal[1];
+    previousFlatNormal[2] = normal[2];
     previousRight[0] = right[0];
     previousRight[1] = right[1];
     previousRight[2] = right[2];
