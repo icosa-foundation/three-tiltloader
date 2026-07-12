@@ -157,9 +157,9 @@ test( 'clips non-M11 flat width growth to distance travelled', () => {
 	// Pressure 0.1 maps to a 0.38 initial width. Open Brush clips widths
 	// against raw knot travel before its second-pass edge smoothing.
 	assertClose( clippedWidth, 0.48 );
-	// M11 keeps the original width topology but still applies its 0.1 m
-	// pressure-smoothing window: 0.1 -> 0.91 pressure -> 1.838 width.
-	assertClose( retainedWidth, 1.838 );
+	// M11 forces the initial GeometryBrush knot to zero pressure, then applies
+	// its 0.1 m window: 0 -> 0.9 pressure -> 1.82 width.
+	assertClose( retainedWidth, 1.82 );
 
 } );
 
@@ -198,7 +198,12 @@ test( 'smooths tube pressure over the GeometryBrush distance window', () => {
 		generatorClass: 'TubeBrush',
 		geometryParams: { tubeSideCount: 4, tubeEndCaps: false }
 	} );
-	const tubeM11 = generateBrushGeometry( stroke, 'tube', {
+	const tubeM11Stroke = createStroke();
+	tubeM11Stroke.brushSize = 1;
+	tubeM11Stroke.controlPoints[ 0 ].pressure = 1;
+	tubeM11Stroke.controlPoints[ 1 ].pressure = 1;
+	tubeM11Stroke.controlPoints[ 1 ].position = [ 0.1, 0, 0 ];
+	const tubeM11 = generateBrushGeometry( tubeM11Stroke, 'tube', {
 		pressureSizeRange: [ 0, 1 ],
 		generatorClass: 'TubeBrush',
 		geometryParams: {
@@ -215,6 +220,7 @@ test( 'smooths tube pressure over the GeometryBrush distance window', () => {
 	);
 	assertClose( radiusAtSecondRing( tube ), ( 1 - Math.pow( 0.1, 0.5 ) ) * 0.5 );
 	assertClose( radiusAtSecondRing( tubeM11 ), 0.45 );
+	assertClose( Math.hypot( tubeM11.positions[ 1 ], tubeM11.positions[ 2 ] ), 0 );
 
 } );
 

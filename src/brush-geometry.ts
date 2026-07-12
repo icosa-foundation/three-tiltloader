@@ -3097,10 +3097,14 @@ function prepareRibbonSmoothedPressures(
   if (pointCount === 0) {
     return;
   }
-  pressures[0] = clamp01(stroke.controlPoints[0].pressure);
-  const windowMeters =
+  const isM11FlatGeometry =
     options.generatorClass === "FlatGeometryBrush" &&
-    options.geometryParams?.m11Compatibility === true
+    options.geometryParams?.m11Compatibility === true;
+  pressures[0] = isM11FlatGeometry
+    ? 0
+    : clamp01(stroke.controlPoints[0].pressure);
+  const windowMeters =
+    isM11FlatGeometry
       ? 0.1
       : 0.2;
   for (let index = 1; index < pointCount; index += 1) {
@@ -3125,8 +3129,9 @@ function prepareTubeSmoothedPressures(
   if (pointCount === 0) {
     return;
   }
-  pressures[0] = clamp01(stroke.controlPoints[0].pressure);
-  const windowMeters = options.geometryParams?.m11Compatibility === true
+  const isM11 = options.geometryParams?.m11Compatibility === true;
+  pressures[0] = isM11 ? 0 : clamp01(stroke.controlPoints[0].pressure);
+  const windowMeters = isM11
     ? 0.1
     : 0.2;
   for (let index = 1; index < pointCount; index += 1) {
@@ -3151,8 +3156,9 @@ function prepareGeometrySmoothedPressures(
   if (pointCount === 0) {
     return;
   }
-  pressures[0] = clamp01(stroke.controlPoints[0].pressure);
-  const windowMeters = options.geometryParams?.m11Compatibility === true
+  const isM11 = options.geometryParams?.m11Compatibility === true;
+  pressures[0] = isM11 ? 0 : clamp01(stroke.controlPoints[0].pressure);
+  const windowMeters = isM11
     ? 0.1
     : 0.2;
   for (let index = 1; index < pointCount; index += 1) {

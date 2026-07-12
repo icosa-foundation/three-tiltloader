@@ -2323,8 +2323,9 @@ function $6fafcf15f6b61d60$var$prepareRibbonSmoothedPressures(stroke, options, o
     const pointCount = stroke.controlPoints.length;
     const pressures = out.ribbonSmoothedPressures;
     if (pointCount === 0) return;
-    pressures[0] = $6fafcf15f6b61d60$var$clamp01(stroke.controlPoints[0].pressure);
-    const windowMeters = options.generatorClass === "FlatGeometryBrush" && options.geometryParams?.m11Compatibility === true ? 0.1 : 0.2;
+    const isM11FlatGeometry = options.generatorClass === "FlatGeometryBrush" && options.geometryParams?.m11Compatibility === true;
+    pressures[0] = isM11FlatGeometry ? 0 : $6fafcf15f6b61d60$var$clamp01(stroke.controlPoints[0].pressure);
+    const windowMeters = isM11FlatGeometry ? 0.1 : 0.2;
     for(let index = 1; index < pointCount; index += 1){
         const distance = $6fafcf15f6b61d60$var$distanceBetweenControlPoints(stroke.controlPoints[index - 1], stroke.controlPoints[index]);
         const retained = Math.pow(0.1, distance / windowMeters);
@@ -2335,8 +2336,9 @@ function $6fafcf15f6b61d60$var$prepareTubeSmoothedPressures(stroke, options, out
     const pointCount = stroke.controlPoints.length;
     const pressures = out.tubeSmoothedPressures;
     if (pointCount === 0) return;
-    pressures[0] = $6fafcf15f6b61d60$var$clamp01(stroke.controlPoints[0].pressure);
-    const windowMeters = options.geometryParams?.m11Compatibility === true ? 0.1 : 0.2;
+    const isM11 = options.geometryParams?.m11Compatibility === true;
+    pressures[0] = isM11 ? 0 : $6fafcf15f6b61d60$var$clamp01(stroke.controlPoints[0].pressure);
+    const windowMeters = isM11 ? 0.1 : 0.2;
     for(let index = 1; index < pointCount; index += 1){
         const distance = $6fafcf15f6b61d60$var$distanceBetweenControlPoints(stroke.controlPoints[index - 1], stroke.controlPoints[index]);
         const retained = Math.pow(0.1, distance / windowMeters);
@@ -2347,8 +2349,9 @@ function $6fafcf15f6b61d60$var$prepareGeometrySmoothedPressures(stroke, options,
     const pointCount = stroke.controlPoints.length;
     const pressures = out.geometrySmoothedPressures;
     if (pointCount === 0) return;
-    pressures[0] = $6fafcf15f6b61d60$var$clamp01(stroke.controlPoints[0].pressure);
-    const windowMeters = options.geometryParams?.m11Compatibility === true ? 0.1 : 0.2;
+    const isM11 = options.geometryParams?.m11Compatibility === true;
+    pressures[0] = isM11 ? 0 : $6fafcf15f6b61d60$var$clamp01(stroke.controlPoints[0].pressure);
+    const windowMeters = isM11 ? 0.1 : 0.2;
     for(let index = 1; index < pointCount; index += 1){
         const distance = $6fafcf15f6b61d60$var$distanceBetweenControlPoints(stroke.controlPoints[index - 1], stroke.controlPoints[index]);
         const retained = Math.pow(0.1, distance / windowMeters);
