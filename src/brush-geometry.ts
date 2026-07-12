@@ -329,9 +329,19 @@ function generateRibbonGeometry(
   prepareRibbonSmoothedPressures(stroke, options, out);
   const frontIndexCount = connectedSegmentCount * 6;
   const hasBackfaces = options.geometryParams?.renderBackfaces === true;
-  const vertexCount = frontVertexCount * (hasBackfaces ? 2 : 1);
+  const usesQuadStripTriangleSoup =
+    options.generatorClass === "QuadStripBrushDistanceUV" ||
+    options.generatorClass === "QuadStripBrushStretchUV";
+  const sourceVertexCount = frontVertexCount * (hasBackfaces ? 2 : 1);
+  const vertexCount = usesQuadStripTriangleSoup
+    ? frontIndexCount * (hasBackfaces ? 2 : 1)
+    : sourceVertexCount;
   const indexCount = frontIndexCount * (hasBackfaces ? 2 : 1);
-  const reallocated = ensureGeometryCapacity(out, vertexCount, indexCount);
+  const reallocated = ensureGeometryCapacity(
+    out,
+    vertexCount + (usesQuadStripTriangleSoup ? sourceVertexCount : 0),
+    indexCount,
+  );
   const {
     positions,
     normals,
@@ -604,10 +614,86 @@ function generateRibbonGeometry(
     }
   }
 
+  if (usesQuadStripTriangleSoup) {
+    expandRibbonTriangleSoup(
+      out,
+      ribbonBreakBefore,
+      renderPointCount,
+      frontVertexCount,
+      frontIndexCount,
+      hasBackfaces,
+      vertexCount,
+    );
+  }
+
   out.family = family;
   out.vertexCount = vertexCount;
   out.indexCount = indexCount;
   return reallocated;
+}
+
+function expandRibbonTriangleSoup(
+  out: BrushGeometryArrays,
+  breakBefore: Uint8Array,
+  pointCount: number,
+  frontSourceVertexCount: number,
+  frontVertexCount: number,
+  hasBackfaces: boolean,
+  finalVertexCount: number,
+): void {
+  const sourceOffset = finalVertexCount;
+  const sourceVertexCount = frontSourceVertexCount * (hasBackfaces ? 2 : 1);
+  for (let vertex = sourceVertexCount - 1; vertex >= 0; vertex -= 1) {
+    copyRibbonVertex(out, vertex, sourceOffset + vertex);
+  }
+
+  const frontPattern = [0, 2, 1, 1, 2, 3] as const;
+  const backPattern = [0, 1, 2, 1, 3, 2] as const;
+  let solid = 0;
+  for (let segment = 0; segment < pointCount - 1; segment += 1) {
+    if (breakBefore[segment + 1] === 1) {
+      continue;
+    }
+    const frontSource = sourceOffset + segment * 2;
+    const frontDestination = solid * 6;
+    for (let corner = 0; corner < 6; corner += 1) {
+      copyRibbonVertex(
+        out,
+        frontSource + frontPattern[corner],
+        frontDestination + corner,
+      );
+    }
+    if (hasBackfaces) {
+      const backSource = sourceOffset + frontSourceVertexCount + segment * 2;
+      const backDestination = frontVertexCount + solid * 6;
+      for (let corner = 0; corner < 6; corner += 1) {
+        copyRibbonVertex(
+          out,
+          backSource + backPattern[corner],
+          backDestination + corner,
+        );
+      }
+    }
+    solid += 1;
+  }
+  for (let index = 0; index < finalVertexCount; index += 1) {
+    out.indices[index] = index;
+  }
+}
+
+function copyRibbonVertex(
+  out: BrushGeometryArrays,
+  source: number,
+  destination: number,
+): void {
+  copyVec3At(out.positions, source, destination);
+  copyVec3At(out.normals, source, destination);
+  copyVec4At(out.tangents, source, destination);
+  copyVec4At(out.colors, source, destination);
+  copyVec2At(out.uvs, source, destination);
+  if (out.uv1Size === 3) {
+    copyVec3At(out.vectorUvs, source, destination);
+  }
 }
 
 function smoothFlatGeometryEdges(
@@ -811,16 +897,22 @@ function generateUnitizedRibbonGeometry(
   out: BrushGeometryArrays,
 ): boolean {
   out.uv0Size = 2;
+  out.uv1Size = 0;
   const pointCount = stroke.controlPoints.length;
   ensureRibbonScratchCapacity(out, pointCount);
   prepareRibbonSmoothedPressures(stroke, options, out);
   const segmentCount = Math.max(0, pointCount - 1);
-  const frontVertexCount = segmentCount * 4;
+  const sourceFrontVertexCount = segmentCount * 4;
   const frontIndexCount = segmentCount * 6;
   const hasBackfaces = options.geometryParams?.renderBackfaces === true;
-  const vertexCount = frontVertexCount * (hasBackfaces ? 2 : 1);
+  const sourceVertexCount = sourceFrontVertexCount * (hasBackfaces ? 2 : 1);
+  const vertexCount = frontIndexCount * (hasBackfaces ? 2 : 1);
   const indexCount = frontIndexCount * (hasBackfaces ? 2 : 1);
-  const reallocated = ensureGeometryCapacity(out, vertexCount, indexCount);
+  const reallocated = ensureGeometryCapacity(
+    out,
+    vertexCount + sourceVertexCount,
+    indexCount,
+  );
   const {
     positions,
     normals,
@@ -943,8 +1035,8 @@ function generateUnitizedRibbonGeometry(
       stroke.color,
       normalizeHueShift(options.geometryParams?.backfaceHueShift),
     );
-    for (let vertex = 0; vertex < frontVertexCount; vertex += 1) {
-      const backVertex = frontVertexCount + vertex;
+    for (let vertex = 0; vertex < sourceFrontVertexCount; vertex += 1) {
+      const backVertex = sourceFrontVertexCount + vertex;
       copyPosition(positions, vertex, backVertex);
       copyNegatedNormal(normals, vertex, backVertex);
       copyTangent(tangents, vertex, backVertex, true);
@@ -957,7 +1049,7 @@ function generateUnitizedRibbonGeometry(
       );
     }
     for (let segment = 0; segment < segmentCount; segment += 1) {
-      const vertex = frontVertexCount + segment * 4;
+      const vertex = sourceFrontVertexCount + segment * 4;
       const indexOffset = frontIndexCount + segment * 6;
       indices[indexOffset] = vertex;
       indices[indexOffset + 1] = vertex + 1;
@@ -968,10 +1060,61 @@ function generateUnitizedRibbonGeometry(
     }
   }
 
+  expandUnitizedRibbonTriangleSoup(
+    out,
+    segmentCount,
+    sourceFrontVertexCount,
+    frontIndexCount,
+    hasBackfaces,
+    vertexCount,
+  );
+
   out.family = family;
   out.vertexCount = vertexCount;
   out.indexCount = indexCount;
   return reallocated;
+}
+
+function expandUnitizedRibbonTriangleSoup(
+  out: BrushGeometryArrays,
+  segmentCount: number,
+  sourceFrontVertexCount: number,
+  frontVertexCount: number,
+  hasBackfaces: boolean,
+  finalVertexCount: number,
+): void {
+  const sourceOffset = finalVertexCount;
+  const sourceVertexCount = sourceFrontVertexCount * (hasBackfaces ? 2 : 1);
+  for (let vertex = sourceVertexCount - 1; vertex >= 0; vertex -= 1) {
+    copyRibbonVertex(out, vertex, sourceOffset + vertex);
+  }
+  const frontPattern = [0, 2, 1, 1, 2, 3] as const;
+  const backPattern = [0, 1, 2, 1, 3, 2] as const;
+  for (let segment = 0; segment < segmentCount; segment += 1) {
+    const frontSource = sourceOffset + segment * 4;
+    const frontDestination = segment * 6;
+    for (let corner = 0; corner < 6; corner += 1) {
+      copyRibbonVertex(
+        out,
+        frontSource + frontPattern[corner],
+        frontDestination + corner,
+      );
+    }
+    if (hasBackfaces) {
+      const backSource = sourceOffset + sourceFrontVertexCount + segment * 4;
+      const backDestination = frontVertexCount + segment * 6;
+      for (let corner = 0; corner < 6; corner += 1) {
+        copyRibbonVertex(
+          out,
+          backSource + backPattern[corner],
+          backDestination + corner,
+        );
+      }
+    }
+  }
+  for (let index = 0; index < finalVertexCount; index += 1) {
+    out.indices[index] = index;
+  }
 }
 
 const THICK_STRIP_TRIANGLE_PATTERN = [
@@ -3909,6 +4052,30 @@ function copyVec3At(
   values[targetOffset] = values[sourceOffset];
   values[targetOffset + 1] = values[sourceOffset + 1];
   values[targetOffset + 2] = values[sourceOffset + 2];
+}
+
+function copyVec2At(
+  values: Float32Array,
+  sourceVertex: number,
+  targetVertex: number,
+): void {
+  const sourceOffset = sourceVertex * 2;
+  const targetOffset = targetVertex * 2;
+  values[targetOffset] = values[sourceOffset];
+  values[targetOffset + 1] = values[sourceOffset + 1];
+}
+
+function copyVec4At(
+  values: Float32Array,
+  sourceVertex: number,
+  targetVertex: number,
+): void {
+  const sourceOffset = sourceVertex * 4;
+  const targetOffset = targetVertex * 4;
+  values[targetOffset] = values[sourceOffset];
+  values[targetOffset + 1] = values[sourceOffset + 1];
+  values[targetOffset + 2] = values[sourceOffset + 2];
+  values[targetOffset + 3] = values[sourceOffset + 3];
 }
 
 function copyNegatedNormal(

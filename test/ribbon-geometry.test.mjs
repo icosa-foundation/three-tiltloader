@@ -70,8 +70,10 @@ test( 'preserves distance and unitized ribbon UV modes', () => {
 		geometryParams: { tileRate: 2 }
 	} );
 	const initialU = distance.uvs[ 0 ];
-	assertClose( distance.uvs[ 4 ] - initialU, 2 );
-	assertClose( distance.uvs[ 8 ] - initialU, 6 );
+	assert.equal( getGeneratedVertexCount( distance ), 12 );
+	assert.deepEqual( Array.from( distance.indices ), Array.from( { length: 12 }, ( _, i ) => i ) );
+	assertClose( distance.uvs[ 2 ] - initialU, 2 );
+	assertClose( distance.uvs[ 14 ] - initialU, 6 );
 	const flatDistance = generateBrushGeometry( stroke, 'ribbon', {
 		generatorClass: 'FlatGeometryBrush',
 		geometryParams: { ribbonUvStyle: 'distance', tileRate: 2 }
@@ -83,8 +85,11 @@ test( 'preserves distance and unitized ribbon UV modes', () => {
 	const unitized = generateBrushGeometry( stroke, 'ribbon', {
 		generatorClass: 'QuadStripUnitizedUVBrush'
 	} );
-	assert.deepEqual( Array.from( unitized.uvs.slice( 0, 8 ) ), [ 0, 1, 0, 0, 1, 1, 1, 0 ] );
-	assert.deepEqual( Array.from( unitized.uvs.slice( 8, 16 ) ), [ 0, 1, 0, 0, 1, 1, 1, 0 ] );
+	const unitizedQuadUvs = [ 0, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 0 ];
+	assert.equal( getGeneratedVertexCount( unitized ), 12 );
+	assert.deepEqual( Array.from( unitized.indices ), Array.from( { length: 12 }, ( _, i ) => i ) );
+	assert.deepEqual( Array.from( unitized.uvs.slice( 0, 12 ) ), unitizedQuadUvs );
+	assert.deepEqual( Array.from( unitized.uvs.slice( 12, 24 ) ), unitizedQuadUvs );
 
 } );
 
@@ -103,11 +108,12 @@ test( 'preserves reversal breaks and explicit backfaces', () => {
 	assert.equal( getGeneratedIndexCount( reversed ), 6 );
 
 	const backfaces = generateBrushGeometry( createStroke(), 'ribbon', {
+		generatorClass: 'QuadStripBrushStretchUV',
 		geometryParams: { renderBackfaces: true, backfaceHueShift: 120 }
 	} );
-	assert.equal( getGeneratedVertexCount( backfaces ), 8 );
+	assert.equal( getGeneratedVertexCount( backfaces ), 12 );
 	assert.equal( getGeneratedIndexCount( backfaces ), 12 );
-	assert.deepEqual( Array.from( backfaces.indices.slice( 6 ) ), [ 4, 5, 6, 5, 7, 6 ] );
+	assert.deepEqual( Array.from( backfaces.indices ), Array.from( { length: 12 }, ( _, i ) => i ) );
 
 } );
 
@@ -179,7 +185,7 @@ test( 'smooths ribbon pressure over the Open Brush distance window', () => {
 		generatorClass: 'FlatGeometryBrush',
 		geometryParams: { m11Compatibility: true }
 	} );
-	const quadWidth = Math.abs( quad.positions[ 10 ] - quad.positions[ 7 ] );
+	const quadWidth = Math.abs( quad.positions[ 16 ] - quad.positions[ 4 ] );
 	const flatWidth = Math.abs( flatM11.positions[ 10 ] - flatM11.positions[ 7 ] );
 	assertClose( quadWidth, 1 - Math.pow( 0.1, 0.5 ) );
 	assertClose( flatWidth, 0.9 );

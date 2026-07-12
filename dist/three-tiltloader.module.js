@@ -204,9 +204,11 @@ function $6fafcf15f6b61d60$var$generateRibbonGeometry(stroke, family, options, o
     $6fafcf15f6b61d60$var$prepareRibbonSmoothedPressures(stroke, options, out);
     const frontIndexCount = connectedSegmentCount * 6;
     const hasBackfaces = options.geometryParams?.renderBackfaces === true;
-    const vertexCount = frontVertexCount * (hasBackfaces ? 2 : 1);
+    const usesQuadStripTriangleSoup = options.generatorClass === "QuadStripBrushDistanceUV" || options.generatorClass === "QuadStripBrushStretchUV";
+    const sourceVertexCount = frontVertexCount * (hasBackfaces ? 2 : 1);
+    const vertexCount = usesQuadStripTriangleSoup ? frontIndexCount * (hasBackfaces ? 2 : 1) : sourceVertexCount;
     const indexCount = frontIndexCount * (hasBackfaces ? 2 : 1);
-    const reallocated = $6fafcf15f6b61d60$var$ensureGeometryCapacity(out, vertexCount, indexCount);
+    const reallocated = $6fafcf15f6b61d60$var$ensureGeometryCapacity(out, vertexCount + (usesQuadStripTriangleSoup ? sourceVertexCount : 0), indexCount);
     const { positions: positions, normals: normals, tangents: tangents, colors: colors, uvs: uvs, vectorUvs: vectorUvs, indices: indices, bounds: bounds, ribbonBreakBefore: ribbonBreakBefore, ribbonRunningLengths: ribbonRunningLengths, ribbonSectionLengths: ribbonSectionLengths, ribbonSmoothedPressures: ribbonSmoothedPressures } = out;
     const pressureSizeMin = $6fafcf15f6b61d60$var$normalizePressureSizeMin(options.pressureSizeRange?.[0]);
     const pressureOpacityMin = $6fafcf15f6b61d60$var$normalizePressureOpacityMin(options.pressureOpacityRange);
@@ -427,10 +429,54 @@ function $6fafcf15f6b61d60$var$generateRibbonGeometry(stroke, family, options, o
             backIndexOffset += 6;
         }
     }
+    if (usesQuadStripTriangleSoup) $6fafcf15f6b61d60$var$expandRibbonTriangleSoup(out, ribbonBreakBefore, renderPointCount, frontVertexCount, frontIndexCount, hasBackfaces, vertexCount);
     out.family = family;
     out.vertexCount = vertexCount;
     out.indexCount = indexCount;
     return reallocated;
+}
+function $6fafcf15f6b61d60$var$expandRibbonTriangleSoup(out, breakBefore, pointCount, frontSourceVertexCount, frontVertexCount, hasBackfaces, finalVertexCount) {
+    const sourceOffset = finalVertexCount;
+    const sourceVertexCount = frontSourceVertexCount * (hasBackfaces ? 2 : 1);
+    for(let vertex = sourceVertexCount - 1; vertex >= 0; vertex -= 1)$6fafcf15f6b61d60$var$copyRibbonVertex(out, vertex, sourceOffset + vertex);
+    const frontPattern = [
+        0,
+        2,
+        1,
+        1,
+        2,
+        3
+    ];
+    const backPattern = [
+        0,
+        1,
+        2,
+        1,
+        3,
+        2
+    ];
+    let solid = 0;
+    for(let segment = 0; segment < pointCount - 1; segment += 1){
+        if (breakBefore[segment + 1] === 1) continue;
+        const frontSource = sourceOffset + segment * 2;
+        const frontDestination = solid * 6;
+        for(let corner = 0; corner < 6; corner += 1)$6fafcf15f6b61d60$var$copyRibbonVertex(out, frontSource + frontPattern[corner], frontDestination + corner);
+        if (hasBackfaces) {
+            const backSource = sourceOffset + frontSourceVertexCount + segment * 2;
+            const backDestination = frontVertexCount + solid * 6;
+            for(let corner = 0; corner < 6; corner += 1)$6fafcf15f6b61d60$var$copyRibbonVertex(out, backSource + backPattern[corner], backDestination + corner);
+        }
+        solid += 1;
+    }
+    for(let index = 0; index < finalVertexCount; index += 1)out.indices[index] = index;
+}
+function $6fafcf15f6b61d60$var$copyRibbonVertex(out, source, destination) {
+    $6fafcf15f6b61d60$var$copyVec3At(out.positions, source, destination);
+    $6fafcf15f6b61d60$var$copyVec3At(out.normals, source, destination);
+    $6fafcf15f6b61d60$var$copyVec4At(out.tangents, source, destination);
+    $6fafcf15f6b61d60$var$copyVec4At(out.colors, source, destination);
+    $6fafcf15f6b61d60$var$copyVec2At(out.uvs, source, destination);
+    if (out.uv1Size === 3) $6fafcf15f6b61d60$var$copyVec3At(out.vectorUvs, source, destination);
 }
 function $6fafcf15f6b61d60$var$smoothFlatGeometryEdges(stroke, positions, halfRights, breakBefore, bounds, pointCount) {
     $6fafcf15f6b61d60$var$resetBounds(bounds);
@@ -564,16 +610,18 @@ function $6fafcf15f6b61d60$var$writeOrthonormalTangent(tangents, normals, vertex
 }
 function $6fafcf15f6b61d60$var$generateUnitizedRibbonGeometry(stroke, family, options, out) {
     out.uv0Size = 2;
+    out.uv1Size = 0;
     const pointCount = stroke.controlPoints.length;
     $6fafcf15f6b61d60$var$ensureRibbonScratchCapacity(out, pointCount);
     $6fafcf15f6b61d60$var$prepareRibbonSmoothedPressures(stroke, options, out);
     const segmentCount = Math.max(0, pointCount - 1);
-    const frontVertexCount = segmentCount * 4;
+    const sourceFrontVertexCount = segmentCount * 4;
     const frontIndexCount = segmentCount * 6;
     const hasBackfaces = options.geometryParams?.renderBackfaces === true;
-    const vertexCount = frontVertexCount * (hasBackfaces ? 2 : 1);
+    const sourceVertexCount = sourceFrontVertexCount * (hasBackfaces ? 2 : 1);
+    const vertexCount = frontIndexCount * (hasBackfaces ? 2 : 1);
     const indexCount = frontIndexCount * (hasBackfaces ? 2 : 1);
-    const reallocated = $6fafcf15f6b61d60$var$ensureGeometryCapacity(out, vertexCount, indexCount);
+    const reallocated = $6fafcf15f6b61d60$var$ensureGeometryCapacity(out, vertexCount + sourceVertexCount, indexCount);
     const { positions: positions, normals: normals, tangents: tangents, colors: colors, uvs: uvs, indices: indices, bounds: bounds, ribbonSmoothedPressures: ribbonSmoothedPressures } = out;
     const pressureSizeMin = $6fafcf15f6b61d60$var$normalizePressureSizeMin(options.pressureSizeRange?.[0]);
     const pressureOpacityMin = $6fafcf15f6b61d60$var$normalizePressureOpacityMin(options.pressureOpacityRange);
@@ -713,8 +761,8 @@ function $6fafcf15f6b61d60$var$generateUnitizedRibbonGeometry(stroke, family, op
     }
     if (hasBackfaces) {
         const backfaceColor = $6fafcf15f6b61d60$var$shiftHue(stroke.color, $6fafcf15f6b61d60$var$normalizeHueShift(options.geometryParams?.backfaceHueShift));
-        for(let vertex = 0; vertex < frontVertexCount; vertex += 1){
-            const backVertex = frontVertexCount + vertex;
+        for(let vertex = 0; vertex < sourceFrontVertexCount; vertex += 1){
+            const backVertex = sourceFrontVertexCount + vertex;
             $6fafcf15f6b61d60$var$copyPosition(positions, vertex, backVertex);
             $6fafcf15f6b61d60$var$copyNegatedNormal(normals, vertex, backVertex);
             $6fafcf15f6b61d60$var$copyTangent(tangents, vertex, backVertex, true);
@@ -722,7 +770,7 @@ function $6fafcf15f6b61d60$var$generateUnitizedRibbonGeometry(stroke, family, op
             $6fafcf15f6b61d60$var$writeColorFromAlpha(colors, backVertex, backfaceColor, colors[vertex * 4 + 3]);
         }
         for(let segment = 0; segment < segmentCount; segment += 1){
-            const vertex = frontVertexCount + segment * 4;
+            const vertex = sourceFrontVertexCount + segment * 4;
             const indexOffset = frontIndexCount + segment * 6;
             indices[indexOffset] = vertex;
             indices[indexOffset + 1] = vertex + 1;
@@ -732,10 +780,43 @@ function $6fafcf15f6b61d60$var$generateUnitizedRibbonGeometry(stroke, family, op
             indices[indexOffset + 5] = vertex + 2;
         }
     }
+    $6fafcf15f6b61d60$var$expandUnitizedRibbonTriangleSoup(out, segmentCount, sourceFrontVertexCount, frontIndexCount, hasBackfaces, vertexCount);
     out.family = family;
     out.vertexCount = vertexCount;
     out.indexCount = indexCount;
     return reallocated;
+}
+function $6fafcf15f6b61d60$var$expandUnitizedRibbonTriangleSoup(out, segmentCount, sourceFrontVertexCount, frontVertexCount, hasBackfaces, finalVertexCount) {
+    const sourceOffset = finalVertexCount;
+    const sourceVertexCount = sourceFrontVertexCount * (hasBackfaces ? 2 : 1);
+    for(let vertex = sourceVertexCount - 1; vertex >= 0; vertex -= 1)$6fafcf15f6b61d60$var$copyRibbonVertex(out, vertex, sourceOffset + vertex);
+    const frontPattern = [
+        0,
+        2,
+        1,
+        1,
+        2,
+        3
+    ];
+    const backPattern = [
+        0,
+        1,
+        2,
+        1,
+        3,
+        2
+    ];
+    for(let segment = 0; segment < segmentCount; segment += 1){
+        const frontSource = sourceOffset + segment * 4;
+        const frontDestination = segment * 6;
+        for(let corner = 0; corner < 6; corner += 1)$6fafcf15f6b61d60$var$copyRibbonVertex(out, frontSource + frontPattern[corner], frontDestination + corner);
+        if (hasBackfaces) {
+            const backSource = sourceOffset + sourceFrontVertexCount + segment * 4;
+            const backDestination = frontVertexCount + segment * 6;
+            for(let corner = 0; corner < 6; corner += 1)$6fafcf15f6b61d60$var$copyRibbonVertex(out, backSource + backPattern[corner], backDestination + corner);
+        }
+    }
+    for(let index = 0; index < finalVertexCount; index += 1)out.indices[index] = index;
 }
 const $6fafcf15f6b61d60$var$THICK_STRIP_TRIANGLE_PATTERN = [
     0,
@@ -2768,6 +2849,20 @@ function $6fafcf15f6b61d60$var$copyVec3At(values, sourceVertex, targetVertex) {
     values[targetOffset] = values[sourceOffset];
     values[targetOffset + 1] = values[sourceOffset + 1];
     values[targetOffset + 2] = values[sourceOffset + 2];
+}
+function $6fafcf15f6b61d60$var$copyVec2At(values, sourceVertex, targetVertex) {
+    const sourceOffset = sourceVertex * 2;
+    const targetOffset = targetVertex * 2;
+    values[targetOffset] = values[sourceOffset];
+    values[targetOffset + 1] = values[sourceOffset + 1];
+}
+function $6fafcf15f6b61d60$var$copyVec4At(values, sourceVertex, targetVertex) {
+    const sourceOffset = sourceVertex * 4;
+    const targetOffset = targetVertex * 4;
+    values[targetOffset] = values[sourceOffset];
+    values[targetOffset + 1] = values[sourceOffset + 1];
+    values[targetOffset + 2] = values[sourceOffset + 2];
+    values[targetOffset + 3] = values[sourceOffset + 3];
 }
 function $6fafcf15f6b61d60$var$copyNegatedNormal(target, sourceVertex, targetVertex) {
     const sourceOffset = sourceVertex * 3;
