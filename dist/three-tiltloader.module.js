@@ -1825,13 +1825,16 @@ function $6fafcf15f6b61d60$var$generateSprayParticleGeometry(stroke, options, ou
     const hasLifetime = options.generatorClass === "MidpointPlusLifetimeSprayBrush";
     out.uv1Size = hasLifetime ? 4 : 0;
     const localBrushSize = $6fafcf15f6b61d60$var$getLocalBrushSize(stroke);
+    $6fafcf15f6b61d60$var$ensureGeometryPressureCapacity(out, stroke.controlPoints.length);
+    $6fafcf15f6b61d60$var$prepareGeometrySmoothedPressures(stroke, options, out);
+    const smoothedPressures = out.geometrySmoothedPressures;
     const pressureSizeMin = $6fafcf15f6b61d60$var$normalizePressureSizeMin(options.pressureSizeRange?.[0]);
     const particleRate = $6fafcf15f6b61d60$var$normalizePositive(options.geometryParams?.sprayRateMultiplier, 1);
     let quadCount = 0;
     for(let pointIndex = 1; pointIndex < stroke.controlPoints.length; pointIndex += 1){
         const point = stroke.controlPoints[pointIndex];
         const segmentLength = $6fafcf15f6b61d60$var$distanceBetweenControlPoints(stroke.controlPoints[pointIndex - 1], point);
-        const pressuredSize = localBrushSize * $6fafcf15f6b61d60$var$getPressureSizeMultiplier(point.pressure, pressureSizeMin);
+        const pressuredSize = localBrushSize * $6fafcf15f6b61d60$var$getPressureSizeMultiplier(smoothedPressures[pointIndex], pressureSizeMin);
         const spawnInterval = pressuredSize / particleRate;
         if (spawnInterval > $6fafcf15f6b61d60$var$EPSILON) quadCount += Math.min(500, Math.floor(segmentLength / spawnInterval));
     }
@@ -1914,7 +1917,7 @@ function $6fafcf15f6b61d60$var$generateSprayParticleGeometry(stroke, options, ou
         segmentDirection[0] /= segmentLength;
         segmentDirection[1] /= segmentLength;
         segmentDirection[2] /= segmentLength;
-        const pressuredSize = localBrushSize * $6fafcf15f6b61d60$var$getPressureSizeMultiplier(point.pressure, pressureSizeMin);
+        const pressuredSize = localBrushSize * $6fafcf15f6b61d60$var$getPressureSizeMultiplier(smoothedPressures[pointIndex], pressureSizeMin);
         const spawnInterval = pressuredSize / particleRate;
         const segmentQuadCount = spawnInterval > $6fafcf15f6b61d60$var$EPSILON ? Math.min(500, Math.floor(segmentLength / spawnInterval)) : 0;
         if (segmentQuadCount === 0) continue;
@@ -1924,7 +1927,7 @@ function $6fafcf15f6b61d60$var$generateSprayParticleGeometry(stroke, options, ou
         preferredRight[1] = 0;
         preferredRight[2] = 0;
         $6fafcf15f6b61d60$var$computeSurfaceFrame(preferredRight, segmentDirection, pointerForward, pointerUp, true, frameRight, frameNormal);
-        const baseOpacity = $6fafcf15f6b61d60$var$getPressureOpacityMultiplier(point.pressure, pressureOpacityMin, pressureOpacityMax) * descriptorOpacity;
+        const baseOpacity = $6fafcf15f6b61d60$var$getPressureOpacityMultiplier(smoothedPressures[pointIndex], pressureOpacityMin, pressureOpacityMax) * descriptorOpacity;
         for(let segmentQuad = 0; segmentQuad < segmentQuadCount; segmentQuad += 1){
             const salt = hasLifetime ? 10 * (pointIndex * 5 + segmentQuad) : 10 * (pointIndex * 12 + segmentQuad % 12);
             const rotation = ($6fafcf15f6b61d60$var$statelessRandom01(stroke.seed, salt + 1) * 2 - 1) * rotationVarianceRadians;
@@ -1987,6 +1990,9 @@ function $6fafcf15f6b61d60$var$generateGeniusParticleGeometry(stroke, options, o
     const pressureOpacityMax = $6fafcf15f6b61d60$var$normalizePressureOpacityMax(options.pressureOpacityRange);
     const descriptorOpacity = $6fafcf15f6b61d60$var$normalizeDescriptorOpacity(options.geometryParams?.opacity);
     const localBrushSize = $6fafcf15f6b61d60$var$getLocalBrushSize(stroke);
+    $6fafcf15f6b61d60$var$ensureGeometryPressureCapacity(out, pointCount);
+    $6fafcf15f6b61d60$var$prepareGeometrySmoothedPressures(stroke, options, out);
+    const smoothedPressures = out.geometrySmoothedPressures;
     const sizeVariance = $6fafcf15f6b61d60$var$normalizeNonNegative(options.geometryParams?.particleSizeVariance);
     const particleSpeed = $6fafcf15f6b61d60$var$normalizeNonNegative(options.geometryParams?.particleSpeed);
     const minimumBrushSize = $6fafcf15f6b61d60$var$normalizePositive(options.geometryParams?.brushSizeRange?.[0], 1);
@@ -2038,7 +2044,7 @@ function $6fafcf15f6b61d60$var$generateGeniusParticleGeometry(stroke, options, o
         center[0] = previousPoint.position[0] + (currentPoint.position[0] - previousPoint.position[0]) * ratio;
         center[1] = previousPoint.position[1] + (currentPoint.position[1] - previousPoint.position[1]) * ratio;
         center[2] = previousPoint.position[2] + (currentPoint.position[2] - previousPoint.position[2]) * ratio;
-        const pressure = particleCount === 1 ? Math.max(0.8, currentPoint.pressure) : currentPoint.pressure;
+        const pressure = particleCount === 1 ? Math.max(0.8, smoothedPressures[segmentIndex]) : smoothedPressures[segmentIndex];
         const salt = 16 * (segmentIndex * 16 + particleWithinKnot);
         const size = localBrushSize * $6fafcf15f6b61d60$var$getPressureSizeMultiplier(pressure, pressureSizeMin) * (1 + $6fafcf15f6b61d60$var$statelessRandom01(stroke.seed, salt) * sizeVariance);
         $6fafcf15f6b61d60$var$writeRandomUnitSphere(stroke.seed, salt + 2, sphereOffset);
