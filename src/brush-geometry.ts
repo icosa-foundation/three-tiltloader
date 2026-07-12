@@ -63,6 +63,7 @@ export interface BrushGeometryArrays {
   ribbonRunningLengths: Float32Array;
   ribbonSectionLengths: Float32Array;
   ribbonSmoothedPressures: Float32Array;
+  geometrySmoothedPressures: Float32Array;
   uv0Size: 2 | 3 | 4;
   uv1Size: 0 | 3 | 4;
   indices: Uint32Array;
@@ -100,6 +101,7 @@ export function createBrushGeometryArrays(): BrushGeometryArrays {
     ribbonRunningLengths: new Float32Array(INITIAL_VERTEX_CAPACITY),
     ribbonSectionLengths: new Float32Array(INITIAL_VERTEX_CAPACITY),
     ribbonSmoothedPressures: new Float32Array(INITIAL_VERTEX_CAPACITY),
+    geometrySmoothedPressures: new Float32Array(INITIAL_VERTEX_CAPACITY),
     uv0Size: 2,
     uv1Size: 0,
     indices: new Uint32Array(INITIAL_INDEX_CAPACITY),
@@ -185,6 +187,23 @@ function ensureRibbonScratchCapacity(
     out.ribbonSectionLengths.fill(0, 0, pointCount);
     out.ribbonSmoothedPressures.fill(0, 0, pointCount);
   }
+}
+
+function ensureGeometryPressureCapacity(
+  out: BrushGeometryArrays,
+  pointCount: number,
+): void {
+  if (pointCount <= out.geometrySmoothedPressures.length) {
+    return;
+  }
+  let capacity = Math.max(
+    out.geometrySmoothedPressures.length,
+    INITIAL_VERTEX_CAPACITY,
+  );
+  while (capacity < pointCount) {
+    capacity *= 2;
+  }
+  out.geometrySmoothedPressures = new Float32Array(capacity);
 }
 
 function resetBounds(bounds: BrushGeometryBounds): void {
@@ -1607,7 +1626,18 @@ function generateThickStripGeometry(
   const vertexCount = pointCount * 6;
   const indexCount = Math.max(0, pointCount - 1) * 24;
   const reallocated = ensureGeometryCapacity(out, vertexCount, indexCount);
-  const { positions, normals, tangents, colors, uvs, indices, bounds } = out;
+  ensureGeometryPressureCapacity(out, pointCount);
+  prepareGeometrySmoothedPressures(stroke, options, out);
+  const {
+    positions,
+    normals,
+    tangents,
+    colors,
+    uvs,
+    indices,
+    bounds,
+    geometrySmoothedPressures,
+  } = out;
   const localBrushSize = getLocalBrushSize(stroke);
   const pressureSizeMin = normalizePressureSizeMin(options.pressureSizeRange?.[0]);
   const pressureOpacityMin = normalizePressureOpacityMin(
@@ -1661,12 +1691,16 @@ function generateThickStripGeometry(
       );
     }
     const size =
-      localBrushSize * getPressureSizeMultiplier(point.pressure, pressureSizeMin);
+      localBrushSize *
+      getPressureSizeMultiplier(
+        geometrySmoothedPressures[pointIndex],
+        pressureSizeMin,
+      );
     const isEnd = pointIndex === 0 || pointIndex === pointCount - 1;
     const belly = isEnd ? 0 : size / 16;
     const normalSide = isEnd ? 0 : sinTheta;
     const opacity = getPressureOpacityMultiplier(
-      point.pressure,
+      geometrySmoothedPressures[pointIndex],
       pressureOpacityMin,
       pressureOpacityMax,
     );
@@ -3033,6 +3067,32 @@ function prepareTubeSmoothedPressures(
 ): void {
   const pointCount = stroke.controlPoints.length;
   const pressures = out.tubeSmoothedPressures;
+  if (pointCount === 0) {
+    return;
+  }
+  pressures[0] = clamp01(stroke.controlPoints[0].pressure);
+  const windowMeters = options.geometryParams?.m11Compatibility === true
+    ? 0.1
+    : 0.2;
+  for (let index = 1; index < pointCount; index += 1) {
+    const distance = distanceBetweenControlPoints(
+      stroke.controlPoints[index - 1],
+      stroke.controlPoints[index],
+    );
+    const retained = Math.pow(0.1, distance / windowMeters);
+    pressures[index] =
+      retained * pressures[index - 1] +
+      (1 - retained) * clamp01(stroke.controlPoints[index].pressure);
+  }
+}
+
+function prepareGeometrySmoothedPressures(
+  stroke: StrokeData,
+  options: BrushGeometryOptions,
+  out: BrushGeometryArrays,
+): void {
+  const pointCount = stroke.controlPoints.length;
+  const pressures = out.geometrySmoothedPressures;
   if (pointCount === 0) {
     return;
   }

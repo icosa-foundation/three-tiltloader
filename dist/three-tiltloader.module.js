@@ -59,6 +59,7 @@ function $6fafcf15f6b61d60$export$cbaccd875830d3d0() {
         ribbonRunningLengths: new Float32Array($6fafcf15f6b61d60$var$INITIAL_VERTEX_CAPACITY),
         ribbonSectionLengths: new Float32Array($6fafcf15f6b61d60$var$INITIAL_VERTEX_CAPACITY),
         ribbonSmoothedPressures: new Float32Array($6fafcf15f6b61d60$var$INITIAL_VERTEX_CAPACITY),
+        geometrySmoothedPressures: new Float32Array($6fafcf15f6b61d60$var$INITIAL_VERTEX_CAPACITY),
         uv0Size: 2,
         uv1Size: 0,
         indices: new Uint32Array($6fafcf15f6b61d60$var$INITIAL_INDEX_CAPACITY),
@@ -117,6 +118,12 @@ function $6fafcf15f6b61d60$var$ensureRibbonScratchCapacity(out, pointCount) {
         out.ribbonSectionLengths.fill(0, 0, pointCount);
         out.ribbonSmoothedPressures.fill(0, 0, pointCount);
     }
+}
+function $6fafcf15f6b61d60$var$ensureGeometryPressureCapacity(out, pointCount) {
+    if (pointCount <= out.geometrySmoothedPressures.length) return;
+    let capacity = Math.max(out.geometrySmoothedPressures.length, $6fafcf15f6b61d60$var$INITIAL_VERTEX_CAPACITY);
+    while(capacity < pointCount)capacity *= 2;
+    out.geometrySmoothedPressures = new Float32Array(capacity);
 }
 function $6fafcf15f6b61d60$var$resetBounds(bounds) {
     bounds.min[0] = Number.POSITIVE_INFINITY;
@@ -1372,7 +1379,9 @@ function $6fafcf15f6b61d60$var$generateThickStripGeometry(stroke, options, out) 
     const vertexCount = pointCount * 6;
     const indexCount = Math.max(0, pointCount - 1) * 24;
     const reallocated = $6fafcf15f6b61d60$var$ensureGeometryCapacity(out, vertexCount, indexCount);
-    const { positions: positions, normals: normals, tangents: tangents, colors: colors, uvs: uvs, indices: indices, bounds: bounds } = out;
+    $6fafcf15f6b61d60$var$ensureGeometryPressureCapacity(out, pointCount);
+    $6fafcf15f6b61d60$var$prepareGeometrySmoothedPressures(stroke, options, out);
+    const { positions: positions, normals: normals, tangents: tangents, colors: colors, uvs: uvs, indices: indices, bounds: bounds, geometrySmoothedPressures: geometrySmoothedPressures } = out;
     const localBrushSize = $6fafcf15f6b61d60$var$getLocalBrushSize(stroke);
     const pressureSizeMin = $6fafcf15f6b61d60$var$normalizePressureSizeMin(options.pressureSizeRange?.[0]);
     const pressureOpacityMin = $6fafcf15f6b61d60$var$normalizePressureOpacityMin(options.pressureOpacityRange);
@@ -1430,11 +1439,11 @@ function $6fafcf15f6b61d60$var$generateThickStripGeometry(stroke, options, out) 
         preferredRight[1] = right[1];
         preferredRight[2] = right[2];
         if (pointIndex > 0) distance += $6fafcf15f6b61d60$var$distanceBetweenControlPoints(stroke.controlPoints[pointIndex - 1], point);
-        const size = localBrushSize * $6fafcf15f6b61d60$var$getPressureSizeMultiplier(point.pressure, pressureSizeMin);
+        const size = localBrushSize * $6fafcf15f6b61d60$var$getPressureSizeMultiplier(geometrySmoothedPressures[pointIndex], pressureSizeMin);
         const isEnd = pointIndex === 0 || pointIndex === pointCount - 1;
         const belly = isEnd ? 0 : size / 16;
         const normalSide = isEnd ? 0 : sinTheta;
-        const opacity = $6fafcf15f6b61d60$var$getPressureOpacityMultiplier(point.pressure, pressureOpacityMin, pressureOpacityMax);
+        const opacity = $6fafcf15f6b61d60$var$getPressureOpacityMultiplier(geometrySmoothedPressures[pointIndex], pressureOpacityMin, pressureOpacityMax);
         const u = size > $6fafcf15f6b61d60$var$EPSILON ? distance / size * tileRate : 0;
         const base = pointIndex * 6;
         $6fafcf15f6b61d60$var$writeThickStripVertex(out, base, point.position, right, surface, tangent, size / 2, 0, normalSide, cosTheta, stroke.color, opacity, u, 0.9);
@@ -2291,6 +2300,18 @@ function $6fafcf15f6b61d60$var$prepareRibbonSmoothedPressures(stroke, options, o
 function $6fafcf15f6b61d60$var$prepareTubeSmoothedPressures(stroke, options, out) {
     const pointCount = stroke.controlPoints.length;
     const pressures = out.tubeSmoothedPressures;
+    if (pointCount === 0) return;
+    pressures[0] = $6fafcf15f6b61d60$var$clamp01(stroke.controlPoints[0].pressure);
+    const windowMeters = options.geometryParams?.m11Compatibility === true ? 0.1 : 0.2;
+    for(let index = 1; index < pointCount; index += 1){
+        const distance = $6fafcf15f6b61d60$var$distanceBetweenControlPoints(stroke.controlPoints[index - 1], stroke.controlPoints[index]);
+        const retained = Math.pow(0.1, distance / windowMeters);
+        pressures[index] = retained * pressures[index - 1] + (1 - retained) * $6fafcf15f6b61d60$var$clamp01(stroke.controlPoints[index].pressure);
+    }
+}
+function $6fafcf15f6b61d60$var$prepareGeometrySmoothedPressures(stroke, options, out) {
+    const pointCount = stroke.controlPoints.length;
+    const pressures = out.geometrySmoothedPressures;
     if (pointCount === 0) return;
     pressures[0] = $6fafcf15f6b61d60$var$clamp01(stroke.controlPoints[0].pressure);
     const windowMeters = options.geometryParams?.m11Compatibility === true ? 0.1 : 0.2;

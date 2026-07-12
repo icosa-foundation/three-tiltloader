@@ -218,6 +218,31 @@ test( 'smooths tube pressure over the GeometryBrush distance window', () => {
 
 } );
 
+test( 'smooths thick-strip size and opacity as a GeometryBrush', () => {
+
+	const stroke = createStroke();
+	stroke.brushSize = 1;
+	stroke.controlPoints[ 0 ].pressure = 0;
+	stroke.controlPoints[ 1 ].pressure = 1;
+	stroke.controlPoints[ 1 ].position = [ 0.1, 0, 0 ];
+	const geometry = generateBrushGeometry( stroke, 'thick-strip', {
+		pressureSizeRange: [ 0, 1 ],
+		pressureOpacityRange: [ 0, 1 ],
+		generatorClass: 'ThickGeometryBrush'
+	} );
+	const expected = 1 - Math.pow( 0.1, 0.5 );
+	const positive = 6 * 3;
+	const negative = 10 * 3;
+	const width = Math.hypot(
+		geometry.positions[ positive ] - geometry.positions[ negative ],
+		geometry.positions[ positive + 1 ] - geometry.positions[ negative + 1 ],
+		geometry.positions[ positive + 2 ] - geometry.positions[ negative + 2 ]
+	);
+	assertClose( width, expected );
+	assertClose( geometry.colors[ 6 * 4 + 3 ], expected );
+
+} );
+
 test( 'generates outward-facing 3D-print triangles for Three.js', () => {
 
 	const stroke = createStroke();
