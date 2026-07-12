@@ -103,3 +103,34 @@ test( 'preserves reversal breaks and explicit backfaces', () => {
 	assert.deepEqual( Array.from( backfaces.indices.slice( 6 ) ), [ 4, 5, 6, 5, 7, 6 ] );
 
 } );
+
+test( 'generates outward-facing 3D-print triangles for Three.js', () => {
+
+	const stroke = createStroke();
+	stroke.controlPoints[ 0 ].position = [ 0, -0.25, 0 ];
+	stroke.controlPoints[ 1 ].position = [ 0, 0.25, 0 ];
+	const geometry = generateBrushGeometry( stroke, 'print3d', {
+		generatorClass: 'Square3DPrintBrush',
+		pressureSizeRange: [ 1, 1 ]
+	} );
+
+	assert.ok( getGeneratedIndexCount( geometry ) > 0 );
+	for ( let offset = 0; offset < geometry.indices.length; offset += 3 ) {
+		const [ ia, ib, ic ] = geometry.indices.slice( offset, offset + 3 );
+		const a = geometry.positions.slice( ia * 3, ia * 3 + 3 );
+		const b = geometry.positions.slice( ib * 3, ib * 3 + 3 );
+		const c = geometry.positions.slice( ic * 3, ic * 3 + 3 );
+		const ab = [ b[ 0 ] - a[ 0 ], b[ 1 ] - a[ 1 ], b[ 2 ] - a[ 2 ] ];
+		const ac = [ c[ 0 ] - a[ 0 ], c[ 1 ] - a[ 1 ], c[ 2 ] - a[ 2 ] ];
+		const faceNormal = [
+			ab[ 1 ] * ac[ 2 ] - ab[ 2 ] * ac[ 1 ],
+			ab[ 2 ] * ac[ 0 ] - ab[ 0 ] * ac[ 2 ],
+			ab[ 0 ] * ac[ 1 ] - ab[ 1 ] * ac[ 0 ]
+		];
+		const normal = geometry.normals.slice( ia * 3, ia * 3 + 3 );
+		const alignment = faceNormal[ 0 ] * normal[ 0 ] +
+			faceNormal[ 1 ] * normal[ 1 ] + faceNormal[ 2 ] * normal[ 2 ];
+		assert.ok( alignment > 0, `Triangle ${offset / 3} faces inward.` );
+	}
+
+} );

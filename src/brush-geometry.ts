@@ -928,7 +928,8 @@ function appendQuad(indices: number[], v0: number, v1: number, v2: number, v3: n
 }
 
 function appendTriangle(indices: number[], a: number, b: number, c: number): void {
-  indices.push(a, b, c);
+  // Open Brush/Unity uses clockwise front faces; Three.js uses counter-clockwise.
+  indices.push(a, c, b);
 }
 
 function generateConcaveHullGeometry(

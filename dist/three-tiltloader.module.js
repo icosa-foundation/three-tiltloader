@@ -779,7 +779,8 @@ function $6fafcf15f6b61d60$var$appendQuad(indices, v0, v1, v2, v3) {
     $6fafcf15f6b61d60$var$appendTriangle(indices, v3, v1, v2);
 }
 function $6fafcf15f6b61d60$var$appendTriangle(indices, a, b, c) {
-    indices.push(a, b, c);
+    // Open Brush/Unity uses clockwise front faces; Three.js uses counter-clockwise.
+    indices.push(a, c, b);
 }
 function $6fafcf15f6b61d60$var$generateConcaveHullGeometry(stroke, options, out) {
     out.family = "concave-hull";
