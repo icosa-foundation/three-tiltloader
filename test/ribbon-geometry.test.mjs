@@ -381,3 +381,27 @@ test( 'smooths finalized Tube and 3D Print knot positions', () => {
 	assertClose( centerY / 8, 1 );
 
 } );
+
+test( 'trims a short non-M11 FlatGeometry tail after a late break', () => {
+
+	const stroke = createStroke();
+	stroke.controlPoints = [ 0, 1, 2, 1, 0, -1 ].map( ( x, index ) => ( {
+		position: [ x, 0, 0 ],
+		orientation: [ 0, 0, 0, 1 ],
+		pressure: 1,
+		timestampMs: index * 16
+	} ) );
+	const trimmed = generateBrushGeometry( stroke, 'ribbon', {
+		generatorClass: 'FlatGeometryBrush',
+		geometryParams: { m11Compatibility: false }
+	} );
+	const retained = generateBrushGeometry( stroke, 'ribbon', {
+		generatorClass: 'FlatGeometryBrush',
+		geometryParams: { m11Compatibility: true }
+	} );
+	assert.equal( getGeneratedVertexCount( trimmed ), 8 );
+	assert.equal( getGeneratedIndexCount( trimmed ), 12 );
+	assert.equal( getGeneratedVertexCount( retained ), 12 );
+	assert.equal( getGeneratedIndexCount( retained ), 24 );
+
+} );

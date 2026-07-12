@@ -196,9 +196,11 @@ function $6fafcf15f6b61d60$var$generateRibbonGeometry(stroke, family, options, o
     out.uv1Size = hasVectorOffset ? 3 : 0;
     if (options.generatorClass === "QuadStripUnitizedUVBrush") return $6fafcf15f6b61d60$var$generateUnitizedRibbonGeometry(stroke, family, options, out);
     const pointCount = stroke.controlPoints.length;
-    const frontVertexCount = pointCount * 2;
-    const segmentCount = Math.max(0, pointCount - 1);
-    const connectedSegmentCount = $6fafcf15f6b61d60$var$prepareRibbonSections(stroke, out);
+    $6fafcf15f6b61d60$var$prepareRibbonSections(stroke, out);
+    const renderPointCount = $6fafcf15f6b61d60$var$resolveRibbonRenderPointCount(pointCount, options, out.ribbonBreakBefore);
+    const frontVertexCount = renderPointCount * 2;
+    const segmentCount = Math.max(0, renderPointCount - 1);
+    const connectedSegmentCount = $6fafcf15f6b61d60$var$countConnectedRibbonSegments(out.ribbonBreakBefore, renderPointCount);
     $6fafcf15f6b61d60$var$prepareRibbonSmoothedPressures(stroke, options, out);
     const frontIndexCount = connectedSegmentCount * 6;
     const hasBackfaces = options.geometryParams?.renderBackfaces === true;
@@ -279,7 +281,7 @@ function $6fafcf15f6b61d60$var$generateRibbonGeometry(stroke, family, options, o
     ];
     let previousFlatSize = 0;
     const flatHalfRights = usesFlatGeometrySmoothing ? new Float32Array(pointCount * 3) : undefined;
-    for(let index = 0; index < pointCount; index += 1){
+    for(let index = 0; index < renderPointCount; index += 1){
         const point = stroke.controlPoints[index];
         const previousPoint = stroke.controlPoints[Math.max(0, index - 1)];
         const nextPoint = stroke.controlPoints[Math.min(pointCount - 1, index + 1)];
@@ -385,8 +387,8 @@ function $6fafcf15f6b61d60$var$generateRibbonGeometry(stroke, family, options, o
         $6fafcf15f6b61d60$var$includeBounds(bounds, positions, rightVertex);
     }
     if (flatHalfRights) {
-        $6fafcf15f6b61d60$var$smoothFlatGeometryEdges(stroke, positions, flatHalfRights, ribbonBreakBefore, bounds);
-        $6fafcf15f6b61d60$var$updateFlatGeometryTangents(positions, normals, tangents, uvs, ribbonBreakBefore, pointCount);
+        $6fafcf15f6b61d60$var$smoothFlatGeometryEdges(stroke, positions, flatHalfRights, ribbonBreakBefore, bounds, renderPointCount);
+        $6fafcf15f6b61d60$var$updateFlatGeometryTangents(positions, normals, tangents, uvs, ribbonBreakBefore, renderPointCount);
     }
     let indexOffset = 0;
     for(let segment = 0; segment < segmentCount; segment += 1){
@@ -430,9 +432,8 @@ function $6fafcf15f6b61d60$var$generateRibbonGeometry(stroke, family, options, o
     out.indexCount = indexCount;
     return reallocated;
 }
-function $6fafcf15f6b61d60$var$smoothFlatGeometryEdges(stroke, positions, halfRights, breakBefore, bounds) {
+function $6fafcf15f6b61d60$var$smoothFlatGeometryEdges(stroke, positions, halfRights, breakBefore, bounds, pointCount) {
     $6fafcf15f6b61d60$var$resetBounds(bounds);
-    const pointCount = stroke.controlPoints.length;
     for(let index = 0; index < pointCount; index += 1){
         const startsSection = index === 0 || breakBefore[index] === 1;
         const endsSection = index === pointCount - 1 || breakBefore[index + 1] === 1;
@@ -2318,6 +2319,19 @@ function $6fafcf15f6b61d60$var$prepareRibbonSections(stroke, out) {
     }
     for(let sectionIndex = sectionStart; sectionIndex < pointCount; sectionIndex += 1)ribbonSectionLengths[sectionIndex] = runningLength;
     return connectedSegmentCount;
+}
+function $6fafcf15f6b61d60$var$resolveRibbonRenderPointCount(pointCount, options, breakBefore) {
+    if (options.generatorClass !== "FlatGeometryBrush" || options.geometryParams?.m11Compatibility === true) return pointCount;
+    for(let index = pointCount - 1; index > 1; index -= 1){
+        if (breakBefore[index] !== 1) continue;
+        return pointCount - index < 6 ? index + 1 : pointCount;
+    }
+    return pointCount;
+}
+function $6fafcf15f6b61d60$var$countConnectedRibbonSegments(breakBefore, pointCount) {
+    let count = 0;
+    for(let index = 1; index < pointCount; index += 1)if (breakBefore[index] === 0) count += 1;
+    return count;
 }
 function $6fafcf15f6b61d60$var$prepareRibbonSmoothedPressures(stroke, options, out) {
     const pointCount = stroke.controlPoints.length;

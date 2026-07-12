@@ -313,9 +313,18 @@ function generateRibbonGeometry(
     return generateUnitizedRibbonGeometry(stroke, family, options, out);
   }
   const pointCount = stroke.controlPoints.length;
-  const frontVertexCount = pointCount * 2;
-  const segmentCount = Math.max(0, pointCount - 1);
-  const connectedSegmentCount = prepareRibbonSections(stroke, out);
+  prepareRibbonSections(stroke, out);
+  const renderPointCount = resolveRibbonRenderPointCount(
+    pointCount,
+    options,
+    out.ribbonBreakBefore,
+  );
+  const frontVertexCount = renderPointCount * 2;
+  const segmentCount = Math.max(0, renderPointCount - 1);
+  const connectedSegmentCount = countConnectedRibbonSegments(
+    out.ribbonBreakBefore,
+    renderPointCount,
+  );
   prepareRibbonSmoothedPressures(stroke, options, out);
   const frontIndexCount = connectedSegmentCount * 6;
   const hasBackfaces = options.geometryParams?.renderBackfaces === true;
@@ -379,7 +388,7 @@ function generateRibbonGeometry(
     ? new Float32Array(pointCount * 3)
     : undefined;
 
-  for (let index = 0; index < pointCount; index += 1) {
+  for (let index = 0; index < renderPointCount; index += 1) {
     const point = stroke.controlPoints[index];
     const previousPoint = stroke.controlPoints[Math.max(0, index - 1)];
     const nextPoint = stroke.controlPoints[Math.min(pointCount - 1, index + 1)];
@@ -529,6 +538,7 @@ function generateRibbonGeometry(
       flatHalfRights,
       ribbonBreakBefore,
       bounds,
+      renderPointCount,
     );
     updateFlatGeometryTangents(
       positions,
@@ -536,7 +546,7 @@ function generateRibbonGeometry(
       tangents,
       uvs,
       ribbonBreakBefore,
-      pointCount,
+      renderPointCount,
     );
   }
 
@@ -605,9 +615,9 @@ function smoothFlatGeometryEdges(
   halfRights: Float32Array,
   breakBefore: Uint8Array,
   bounds: BrushGeometryBounds,
+  pointCount: number,
 ): void {
   resetBounds(bounds);
-  const pointCount = stroke.controlPoints.length;
   for (let index = 0; index < pointCount; index += 1) {
     const startsSection = index === 0 || breakBefore[index] === 1;
     const endsSection =
@@ -3085,6 +3095,39 @@ function prepareRibbonSections(
     ribbonSectionLengths[sectionIndex] = runningLength;
   }
   return connectedSegmentCount;
+}
+
+function resolveRibbonRenderPointCount(
+  pointCount: number,
+  options: BrushGeometryOptions,
+  breakBefore: Uint8Array,
+): number {
+  if (
+    options.generatorClass !== "FlatGeometryBrush" ||
+    options.geometryParams?.m11Compatibility === true
+  ) {
+    return pointCount;
+  }
+  for (let index = pointCount - 1; index > 1; index -= 1) {
+    if (breakBefore[index] !== 1) {
+      continue;
+    }
+    return pointCount - index < 6 ? index + 1 : pointCount;
+  }
+  return pointCount;
+}
+
+function countConnectedRibbonSegments(
+  breakBefore: Uint8Array,
+  pointCount: number,
+): number {
+  let count = 0;
+  for (let index = 1; index < pointCount; index += 1) {
+    if (breakBefore[index] === 0) {
+      count += 1;
+    }
+  }
+  return count;
 }
 
 function prepareRibbonSmoothedPressures(
