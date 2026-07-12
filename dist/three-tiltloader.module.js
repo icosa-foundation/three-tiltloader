@@ -197,7 +197,7 @@ function $6fafcf15f6b61d60$var$generateRibbonGeometry(stroke, family, options, o
     const descriptorOpacity = $6fafcf15f6b61d60$var$normalizeDescriptorOpacity(options.geometryParams?.opacity);
     const localBrushSize = $6fafcf15f6b61d60$var$getLocalBrushSize(stroke);
     const tileRate = $6fafcf15f6b61d60$var$normalizeTileRate(options.geometryParams?.tileRate);
-    const usesDistanceUvs = options.generatorClass === "QuadStripBrushDistanceUV";
+    const usesDistanceUvs = options.generatorClass === "QuadStripBrushDistanceUV" || options.geometryParams?.ribbonUvStyle === "distance";
     const atlasRows = $6fafcf15f6b61d60$var$normalizeAtlasRows(options.geometryParams?.textureAtlasV);
     let sectionRandom = $6fafcf15f6b61d60$var$statelessRandom01(stroke.seed, 0);
     let atlasRow = usesDistanceUvs ? Math.floor(sectionRandom * 3331) % atlasRows : Math.floor(sectionRandom * atlasRows);

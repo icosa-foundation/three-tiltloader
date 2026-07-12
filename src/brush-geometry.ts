@@ -318,7 +318,8 @@ function generateRibbonGeometry(
   const localBrushSize = getLocalBrushSize(stroke);
   const tileRate = normalizeTileRate(options.geometryParams?.tileRate);
   const usesDistanceUvs =
-    options.generatorClass === "QuadStripBrushDistanceUV";
+    options.generatorClass === "QuadStripBrushDistanceUV" ||
+    options.geometryParams?.ribbonUvStyle === "distance";
   const atlasRows = normalizeAtlasRows(options.geometryParams?.textureAtlasV);
   let sectionRandom = statelessRandom01(stroke.seed, 0);
   let atlasRow = usesDistanceUvs

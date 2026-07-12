@@ -72,6 +72,13 @@ test( 'preserves distance and unitized ribbon UV modes', () => {
 	const initialU = distance.uvs[ 0 ];
 	assertClose( distance.uvs[ 4 ] - initialU, 2 );
 	assertClose( distance.uvs[ 8 ] - initialU, 6 );
+	const flatDistance = generateBrushGeometry( stroke, 'ribbon', {
+		generatorClass: 'FlatGeometryBrush',
+		geometryParams: { ribbonUvStyle: 'distance', tileRate: 2 }
+	} );
+	const flatInitialU = flatDistance.uvs[ 0 ];
+	assertClose( flatDistance.uvs[ 4 ] - flatInitialU, 2 );
+	assertClose( flatDistance.uvs[ 8 ] - flatInitialU, 6 );
 
 	const unitized = generateBrushGeometry( stroke, 'ribbon', {
 		generatorClass: 'QuadStripUnitizedUVBrush'
