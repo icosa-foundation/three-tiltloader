@@ -137,12 +137,21 @@ test( 'smooths QuadStrip bends with the source midpoint and fuse pass', () => {
 	const geometry = generateBrushGeometry( stroke, 'ribbon', {
 		generatorClass: 'QuadStripBrushStretchUV'
 	} );
-	const baseline = generateBrushGeometry( stroke, 'ribbon' );
 	assert.equal( getGeneratedVertexCount( geometry ), 18 );
 	const position = ( vertex ) => Array.from( geometry.positions.slice( vertex * 3, vertex * 3 + 3 ) );
-	const baselinePosition = ( vertex ) => Array.from( baseline.positions.slice( vertex * 3, vertex * 3 + 3 ) );
-	const pattern = [ 0, 2, 1, 1, 2, 3 ];
-	const sourceSolid = ( segment ) => pattern.map( corner => baselinePosition( segment * 2 + corner ) );
+	// Unity +Z forward is converted to Three.js -Z, so these are the converted
+	// ComputeSurfaceFrameNew half-right vectors for +X, +Y, -X movement.
+	const sourceRights = [ [ 0, -0.1, 0 ], [ 0.1, 0, 0 ], [ 0, 0.1, 0 ] ];
+	const sourceSolid = ( segment ) => {
+		const previous = stroke.controlPoints[ segment ].position;
+		const current = stroke.controlPoints[ segment + 1 ].position;
+		const right = sourceRights[ segment ];
+		const offset = ( point, sign ) => point.map( ( value, axis ) => value + sign * right[ axis ] );
+		return [
+			offset( previous, -1 ), offset( current, -1 ), offset( previous, 1 ),
+			offset( previous, 1 ), offset( current, -1 ), offset( current, 1 )
+		];
+	};
 	const back = sourceSolid( 0 );
 	const firstMiddle = sourceSolid( 1 );
 	const front = sourceSolid( 2 );
@@ -237,6 +246,7 @@ test( 'smooths ribbon pressure over the Open Brush distance window', () => {
 	stroke.controlPoints[ 1 ].position = [ 0.1, 0, 0 ];
 	const quad = generateBrushGeometry( stroke, 'ribbon', {
 		pressureSizeRange: [ 0, 1 ],
+		pressureOpacityRange: [ 0, 1 ],
 		generatorClass: 'QuadStripBrushDistanceUV'
 	} );
 	const flatM11 = generateBrushGeometry( stroke, 'ribbon', {
@@ -244,9 +254,14 @@ test( 'smooths ribbon pressure over the Open Brush distance window', () => {
 		generatorClass: 'FlatGeometryBrush',
 		geometryParams: { m11Compatibility: true }
 	} );
-	const quadWidth = Math.abs( quad.positions[ 16 ] - quad.positions[ 4 ] );
+	const quadLeadingWidth = Math.abs( quad.positions[ 16 ] - quad.positions[ 4 ] );
+	const quadTrailingWidth = Math.abs( quad.positions[ 7 ] - quad.positions[ 1 ] );
 	const flatWidth = Math.abs( flatM11.positions[ 10 ] - flatM11.positions[ 7 ] );
-	assertClose( quadWidth, 1 - Math.pow( 0.1, 0.5 ) );
+	assertClose( quadLeadingWidth, 1 - Math.pow( 0.1, 0.5 ) );
+	assertClose( quadTrailingWidth, quadLeadingWidth );
+	for ( let vertex = 0; vertex < 6; vertex += 1 ) {
+		assertClose( quad.colors[ vertex * 4 + 3 ], quadLeadingWidth );
+	}
 	assertClose( flatWidth, 0.9 );
 
 } );

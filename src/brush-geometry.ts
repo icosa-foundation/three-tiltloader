@@ -624,6 +624,13 @@ function generateRibbonGeometry(
       hasBackfaces,
       vertexCount,
     );
+    applyQuadStripPositionQuads(
+      out,
+      stroke,
+      options,
+      ribbonBreakBefore,
+      renderPointCount,
+    );
     applyQuadStripMidpointFusion(
       out,
       ribbonBreakBefore,
@@ -703,6 +710,167 @@ function copyRibbonVertex(
   }
 }
 
+function applyQuadStripPositionQuads(
+  out: BrushGeometryArrays,
+  stroke: StrokeData,
+  options: BrushGeometryOptions,
+  breakBefore: Uint8Array,
+  pointCount: number,
+): void {
+  const previousRight: Vec3 = [0, 0, 0];
+  const tangent: Vec3 = [0, 0, 0];
+  const pointerForward: Vec3 = [0, 0, 0];
+  const pointerUp: Vec3 = [0, 0, 0];
+  const right: Vec3 = [0, 0, 0];
+  const normal: Vec3 = [0, 0, 0];
+  const pressureSizeMin = normalizePressureSizeMin(options.pressureSizeRange?.[0]);
+  const pressureOpacityMin = normalizePressureOpacityMin(
+    options.pressureOpacityRange,
+  );
+  const pressureOpacityMax = normalizePressureOpacityMax(
+    options.pressureOpacityRange,
+  );
+  const descriptorOpacity = normalizeDescriptorOpacity(
+    options.geometryParams?.opacity,
+  );
+  const localBrushSize = getLocalBrushSize(stroke);
+  let previousOpacity = 0;
+  let solid = 0;
+  for (let pointIndex = 1; pointIndex < pointCount; pointIndex += 1) {
+    if (breakBefore[pointIndex] === 1) {
+      previousRight[0] = 0;
+      previousRight[1] = 0;
+      previousRight[2] = 0;
+      continue;
+    }
+    const previousPoint = stroke.controlPoints[pointIndex - 1];
+    const point = stroke.controlPoints[pointIndex];
+    tangent[0] = point.position[0] - previousPoint.position[0];
+    tangent[1] = point.position[1] - previousPoint.position[1];
+    tangent[2] = point.position[2] - previousPoint.position[2];
+    if (!normalizeInPlace(tangent)) {
+      continue;
+    }
+    rotateByQuaternion(point.orientation, VEC_FORWARD, pointerForward);
+    rotateByQuaternion(point.orientation, VEC_UP, pointerUp);
+    computeSurfaceFrame(
+      previousRight,
+      tangent,
+      pointerForward,
+      pointerUp,
+      solid === 0,
+      right,
+      normal,
+    );
+    const size =
+      localBrushSize *
+      getPressureSizeMultiplier(
+        out.ribbonSmoothedPressures[pointIndex],
+        pressureSizeMin,
+      );
+    const halfRightX = right[0] * size * 0.5;
+    const halfRightY = right[1] * size * 0.5;
+    const halfRightZ = right[2] * size * 0.5;
+    const vertex = solid * 6;
+    writeQuadStripPosition(
+      out.positions,
+      vertex,
+      previousPoint.position,
+      -halfRightX,
+      -halfRightY,
+      -halfRightZ,
+    );
+    writeQuadStripPosition(
+      out.positions,
+      vertex + 1,
+      point.position,
+      -halfRightX,
+      -halfRightY,
+      -halfRightZ,
+    );
+    writeQuadStripPosition(
+      out.positions,
+      vertex + 2,
+      previousPoint.position,
+      halfRightX,
+      halfRightY,
+      halfRightZ,
+    );
+    copyPosition(out.positions, vertex + 2, vertex + 3);
+    copyPosition(out.positions, vertex + 1, vertex + 4);
+    writeQuadStripPosition(
+      out.positions,
+      vertex + 5,
+      point.position,
+      halfRightX,
+      halfRightY,
+      halfRightZ,
+    );
+    for (let corner = 0; corner < 6; corner += 1) {
+      writeNormal(out.normals, vertex + corner, normal);
+    }
+    const opacity =
+      getPressureOpacityMultiplier(
+        out.ribbonSmoothedPressures[pointIndex],
+        pressureOpacityMin,
+        pressureOpacityMax,
+      ) * descriptorOpacity;
+    const trailingOpacity = solid === 0 ? opacity : previousOpacity;
+    writeColor(out.colors, vertex, stroke.color, trailingOpacity);
+    writeColor(out.colors, vertex + 1, stroke.color, opacity);
+    writeColor(out.colors, vertex + 2, stroke.color, trailingOpacity);
+    writeColor(out.colors, vertex + 3, stroke.color, trailingOpacity);
+    writeColor(out.colors, vertex + 4, stroke.color, opacity);
+    writeColor(out.colors, vertex + 5, stroke.color, opacity);
+    if (out.uv1Size === 3) {
+      writeQuadStripVectorOffset(
+        out.vectorUvs,
+        vertex,
+        halfRightX,
+        halfRightY,
+        halfRightZ,
+      );
+    }
+    previousOpacity = opacity;
+    previousRight[0] = right[0];
+    previousRight[1] = right[1];
+    previousRight[2] = right[2];
+    solid += 1;
+  }
+}
+
+function writeQuadStripPosition(
+  target: Float32Array,
+  vertex: number,
+  point: Vec3,
+  offsetX: number,
+  offsetY: number,
+  offsetZ: number,
+): void {
+  const offset = vertex * 3;
+  target[offset] = point[0] + offsetX;
+  target[offset + 1] = point[1] + offsetY;
+  target[offset + 2] = point[2] + offsetZ;
+}
+
+function writeQuadStripVectorOffset(
+  target: Float32Array,
+  vertex: number,
+  halfRightX: number,
+  halfRightY: number,
+  halfRightZ: number,
+): void {
+  for (let corner = 0; corner < 6; corner += 1) {
+    const offset = (vertex + corner) * 3;
+    const side = QUAD_STRIP_CORNER_SIDES[corner];
+    target[offset] = halfRightX * side;
+    target[offset + 1] = halfRightY * side;
+    target[offset + 2] = halfRightZ * side;
+  }
+}
+
+const QUAD_STRIP_CORNER_SIDES = [-1, -1, 1, 1, -1, 1] as const;
+
 function applyQuadStripMidpointFusion(
   out: BrushGeometryArrays,
   breakBefore: Uint8Array,
@@ -753,6 +921,15 @@ function applyQuadStripMidpointFusion(
           backVertex + corner,
           true,
         );
+        out.colors[(backVertex + corner) * 4 + 3] =
+          out.colors[(frontVertex + reverse[corner]) * 4 + 3];
+        if (out.uv1Size === 3) {
+          copyVec3At(
+            out.vectorUvs,
+            frontVertex + reverse[corner],
+            backVertex + corner,
+          );
+        }
       }
     }
   }
@@ -1283,6 +1460,13 @@ function generateUnitizedRibbonGeometry(
     frontIndexCount,
     hasBackfaces,
     vertexCount,
+  );
+  applyQuadStripPositionQuads(
+    out,
+    stroke,
+    options,
+    out.ribbonBreakBefore,
+    pointCount,
   );
   applyQuadStripMidpointFusion(
     out,

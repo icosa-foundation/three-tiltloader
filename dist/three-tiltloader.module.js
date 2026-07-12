@@ -431,6 +431,7 @@ function $6fafcf15f6b61d60$var$generateRibbonGeometry(stroke, family, options, o
     }
     if (usesQuadStripTriangleSoup) {
         $6fafcf15f6b61d60$var$expandRibbonTriangleSoup(out, ribbonBreakBefore, renderPointCount, frontVertexCount, frontIndexCount, hasBackfaces, vertexCount);
+        $6fafcf15f6b61d60$var$applyQuadStripPositionQuads(out, stroke, options, ribbonBreakBefore, renderPointCount);
         $6fafcf15f6b61d60$var$applyQuadStripMidpointFusion(out, ribbonBreakBefore, renderPointCount, frontIndexCount / 6, hasBackfaces);
     }
     out.family = family;
@@ -481,6 +482,111 @@ function $6fafcf15f6b61d60$var$copyRibbonVertex(out, source, destination) {
     $6fafcf15f6b61d60$var$copyVec2At(out.uvs, source, destination);
     if (out.uv1Size === 3) $6fafcf15f6b61d60$var$copyVec3At(out.vectorUvs, source, destination);
 }
+function $6fafcf15f6b61d60$var$applyQuadStripPositionQuads(out, stroke, options, breakBefore, pointCount) {
+    const previousRight = [
+        0,
+        0,
+        0
+    ];
+    const tangent = [
+        0,
+        0,
+        0
+    ];
+    const pointerForward = [
+        0,
+        0,
+        0
+    ];
+    const pointerUp = [
+        0,
+        0,
+        0
+    ];
+    const right = [
+        0,
+        0,
+        0
+    ];
+    const normal = [
+        0,
+        0,
+        0
+    ];
+    const pressureSizeMin = $6fafcf15f6b61d60$var$normalizePressureSizeMin(options.pressureSizeRange?.[0]);
+    const pressureOpacityMin = $6fafcf15f6b61d60$var$normalizePressureOpacityMin(options.pressureOpacityRange);
+    const pressureOpacityMax = $6fafcf15f6b61d60$var$normalizePressureOpacityMax(options.pressureOpacityRange);
+    const descriptorOpacity = $6fafcf15f6b61d60$var$normalizeDescriptorOpacity(options.geometryParams?.opacity);
+    const localBrushSize = $6fafcf15f6b61d60$var$getLocalBrushSize(stroke);
+    let previousOpacity = 0;
+    let solid = 0;
+    for(let pointIndex = 1; pointIndex < pointCount; pointIndex += 1){
+        if (breakBefore[pointIndex] === 1) {
+            previousRight[0] = 0;
+            previousRight[1] = 0;
+            previousRight[2] = 0;
+            continue;
+        }
+        const previousPoint = stroke.controlPoints[pointIndex - 1];
+        const point = stroke.controlPoints[pointIndex];
+        tangent[0] = point.position[0] - previousPoint.position[0];
+        tangent[1] = point.position[1] - previousPoint.position[1];
+        tangent[2] = point.position[2] - previousPoint.position[2];
+        if (!$6fafcf15f6b61d60$var$normalizeInPlace(tangent)) continue;
+        $6fafcf15f6b61d60$var$rotateByQuaternion(point.orientation, $6fafcf15f6b61d60$var$VEC_FORWARD, pointerForward);
+        $6fafcf15f6b61d60$var$rotateByQuaternion(point.orientation, $6fafcf15f6b61d60$var$VEC_UP, pointerUp);
+        $6fafcf15f6b61d60$var$computeSurfaceFrame(previousRight, tangent, pointerForward, pointerUp, solid === 0, right, normal);
+        const size = localBrushSize * $6fafcf15f6b61d60$var$getPressureSizeMultiplier(out.ribbonSmoothedPressures[pointIndex], pressureSizeMin);
+        const halfRightX = right[0] * size * 0.5;
+        const halfRightY = right[1] * size * 0.5;
+        const halfRightZ = right[2] * size * 0.5;
+        const vertex = solid * 6;
+        $6fafcf15f6b61d60$var$writeQuadStripPosition(out.positions, vertex, previousPoint.position, -halfRightX, -halfRightY, -halfRightZ);
+        $6fafcf15f6b61d60$var$writeQuadStripPosition(out.positions, vertex + 1, point.position, -halfRightX, -halfRightY, -halfRightZ);
+        $6fafcf15f6b61d60$var$writeQuadStripPosition(out.positions, vertex + 2, previousPoint.position, halfRightX, halfRightY, halfRightZ);
+        $6fafcf15f6b61d60$var$copyPosition(out.positions, vertex + 2, vertex + 3);
+        $6fafcf15f6b61d60$var$copyPosition(out.positions, vertex + 1, vertex + 4);
+        $6fafcf15f6b61d60$var$writeQuadStripPosition(out.positions, vertex + 5, point.position, halfRightX, halfRightY, halfRightZ);
+        for(let corner = 0; corner < 6; corner += 1)$6fafcf15f6b61d60$var$writeNormal(out.normals, vertex + corner, normal);
+        const opacity = $6fafcf15f6b61d60$var$getPressureOpacityMultiplier(out.ribbonSmoothedPressures[pointIndex], pressureOpacityMin, pressureOpacityMax) * descriptorOpacity;
+        const trailingOpacity = solid === 0 ? opacity : previousOpacity;
+        $6fafcf15f6b61d60$var$writeColor(out.colors, vertex, stroke.color, trailingOpacity);
+        $6fafcf15f6b61d60$var$writeColor(out.colors, vertex + 1, stroke.color, opacity);
+        $6fafcf15f6b61d60$var$writeColor(out.colors, vertex + 2, stroke.color, trailingOpacity);
+        $6fafcf15f6b61d60$var$writeColor(out.colors, vertex + 3, stroke.color, trailingOpacity);
+        $6fafcf15f6b61d60$var$writeColor(out.colors, vertex + 4, stroke.color, opacity);
+        $6fafcf15f6b61d60$var$writeColor(out.colors, vertex + 5, stroke.color, opacity);
+        if (out.uv1Size === 3) $6fafcf15f6b61d60$var$writeQuadStripVectorOffset(out.vectorUvs, vertex, halfRightX, halfRightY, halfRightZ);
+        previousOpacity = opacity;
+        previousRight[0] = right[0];
+        previousRight[1] = right[1];
+        previousRight[2] = right[2];
+        solid += 1;
+    }
+}
+function $6fafcf15f6b61d60$var$writeQuadStripPosition(target, vertex, point, offsetX, offsetY, offsetZ) {
+    const offset = vertex * 3;
+    target[offset] = point[0] + offsetX;
+    target[offset + 1] = point[1] + offsetY;
+    target[offset + 2] = point[2] + offsetZ;
+}
+function $6fafcf15f6b61d60$var$writeQuadStripVectorOffset(target, vertex, halfRightX, halfRightY, halfRightZ) {
+    for(let corner = 0; corner < 6; corner += 1){
+        const offset = (vertex + corner) * 3;
+        const side = $6fafcf15f6b61d60$var$QUAD_STRIP_CORNER_SIDES[corner];
+        target[offset] = halfRightX * side;
+        target[offset + 1] = halfRightY * side;
+        target[offset + 2] = halfRightZ * side;
+    }
+}
+const $6fafcf15f6b61d60$var$QUAD_STRIP_CORNER_SIDES = [
+    -1,
+    -1,
+    1,
+    1,
+    -1,
+    1
+];
 function $6fafcf15f6b61d60$var$applyQuadStripMidpointFusion(out, breakBefore, pointCount, frontSolidCount, hasBackfaces) {
     let solid = 0;
     let sectionStart = 0;
@@ -516,6 +622,8 @@ function $6fafcf15f6b61d60$var$applyQuadStripMidpointFusion(out, breakBefore, po
                 $6fafcf15f6b61d60$var$copyPosition(out.positions, frontVertex + reverse[corner], backVertex + corner);
                 $6fafcf15f6b61d60$var$copyNegatedNormal(out.normals, frontVertex + reverse[corner], backVertex + corner);
                 $6fafcf15f6b61d60$var$copyTangent(out.tangents, frontVertex + reverse[corner], backVertex + corner, true);
+                out.colors[(backVertex + corner) * 4 + 3] = out.colors[(frontVertex + reverse[corner]) * 4 + 3];
+                if (out.uv1Size === 3) $6fafcf15f6b61d60$var$copyVec3At(out.vectorUvs, frontVertex + reverse[corner], backVertex + corner);
             }
         }
     }
@@ -895,6 +1003,7 @@ function $6fafcf15f6b61d60$var$generateUnitizedRibbonGeometry(stroke, family, op
         }
     }
     $6fafcf15f6b61d60$var$expandUnitizedRibbonTriangleSoup(out, segmentCount, sourceFrontVertexCount, frontIndexCount, hasBackfaces, vertexCount);
+    $6fafcf15f6b61d60$var$applyQuadStripPositionQuads(out, stroke, options, out.ribbonBreakBefore, pointCount);
     $6fafcf15f6b61d60$var$applyQuadStripMidpointFusion(out, out.ribbonBreakBefore, pointCount, segmentCount, hasBackfaces);
     out.family = family;
     out.vertexCount = vertexCount;
