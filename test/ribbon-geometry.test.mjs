@@ -295,14 +295,13 @@ test( 'smooths 3D-print ring pressure without reusing the end size at the start'
 
 } );
 
-test( 'smooths spray and Genius particle pressure like GeometryBrush', () => {
+test( 'keeps Spray and Genius particle pressure unsmoothed', () => {
 
 	const stroke = createStroke();
 	stroke.brushSize = 1;
 	stroke.controlPoints[ 0 ].pressure = 0;
 	stroke.controlPoints[ 1 ].position = [ 0.1, 0, 0 ];
 	stroke.controlPoints[ 1 ].pressure = 1;
-	const expected = 1 - Math.pow( 0.1, 0.5 );
 	const spray = generateBrushGeometry( stroke, 'particle', {
 		generatorClass: 'SprayBrush',
 		pressureSizeRange: [ 0.1, 1 ],
@@ -316,7 +315,7 @@ test( 'smooths spray and Genius particle pressure like GeometryBrush', () => {
 		}
 	} );
 	assert.ok( getGeneratedVertexCount( spray ) > 0 );
-	assertClose( spray.colors[ 3 ], expected );
+	assertClose( spray.colors[ 3 ], 1 );
 
 	const genius = generateBrushGeometry( stroke, 'particle', {
 		generatorClass: 'GeniusParticlesBrush',
@@ -331,7 +330,7 @@ test( 'smooths spray and Genius particle pressure like GeometryBrush', () => {
 		}
 	} );
 	assert.ok( getGeneratedVertexCount( genius ) > 4 );
-	assertClose( genius.colors[ 3 ], expected );
+	assertClose( genius.colors[ 3 ], 1 );
 
 } );
 

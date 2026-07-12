@@ -2341,9 +2341,6 @@ function generateSprayParticleGeometry(
     options.generatorClass === "MidpointPlusLifetimeSprayBrush";
   out.uv1Size = hasLifetime ? 4 : 0;
   const localBrushSize = getLocalBrushSize(stroke);
-  ensureGeometryPressureCapacity(out, stroke.controlPoints.length);
-  prepareGeometrySmoothedPressures(stroke, options, out);
-  const smoothedPressures = out.geometrySmoothedPressures;
   const pressureSizeMin = normalizePressureSizeMin(options.pressureSizeRange?.[0]);
   const particleRate = normalizePositive(
     options.geometryParams?.sprayRateMultiplier,
@@ -2358,7 +2355,7 @@ function generateSprayParticleGeometry(
     );
     const pressuredSize =
       localBrushSize *
-      getPressureSizeMultiplier(smoothedPressures[pointIndex], pressureSizeMin);
+      getPressureSizeMultiplier(point.pressure, pressureSizeMin);
     const spawnInterval = pressuredSize / particleRate;
     if (spawnInterval > EPSILON) {
       quadCount += Math.min(500, Math.floor(segmentLength / spawnInterval));
@@ -2434,7 +2431,7 @@ function generateSprayParticleGeometry(
     segmentDirection[2] /= segmentLength;
     const pressuredSize =
       localBrushSize *
-      getPressureSizeMultiplier(smoothedPressures[pointIndex], pressureSizeMin);
+      getPressureSizeMultiplier(point.pressure, pressureSizeMin);
     const spawnInterval = pressuredSize / particleRate;
     const segmentQuadCount =
       spawnInterval > EPSILON
@@ -2459,7 +2456,7 @@ function generateSprayParticleGeometry(
     );
     const baseOpacity =
       getPressureOpacityMultiplier(
-        smoothedPressures[pointIndex],
+        point.pressure,
         pressureOpacityMin,
         pressureOpacityMax,
       ) * descriptorOpacity;
@@ -2594,9 +2591,6 @@ function generateGeniusParticleGeometry(
     options.geometryParams?.opacity,
   );
   const localBrushSize = getLocalBrushSize(stroke);
-  ensureGeometryPressureCapacity(out, pointCount);
-  prepareGeometrySmoothedPressures(stroke, options, out);
-  const smoothedPressures = out.geometrySmoothedPressures;
   const sizeVariance = normalizeNonNegative(
     options.geometryParams?.particleSizeVariance,
   );
@@ -2665,8 +2659,8 @@ function generateGeniusParticleGeometry(
 
     const pressure =
       particleCount === 1
-        ? Math.max(0.8, smoothedPressures[segmentIndex])
-        : smoothedPressures[segmentIndex];
+        ? Math.max(0.8, currentPoint.pressure)
+        : currentPoint.pressure;
     const salt = 16 * (segmentIndex * 16 + particleWithinKnot);
     const size =
       localBrushSize *
