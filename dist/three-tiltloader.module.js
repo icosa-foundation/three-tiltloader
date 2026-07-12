@@ -763,13 +763,15 @@ const $6fafcf15f6b61d60$var$THICK_STRIP_TRIANGLE_PATTERN = [
 function $6fafcf15f6b61d60$var$generateSquare3DPrintGeometry(stroke, options, out) {
     out.family = "print3d";
     out.uv0Size = 2;
+    $6fafcf15f6b61d60$var$ensureGeometryPressureCapacity(out, stroke.controlPoints.length);
+    $6fafcf15f6b61d60$var$prepareGeometrySmoothedPressures(stroke, options, out);
     const segments = [
         undefined
     ];
     const pressureSizeMin = $6fafcf15f6b61d60$var$normalizePressureSizeMin(options.pressureSizeRange?.[0]);
     let previousBasis;
     for(let i = 1; i < stroke.controlPoints.length; i += 1){
-        const basis = $6fafcf15f6b61d60$var$createPrint3DBasis(stroke, i, pressureSizeMin);
+        const basis = $6fafcf15f6b61d60$var$createPrint3DBasis(stroke, i, pressureSizeMin, out.geometrySmoothedPressures);
         const breaksForRotation = basis !== undefined && previousBasis !== undefined && ($6fafcf15f6b61d60$var$dotVec3(previousBasis.planeNormal, basis.planeNormal) < 0.94 || $6fafcf15f6b61d60$var$dotVec3(previousBasis.planeRight, basis.planeRight) < 0.94);
         segments.push(breaksForRotation ? undefined : basis);
         previousBasis = basis;
@@ -818,7 +820,7 @@ function $6fafcf15f6b61d60$var$generateSquare3DPrintGeometry(stroke, options, ou
     out.indexCount = indices.length;
     return reallocated;
 }
-function $6fafcf15f6b61d60$var$createPrint3DBasis(stroke, index, pressureSizeMin) {
+function $6fafcf15f6b61d60$var$createPrint3DBasis(stroke, index, pressureSizeMin, smoothedPressures) {
     const previous = stroke.controlPoints[index - 1];
     const current = stroke.controlPoints[index];
     const tangent = $6fafcf15f6b61d60$var$subtractVec3(current.position, previous.position);
@@ -853,20 +855,22 @@ function $6fafcf15f6b61d60$var$createPrint3DBasis(stroke, index, pressureSizeMin
         planeForward[1] * -sign,
         planeForward[2] * -sign
     ];
-    const halfSize = $6fafcf15f6b61d60$var$getLocalBrushSize(stroke) * $6fafcf15f6b61d60$var$getPressureSizeMultiplier(current.pressure, pressureSizeMin) * 0.5;
+    const halfSize = $6fafcf15f6b61d60$var$getLocalBrushSize(stroke) * $6fafcf15f6b61d60$var$getPressureSizeMultiplier(smoothedPressures[index], pressureSizeMin) * 0.5;
+    const startHalfSize = $6fafcf15f6b61d60$var$getLocalBrushSize(stroke) * $6fafcf15f6b61d60$var$getPressureSizeMultiplier(smoothedPressures[index - 1], pressureSizeMin) * 0.5;
     return {
         tangent: tangent,
         planeNormal: planeNormal,
         planeRight: planeRight,
         width: width,
         thickness: thickness,
-        halfSize: halfSize
+        halfSize: halfSize,
+        startHalfSize: startHalfSize
     };
 }
 function $6fafcf15f6b61d60$var$appendPrint3DSection(stroke, segments, firstSegment, lastSegment, positions, normals, indices) {
     const firstBasis = segments[firstSegment];
-    const startCap = $6fafcf15f6b61d60$var$appendPrint3DCap(stroke.controlPoints[firstSegment - 1].position, firstBasis, false, positions, normals);
-    const firstRing = $6fafcf15f6b61d60$var$appendPrint3DRing(stroke.controlPoints[firstSegment - 1].position, firstBasis, positions, normals);
+    const startCap = $6fafcf15f6b61d60$var$appendPrint3DCap(stroke.controlPoints[firstSegment - 1].position, firstBasis, false, positions, normals, firstBasis.startHalfSize);
+    const firstRing = $6fafcf15f6b61d60$var$appendPrint3DRing(stroke.controlPoints[firstSegment - 1].position, firstBasis, positions, normals, firstBasis.startHalfSize);
     $6fafcf15f6b61d60$var$appendTriangle(indices, startCap + 2, startCap + 3, startCap + 1);
     $6fafcf15f6b61d60$var$appendTriangle(indices, startCap + 1, startCap + 3, startCap);
     $6fafcf15f6b61d60$var$appendPrint3DCapToRing(indices, firstRing, startCap, true);
@@ -882,10 +886,10 @@ function $6fafcf15f6b61d60$var$appendPrint3DSection(stroke, segments, firstSegme
     $6fafcf15f6b61d60$var$appendTriangle(indices, endCap + 1, endCap, endCap + 2);
     $6fafcf15f6b61d60$var$appendTriangle(indices, endCap + 2, endCap, endCap + 3);
 }
-function $6fafcf15f6b61d60$var$appendPrint3DRing(center, basis, positions, normals) {
+function $6fafcf15f6b61d60$var$appendPrint3DRing(center, basis, positions, normals, halfSize = basis.halfSize) {
     const first = positions.length / 3;
     const bevelRatio = 0.99;
-    const bevelRadius = basis.halfSize * (1 - bevelRatio);
+    const bevelRadius = halfSize * (1 - bevelRatio);
     for (const [startDegrees, stopDegrees] of [
         [
             360,
@@ -905,8 +909,8 @@ function $6fafcf15f6b61d60$var$appendPrint3DRing(center, basis, positions, norma
         ]
     ]){
         const middle = (startDegrees + stopDegrees) * Math.PI / 360;
-        const originWidth = Math.sign(Math.cos(middle)) * basis.halfSize * bevelRatio;
-        const originThickness = Math.sign(Math.sin(middle)) * basis.halfSize * bevelRatio;
+        const originWidth = Math.sign(Math.cos(middle)) * halfSize * bevelRatio;
+        const originThickness = Math.sign(Math.sin(middle)) * halfSize * bevelRatio;
         for (const degrees of [
             startDegrees,
             stopDegrees
@@ -919,9 +923,9 @@ function $6fafcf15f6b61d60$var$appendPrint3DRing(center, basis, positions, norma
     }
     return first;
 }
-function $6fafcf15f6b61d60$var$appendPrint3DCap(center, basis, ending, positions, normals) {
+function $6fafcf15f6b61d60$var$appendPrint3DCap(center, basis, ending, positions, normals, halfSize = basis.halfSize) {
     const first = positions.length / 3;
-    const inset = basis.halfSize * 0.99;
+    const inset = halfSize * 0.99;
     const direction = ending ? 1 : -1;
     const capCenter = [
         center[0] + basis.tangent[0] * 0.01 * direction,

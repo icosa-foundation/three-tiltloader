@@ -273,3 +273,24 @@ test( 'generates outward-facing 3D-print triangles for Three.js', () => {
 	}
 
 } );
+
+test( 'smooths 3D-print ring pressure without reusing the end size at the start', () => {
+
+	const stroke = createStroke();
+	stroke.brushSize = 1;
+	stroke.controlPoints[ 0 ].position = [ 0, -0.05, 0 ];
+	stroke.controlPoints[ 0 ].pressure = 0;
+	stroke.controlPoints[ 1 ].position = [ 0, 0.05, 0 ];
+	stroke.controlPoints[ 1 ].pressure = 1;
+	const geometry = generateBrushGeometry( stroke, 'print3d', {
+		generatorClass: 'Square3DPrintBrush',
+		pressureSizeRange: [ 0, 1 ]
+	} );
+	const maxRingX = ( firstVertex ) => Math.max(
+		...Array.from( { length: 8 }, ( _, vertex ) =>
+			Math.abs( geometry.positions[ ( firstVertex + vertex ) * 3 ] ) )
+	);
+	assertClose( maxRingX( 4 ), 0 );
+	assertClose( maxRingX( 12 ), ( 1 - Math.pow( 0.1, 0.5 ) ) * 0.5 );
+
+} );

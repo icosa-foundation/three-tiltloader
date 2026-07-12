@@ -986,6 +986,7 @@ interface Print3DBasis {
   width: Vec3;
   thickness: Vec3;
   halfSize: number;
+  startHalfSize: number;
 }
 
 function generateSquare3DPrintGeometry(
@@ -995,11 +996,18 @@ function generateSquare3DPrintGeometry(
 ): boolean {
   out.family = "print3d";
   out.uv0Size = 2;
+  ensureGeometryPressureCapacity(out, stroke.controlPoints.length);
+  prepareGeometrySmoothedPressures(stroke, options, out);
   const segments: Array<Print3DBasis | undefined> = [undefined];
   const pressureSizeMin = normalizePressureSizeMin(options.pressureSizeRange?.[0]);
   let previousBasis: Print3DBasis | undefined;
   for (let i = 1; i < stroke.controlPoints.length; i += 1) {
-    const basis = createPrint3DBasis(stroke, i, pressureSizeMin);
+    const basis = createPrint3DBasis(
+      stroke,
+      i,
+      pressureSizeMin,
+      out.geometrySmoothedPressures,
+    );
     const breaksForRotation =
       basis !== undefined &&
       previousBasis !== undefined &&
@@ -1052,6 +1060,7 @@ function createPrint3DBasis(
   stroke: StrokeData,
   index: number,
   pressureSizeMin: number,
+  smoothedPressures: Float32Array,
 ): Print3DBasis | undefined {
   const previous = stroke.controlPoints[index - 1];
   const current = stroke.controlPoints[index];
@@ -1075,9 +1084,21 @@ function createPrint3DBasis(
   ];
   const halfSize =
     getLocalBrushSize(stroke) *
-    getPressureSizeMultiplier(current.pressure, pressureSizeMin) *
+    getPressureSizeMultiplier(smoothedPressures[index], pressureSizeMin) *
     0.5;
-  return { tangent, planeNormal, planeRight, width, thickness, halfSize };
+  const startHalfSize =
+    getLocalBrushSize(stroke) *
+    getPressureSizeMultiplier(smoothedPressures[index - 1], pressureSizeMin) *
+    0.5;
+  return {
+    tangent,
+    planeNormal,
+    planeRight,
+    width,
+    thickness,
+    halfSize,
+    startHalfSize,
+  };
 }
 
 function appendPrint3DSection(
@@ -1096,12 +1117,14 @@ function appendPrint3DSection(
     false,
     positions,
     normals,
+    firstBasis.startHalfSize,
   );
   const firstRing = appendPrint3DRing(
     stroke.controlPoints[firstSegment - 1].position,
     firstBasis,
     positions,
     normals,
+    firstBasis.startHalfSize,
   );
   appendTriangle(indices, startCap + 2, startCap + 3, startCap + 1);
   appendTriangle(indices, startCap + 1, startCap + 3, startCap);
@@ -1136,14 +1159,15 @@ function appendPrint3DRing(
   basis: Print3DBasis,
   positions: number[],
   normals: number[],
+  halfSize = basis.halfSize,
 ): number {
   const first = positions.length / 3;
   const bevelRatio = 0.99;
-  const bevelRadius = basis.halfSize * (1 - bevelRatio);
+  const bevelRadius = halfSize * (1 - bevelRatio);
   for (const [startDegrees, stopDegrees] of [[360, 270], [270, 180], [180, 90], [90, 0]] as const) {
     const middle = ((startDegrees + stopDegrees) * Math.PI) / 360;
-    const originWidth = Math.sign(Math.cos(middle)) * basis.halfSize * bevelRatio;
-    const originThickness = Math.sign(Math.sin(middle)) * basis.halfSize * bevelRatio;
+    const originWidth = Math.sign(Math.cos(middle)) * halfSize * bevelRatio;
+    const originThickness = Math.sign(Math.sin(middle)) * halfSize * bevelRatio;
     for (const degrees of [startDegrees, stopDegrees]) {
       const radians = (degrees * Math.PI) / 180;
       const widthOffset = originWidth + Math.cos(radians) * bevelRadius;
@@ -1167,9 +1191,10 @@ function appendPrint3DCap(
   ending: boolean,
   positions: number[],
   normals: number[],
+  halfSize = basis.halfSize,
 ): number {
   const first = positions.length / 3;
-  const inset = basis.halfSize * 0.99;
+  const inset = halfSize * 0.99;
   const direction = ending ? 1 : -1;
   const capCenter: Vec3 = [
     center[0] + basis.tangent[0] * 0.01 * direction,
