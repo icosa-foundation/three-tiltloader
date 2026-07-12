@@ -104,6 +104,26 @@ test( 'preserves reversal breaks and explicit backfaces', () => {
 
 } );
 
+test( 'smooths FlatGeometryBrush centers like Open Brush', () => {
+
+	const stroke = createStroke();
+	stroke.controlPoints.push( {
+		position: [ 1, 1, 0 ],
+		orientation: [ 0, 0, 0, 1 ],
+		pressure: 1,
+		timestampMs: 32
+	} );
+	const geometry = generateBrushGeometry( stroke, 'ribbon', {
+		generatorClass: 'FlatGeometryBrush',
+		geometryParams: { ribbonOffsetInTexcoord1: true }
+	} );
+	const left = geometry.positions.slice( 2 * 3, 2 * 3 + 3 );
+	const right = geometry.positions.slice( 3 * 3, 3 * 3 + 3 );
+	assertClose( ( left[ 0 ] + right[ 0 ] ) * 0.5, 0.7 );
+	assertClose( ( left[ 1 ] + right[ 1 ] ) * 0.5, 0.3 );
+
+} );
+
 test( 'generates outward-facing 3D-print triangles for Three.js', () => {
 
 	const stroke = createStroke();

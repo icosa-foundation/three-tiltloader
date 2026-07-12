@@ -278,6 +278,7 @@ function generateRibbonGeometry(
   out.uv0Size = 2;
   const hasVectorOffset =
     options.geometryParams?.ribbonOffsetInTexcoord1 === true;
+  const usesFlatGeometrySmoothing = options.generatorClass === "FlatGeometryBrush";
   out.uv1Size = hasVectorOffset ? 3 : 0;
   if (options.generatorClass === "QuadStripUnitizedUVBrush") {
     return generateUnitizedRibbonGeometry(stroke, family, options, out);
@@ -340,6 +341,15 @@ function generateRibbonGeometry(
 
   for (let index = 0; index < pointCount; index += 1) {
     const point = stroke.controlPoints[index];
+    const previousPoint = stroke.controlPoints[Math.max(0, index - 1)];
+    const nextPoint = stroke.controlPoints[Math.min(pointCount - 1, index + 1)];
+    const center: Vec3 = usesFlatGeometrySmoothing && index > 0
+      ? [
+          previousPoint.position[0] * 0.3 + point.position[0] * 0.4 + nextPoint.position[0] * 0.3,
+          previousPoint.position[1] * 0.3 + point.position[1] * 0.4 + nextPoint.position[1] * 0.3,
+          previousPoint.position[2] * 0.3 + point.position[2] * 0.4 + nextPoint.position[2] * 0.3,
+        ]
+      : point.position;
     if (ribbonBreakBefore[index] === 1) {
       sectionRandom = statelessRandom01(stroke.seed, index);
       atlasRow = usesDistanceUvs
@@ -375,14 +385,14 @@ function generateRibbonGeometry(
     const leftVertex = index * 2;
     const rightVertex = leftVertex + 1;
     writePosition(positions, leftVertex, [
-      point.position[0] - right[0] * width,
-      point.position[1] - right[1] * width,
-      point.position[2] - right[2] * width,
+      center[0] - right[0] * width,
+      center[1] - right[1] * width,
+      center[2] - right[2] * width,
     ]);
     writePosition(positions, rightVertex, [
-      point.position[0] + right[0] * width,
-      point.position[1] + right[1] * width,
-      point.position[2] + right[2] * width,
+      center[0] + right[0] * width,
+      center[1] + right[1] * width,
+      center[2] + right[2] * width,
     ]);
     writeNormal(normals, leftVertex, normal);
     writeNormal(normals, rightVertex, normal);

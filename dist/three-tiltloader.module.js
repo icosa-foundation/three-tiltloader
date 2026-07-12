@@ -178,6 +178,7 @@ function $6fafcf15f6b61d60$export$96e734d2eaa5b48d(geometry) {
 function $6fafcf15f6b61d60$var$generateRibbonGeometry(stroke, family, options, out) {
     out.uv0Size = 2;
     const hasVectorOffset = options.geometryParams?.ribbonOffsetInTexcoord1 === true;
+    const usesFlatGeometrySmoothing = options.generatorClass === "FlatGeometryBrush";
     out.uv1Size = hasVectorOffset ? 3 : 0;
     if (options.generatorClass === "QuadStripUnitizedUVBrush") return $6fafcf15f6b61d60$var$generateUnitizedRibbonGeometry(stroke, family, options, out);
     const pointCount = stroke.controlPoints.length;
@@ -243,6 +244,13 @@ function $6fafcf15f6b61d60$var$generateRibbonGeometry(stroke, family, options, o
     ];
     for(let index = 0; index < pointCount; index += 1){
         const point = stroke.controlPoints[index];
+        const previousPoint = stroke.controlPoints[Math.max(0, index - 1)];
+        const nextPoint = stroke.controlPoints[Math.min(pointCount - 1, index + 1)];
+        const center = usesFlatGeometrySmoothing && index > 0 ? [
+            previousPoint.position[0] * 0.3 + point.position[0] * 0.4 + nextPoint.position[0] * 0.3,
+            previousPoint.position[1] * 0.3 + point.position[1] * 0.4 + nextPoint.position[1] * 0.3,
+            previousPoint.position[2] * 0.3 + point.position[2] * 0.4 + nextPoint.position[2] * 0.3
+        ] : point.position;
         if (ribbonBreakBefore[index] === 1) {
             sectionRandom = $6fafcf15f6b61d60$var$statelessRandom01(stroke.seed, index);
             atlasRow = usesDistanceUvs ? Math.floor(sectionRandom * 3331) % atlasRows : Math.floor(sectionRandom * atlasRows);
@@ -263,14 +271,14 @@ function $6fafcf15f6b61d60$var$generateRibbonGeometry(stroke, family, options, o
         const leftVertex = index * 2;
         const rightVertex = leftVertex + 1;
         $6fafcf15f6b61d60$var$writePosition(positions, leftVertex, [
-            point.position[0] - right[0] * width,
-            point.position[1] - right[1] * width,
-            point.position[2] - right[2] * width
+            center[0] - right[0] * width,
+            center[1] - right[1] * width,
+            center[2] - right[2] * width
         ]);
         $6fafcf15f6b61d60$var$writePosition(positions, rightVertex, [
-            point.position[0] + right[0] * width,
-            point.position[1] + right[1] * width,
-            point.position[2] + right[2] * width
+            center[0] + right[0] * width,
+            center[1] + right[1] * width,
+            center[2] + right[2] * width
         ]);
         $6fafcf15f6b61d60$var$writeNormal(normals, leftVertex, normal);
         $6fafcf15f6b61d60$var$writeNormal(normals, rightVertex, normal);
