@@ -638,6 +638,15 @@ function generateRibbonGeometry(
       frontIndexCount / 6,
       hasBackfaces,
     );
+    if (options.generatorClass === "QuadStripBrushDistanceUV") {
+      applyQuadStripDistanceOpacityFade(
+        out,
+        ribbonBreakBefore,
+        renderPointCount,
+        frontIndexCount / 6,
+        hasBackfaces,
+      );
+    }
   }
 
   out.family = family;
@@ -982,6 +991,100 @@ function updateQuadStripTangents(
     }
   }
 }
+
+function applyQuadStripDistanceOpacityFade(
+  out: BrushGeometryArrays,
+  breakBefore: Uint8Array,
+  pointCount: number,
+  frontSolidCount: number,
+  hasBackfaces: boolean,
+): void {
+  let sectionStart = 0;
+  let solid = 0;
+  for (let segment = 0; segment < pointCount - 1; segment += 1) {
+    if (breakBefore[segment + 1] === 1) {
+      applyQuadStripSectionOpacityFade(out, sectionStart, solid);
+      sectionStart = solid;
+      continue;
+    }
+    solid += 1;
+  }
+  applyQuadStripSectionOpacityFade(out, sectionStart, solid);
+
+  if (hasBackfaces) {
+    const backVertexOffset = frontSolidCount * 6;
+    const reverse = [0, 2, 1, 3, 5, 4] as const;
+    for (let frontSolid = 0; frontSolid < frontSolidCount; frontSolid += 1) {
+      const frontVertex = frontSolid * 6;
+      const backVertex = backVertexOffset + frontVertex;
+      for (let corner = 0; corner < 6; corner += 1) {
+        out.colors[(backVertex + corner) * 4 + 3] =
+          out.colors[(frontVertex + reverse[corner]) * 4 + 3];
+      }
+    }
+  }
+}
+
+function applyQuadStripSectionOpacityFade(
+  out: BrushGeometryArrays,
+  firstSolid: number,
+  endSolid: number,
+): void {
+  let distanceFromLeadingEdge = 0;
+  for (let solid = endSolid - 1; solid >= firstSolid; solid -= 1) {
+    const leadingAlpha = quantizeColorByte(
+      Math.min(1, distanceFromLeadingEdge / QUAD_STRIP_OPACITY_FADE_METERS),
+    );
+    distanceFromLeadingEdge += getQuadStripSolidLength(out.positions, solid);
+    const trailingAlpha =
+      solid === firstSolid
+        ? 0
+        : quantizeColorByte(
+            Math.min(
+              1,
+              distanceFromLeadingEdge / QUAD_STRIP_OPACITY_FADE_METERS,
+            ),
+          );
+    const vertex = solid * 6;
+    out.colors[vertex * 4 + 3] = trailingAlpha;
+    out.colors[(vertex + 2) * 4 + 3] = trailingAlpha;
+    out.colors[(vertex + 3) * 4 + 3] = trailingAlpha;
+    out.colors[(vertex + 1) * 4 + 3] = leadingAlpha;
+    out.colors[(vertex + 4) * 4 + 3] = leadingAlpha;
+    out.colors[(vertex + 5) * 4 + 3] = leadingAlpha;
+  }
+}
+
+function getQuadStripSolidLength(
+  positions: Float32Array,
+  solid: number,
+): number {
+  const vertex = solid * 6;
+  return (
+    distanceBetweenPositionVertices(positions, vertex, vertex + 1) +
+    distanceBetweenPositionVertices(positions, vertex + 3, vertex + 5)
+  ) * 0.5;
+}
+
+function distanceBetweenPositionVertices(
+  positions: Float32Array,
+  firstVertex: number,
+  secondVertex: number,
+): number {
+  const first = firstVertex * 3;
+  const second = secondVertex * 3;
+  return Math.hypot(
+    positions[second] - positions[first],
+    positions[second + 1] - positions[first + 1],
+    positions[second + 2] - positions[first + 2],
+  );
+}
+
+function quantizeColorByte(value: number): number {
+  return Math.floor(value * 255) / 255;
+}
+
+const QUAD_STRIP_OPACITY_FADE_METERS = 0.025;
 
 function averageQuadStripSolid(
   out: BrushGeometryArrays,

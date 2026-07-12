@@ -247,7 +247,7 @@ test( 'smooths ribbon pressure over the Open Brush distance window', () => {
 	const quad = generateBrushGeometry( stroke, 'ribbon', {
 		pressureSizeRange: [ 0, 1 ],
 		pressureOpacityRange: [ 0, 1 ],
-		generatorClass: 'QuadStripBrushDistanceUV'
+		generatorClass: 'QuadStripBrushStretchUV'
 	} );
 	const flatM11 = generateBrushGeometry( stroke, 'ribbon', {
 		pressureSizeRange: [ 0, 1 ],
@@ -263,6 +263,28 @@ test( 'smooths ribbon pressure over the Open Brush distance window', () => {
 		assertClose( quad.colors[ vertex * 4 + 3 ], quadLeadingWidth );
 	}
 	assertClose( flatWidth, 0.9 );
+
+} );
+
+test( 'fades DistanceUV QuadStrip endpoints over the source distance', () => {
+
+	const stroke = createStroke();
+	stroke.brushSize = 0.01;
+	stroke.controlPoints[ 1 ].position = [ 0.02, 0, 0 ];
+	stroke.controlPoints.push( {
+		position: [ 0.04, 0, 0 ],
+		orientation: [ 0, 0, 0, 1 ],
+		pressure: 1,
+		timestampMs: 32
+	} );
+	const geometry = generateBrushGeometry( stroke, 'ribbon', {
+		generatorClass: 'QuadStripBrushDistanceUV'
+	} );
+	const fadeAlpha = 203 / 255;
+	assertClose( geometry.colors[ 3 ], 0 );
+	assertClose( geometry.colors[ 7 ], fadeAlpha );
+	assertClose( geometry.colors[ 6 * 4 + 3 ], fadeAlpha );
+	assertClose( geometry.colors[ 7 * 4 + 3 ], 0 );
 
 } );
 

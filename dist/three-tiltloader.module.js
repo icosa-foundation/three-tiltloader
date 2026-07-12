@@ -433,6 +433,7 @@ function $6fafcf15f6b61d60$var$generateRibbonGeometry(stroke, family, options, o
         $6fafcf15f6b61d60$var$expandRibbonTriangleSoup(out, ribbonBreakBefore, renderPointCount, frontVertexCount, frontIndexCount, hasBackfaces, vertexCount);
         $6fafcf15f6b61d60$var$applyQuadStripPositionQuads(out, stroke, options, ribbonBreakBefore, renderPointCount);
         $6fafcf15f6b61d60$var$applyQuadStripMidpointFusion(out, ribbonBreakBefore, renderPointCount, frontIndexCount / 6, hasBackfaces);
+        if (options.generatorClass === "QuadStripBrushDistanceUV") $6fafcf15f6b61d60$var$applyQuadStripDistanceOpacityFade(out, ribbonBreakBefore, renderPointCount, frontIndexCount / 6, hasBackfaces);
     }
     out.family = family;
     out.vertexCount = vertexCount;
@@ -645,6 +646,63 @@ function $6fafcf15f6b61d60$var$updateQuadStripTangents(out, solidCount) {
         for(let corner = 3; corner < 6; corner += 1)$6fafcf15f6b61d60$var$writeOrthonormalTangent(out.tangents, out.normals, vertex + corner, triangleTangent);
     }
 }
+function $6fafcf15f6b61d60$var$applyQuadStripDistanceOpacityFade(out, breakBefore, pointCount, frontSolidCount, hasBackfaces) {
+    let sectionStart = 0;
+    let solid = 0;
+    for(let segment = 0; segment < pointCount - 1; segment += 1){
+        if (breakBefore[segment + 1] === 1) {
+            $6fafcf15f6b61d60$var$applyQuadStripSectionOpacityFade(out, sectionStart, solid);
+            sectionStart = solid;
+            continue;
+        }
+        solid += 1;
+    }
+    $6fafcf15f6b61d60$var$applyQuadStripSectionOpacityFade(out, sectionStart, solid);
+    if (hasBackfaces) {
+        const backVertexOffset = frontSolidCount * 6;
+        const reverse = [
+            0,
+            2,
+            1,
+            3,
+            5,
+            4
+        ];
+        for(let frontSolid = 0; frontSolid < frontSolidCount; frontSolid += 1){
+            const frontVertex = frontSolid * 6;
+            const backVertex = backVertexOffset + frontVertex;
+            for(let corner = 0; corner < 6; corner += 1)out.colors[(backVertex + corner) * 4 + 3] = out.colors[(frontVertex + reverse[corner]) * 4 + 3];
+        }
+    }
+}
+function $6fafcf15f6b61d60$var$applyQuadStripSectionOpacityFade(out, firstSolid, endSolid) {
+    let distanceFromLeadingEdge = 0;
+    for(let solid = endSolid - 1; solid >= firstSolid; solid -= 1){
+        const leadingAlpha = $6fafcf15f6b61d60$var$quantizeColorByte(Math.min(1, distanceFromLeadingEdge / $6fafcf15f6b61d60$var$QUAD_STRIP_OPACITY_FADE_METERS));
+        distanceFromLeadingEdge += $6fafcf15f6b61d60$var$getQuadStripSolidLength(out.positions, solid);
+        const trailingAlpha = solid === firstSolid ? 0 : $6fafcf15f6b61d60$var$quantizeColorByte(Math.min(1, distanceFromLeadingEdge / $6fafcf15f6b61d60$var$QUAD_STRIP_OPACITY_FADE_METERS));
+        const vertex = solid * 6;
+        out.colors[vertex * 4 + 3] = trailingAlpha;
+        out.colors[(vertex + 2) * 4 + 3] = trailingAlpha;
+        out.colors[(vertex + 3) * 4 + 3] = trailingAlpha;
+        out.colors[(vertex + 1) * 4 + 3] = leadingAlpha;
+        out.colors[(vertex + 4) * 4 + 3] = leadingAlpha;
+        out.colors[(vertex + 5) * 4 + 3] = leadingAlpha;
+    }
+}
+function $6fafcf15f6b61d60$var$getQuadStripSolidLength(positions, solid) {
+    const vertex = solid * 6;
+    return ($6fafcf15f6b61d60$var$distanceBetweenPositionVertices(positions, vertex, vertex + 1) + $6fafcf15f6b61d60$var$distanceBetweenPositionVertices(positions, vertex + 3, vertex + 5)) * 0.5;
+}
+function $6fafcf15f6b61d60$var$distanceBetweenPositionVertices(positions, firstVertex, secondVertex) {
+    const first = firstVertex * 3;
+    const second = secondVertex * 3;
+    return Math.hypot(positions[second] - positions[first], positions[second + 1] - positions[first + 1], positions[second + 2] - positions[first + 2]);
+}
+function $6fafcf15f6b61d60$var$quantizeColorByte(value) {
+    return Math.floor(value * 255) / 255;
+}
+const $6fafcf15f6b61d60$var$QUAD_STRIP_OPACITY_FADE_METERS = 0.025;
 function $6fafcf15f6b61d60$var$averageQuadStripSolid(out, backSolid, middleSolid, frontSolid) {
     const backVertex = backSolid * 6;
     const middleVertex = middleSolid * 6;
