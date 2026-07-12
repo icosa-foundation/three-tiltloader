@@ -42,7 +42,7 @@ export interface StrokeData {
   brushSize: number;
   brushScale: number;
   controlPoints: ControlPoint[];
-  flags: StrokeFlags;
+  flags: number;
   seed: number;
   groupId: number;
   guid: string;
