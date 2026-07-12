@@ -60,6 +60,7 @@ function $6fafcf15f6b61d60$export$cbaccd875830d3d0() {
         ribbonSectionLengths: new Float32Array($6fafcf15f6b61d60$var$INITIAL_VERTEX_CAPACITY),
         ribbonSmoothedPressures: new Float32Array($6fafcf15f6b61d60$var$INITIAL_VERTEX_CAPACITY),
         geometrySmoothedPressures: new Float32Array($6fafcf15f6b61d60$var$INITIAL_VERTEX_CAPACITY),
+        geometrySmoothedPositions: new Float32Array($6fafcf15f6b61d60$var$INITIAL_VERTEX_CAPACITY * 3),
         uv0Size: 2,
         uv1Size: 0,
         indices: new Uint32Array($6fafcf15f6b61d60$var$INITIAL_INDEX_CAPACITY),
@@ -124,6 +125,7 @@ function $6fafcf15f6b61d60$var$ensureGeometryPressureCapacity(out, pointCount) {
     let capacity = Math.max(out.geometrySmoothedPressures.length, $6fafcf15f6b61d60$var$INITIAL_VERTEX_CAPACITY);
     while(capacity < pointCount)capacity *= 2;
     out.geometrySmoothedPressures = new Float32Array(capacity);
+    out.geometrySmoothedPositions = new Float32Array(capacity * 3);
 }
 function $6fafcf15f6b61d60$var$resetBounds(bounds) {
     bounds.min[0] = Number.POSITIVE_INFINITY;
@@ -765,13 +767,14 @@ function $6fafcf15f6b61d60$var$generateSquare3DPrintGeometry(stroke, options, ou
     out.uv0Size = 2;
     $6fafcf15f6b61d60$var$ensureGeometryPressureCapacity(out, stroke.controlPoints.length);
     $6fafcf15f6b61d60$var$prepareGeometrySmoothedPressures(stroke, options, out);
+    $6fafcf15f6b61d60$var$prepareGeometrySmoothedPositions(stroke, out);
     const segments = [
         undefined
     ];
     const pressureSizeMin = $6fafcf15f6b61d60$var$normalizePressureSizeMin(options.pressureSizeRange?.[0]);
     let previousBasis;
     for(let i = 1; i < stroke.controlPoints.length; i += 1){
-        const basis = $6fafcf15f6b61d60$var$createPrint3DBasis(stroke, i, pressureSizeMin, out.geometrySmoothedPressures);
+        const basis = $6fafcf15f6b61d60$var$createPrint3DBasis(stroke, i, pressureSizeMin, out.geometrySmoothedPressures, out.geometrySmoothedPositions);
         const breaksForRotation = basis !== undefined && previousBasis !== undefined && ($6fafcf15f6b61d60$var$dotVec3(previousBasis.planeNormal, basis.planeNormal) < 0.94 || $6fafcf15f6b61d60$var$dotVec3(previousBasis.planeRight, basis.planeRight) < 0.94);
         segments.push(breaksForRotation ? undefined : basis);
         previousBasis = basis;
@@ -786,7 +789,7 @@ function $6fafcf15f6b61d60$var$generateSquare3DPrintGeometry(stroke, options, ou
         const firstSegment = segment;
         while(segment + 1 < segments.length && segments[segment + 1])segment += 1;
         const lastSegment = segment;
-        $6fafcf15f6b61d60$var$appendPrint3DSection(stroke, segments, firstSegment, lastSegment, positions, normals, indices);
+        $6fafcf15f6b61d60$var$appendPrint3DSection(segments, firstSegment, lastSegment, positions, normals, indices, out.geometrySmoothedPositions);
         segment += 1;
     }
     const vertexCount = positions.length / 3;
@@ -820,10 +823,21 @@ function $6fafcf15f6b61d60$var$generateSquare3DPrintGeometry(stroke, options, ou
     out.indexCount = indices.length;
     return reallocated;
 }
-function $6fafcf15f6b61d60$var$createPrint3DBasis(stroke, index, pressureSizeMin, smoothedPressures) {
-    const previous = stroke.controlPoints[index - 1];
+function $6fafcf15f6b61d60$var$createPrint3DBasis(stroke, index, pressureSizeMin, smoothedPressures, smoothedPositions) {
     const current = stroke.controlPoints[index];
-    const tangent = $6fafcf15f6b61d60$var$subtractVec3(current.position, previous.position);
+    const previousPosition = [
+        0,
+        0,
+        0
+    ];
+    const currentPosition = [
+        0,
+        0,
+        0
+    ];
+    $6fafcf15f6b61d60$var$readScratchVec3(smoothedPositions, index - 1, previousPosition);
+    $6fafcf15f6b61d60$var$readScratchVec3(smoothedPositions, index, currentPosition);
+    const tangent = $6fafcf15f6b61d60$var$subtractVec3(currentPosition, previousPosition);
     const distance = Math.sqrt($6fafcf15f6b61d60$var$dotVec3(tangent, tangent));
     if (distance < 0.003 || !$6fafcf15f6b61d60$var$normalizeInPlace(tangent)) return undefined;
     const planeNormal = [
@@ -867,21 +881,29 @@ function $6fafcf15f6b61d60$var$createPrint3DBasis(stroke, index, pressureSizeMin
         startHalfSize: startHalfSize
     };
 }
-function $6fafcf15f6b61d60$var$appendPrint3DSection(stroke, segments, firstSegment, lastSegment, positions, normals, indices) {
+function $6fafcf15f6b61d60$var$appendPrint3DSection(segments, firstSegment, lastSegment, positions, normals, indices, smoothedPositions) {
     const firstBasis = segments[firstSegment];
-    const startCap = $6fafcf15f6b61d60$var$appendPrint3DCap(stroke.controlPoints[firstSegment - 1].position, firstBasis, false, positions, normals, firstBasis.startHalfSize);
-    const firstRing = $6fafcf15f6b61d60$var$appendPrint3DRing(stroke.controlPoints[firstSegment - 1].position, firstBasis, positions, normals, firstBasis.startHalfSize);
+    const center = [
+        0,
+        0,
+        0
+    ];
+    $6fafcf15f6b61d60$var$readScratchVec3(smoothedPositions, firstSegment - 1, center);
+    const startCap = $6fafcf15f6b61d60$var$appendPrint3DCap(center, firstBasis, false, positions, normals, firstBasis.startHalfSize);
+    const firstRing = $6fafcf15f6b61d60$var$appendPrint3DRing(center, firstBasis, positions, normals, firstBasis.startHalfSize);
     $6fafcf15f6b61d60$var$appendTriangle(indices, startCap + 2, startCap + 3, startCap + 1);
     $6fafcf15f6b61d60$var$appendTriangle(indices, startCap + 1, startCap + 3, startCap);
     $6fafcf15f6b61d60$var$appendPrint3DCapToRing(indices, firstRing, startCap, true);
     let previousRing = firstRing;
     for(let i = firstSegment; i <= lastSegment; i += 1){
-        const ring = $6fafcf15f6b61d60$var$appendPrint3DRing(stroke.controlPoints[i].position, segments[i], positions, normals);
+        $6fafcf15f6b61d60$var$readScratchVec3(smoothedPositions, i, center);
+        const ring = $6fafcf15f6b61d60$var$appendPrint3DRing(center, segments[i], positions, normals);
         $6fafcf15f6b61d60$var$appendPrint3DMiddle(indices, previousRing, ring);
         previousRing = ring;
     }
     const lastBasis = segments[lastSegment];
-    const endCap = $6fafcf15f6b61d60$var$appendPrint3DCap(stroke.controlPoints[lastSegment].position, lastBasis, true, positions, normals);
+    $6fafcf15f6b61d60$var$readScratchVec3(smoothedPositions, lastSegment, center);
+    const endCap = $6fafcf15f6b61d60$var$appendPrint3DCap(center, lastBasis, true, positions, normals);
     $6fafcf15f6b61d60$var$appendPrint3DCapToRing(indices, previousRing, endCap, false);
     $6fafcf15f6b61d60$var$appendTriangle(indices, endCap + 1, endCap, endCap + 2);
     $6fafcf15f6b61d60$var$appendTriangle(indices, endCap + 2, endCap, endCap + 3);
@@ -1506,8 +1528,10 @@ function $6fafcf15f6b61d60$var$generateTubeGeometry(stroke, options, out) {
     const maximumIndexCount = segmentCount * sideCount * 6 + (hasCaps ? maximumSectionCount * 2 * sideCount * 3 : 0);
     const reallocated = $6fafcf15f6b61d60$var$ensureGeometryCapacity(out, maximumVertexCount, maximumIndexCount);
     $6fafcf15f6b61d60$var$ensureTubeScratchCapacity(out, pointCount);
+    $6fafcf15f6b61d60$var$ensureGeometryPressureCapacity(out, pointCount);
     $6fafcf15f6b61d60$var$prepareTubeSmoothedPressures(stroke, options, out);
-    const { positions: positions, normals: normals, tangents: tangents, colors: colors, uvs: uvs, packedUvs: packedUvs, indices: indices, bounds: bounds, tubeBreakBefore: tubeBreakBefore, tubeFrameRights: tubeFrameRights, tubeFrameUps: tubeFrameUps, tubeTangents: tubeTangents, tubeRadii: tubeRadii, tubeRingUs: tubeRingUs, tubeOpacities: tubeOpacities, tubeSmoothedPressures: tubeSmoothedPressures } = out;
+    $6fafcf15f6b61d60$var$prepareGeometrySmoothedPositions(stroke, out);
+    const { positions: positions, normals: normals, tangents: tangents, colors: colors, uvs: uvs, packedUvs: packedUvs, indices: indices, bounds: bounds, tubeBreakBefore: tubeBreakBefore, tubeFrameRights: tubeFrameRights, tubeFrameUps: tubeFrameUps, tubeTangents: tubeTangents, tubeRadii: tubeRadii, tubeRingUs: tubeRingUs, tubeOpacities: tubeOpacities, tubeSmoothedPressures: tubeSmoothedPressures, geometrySmoothedPositions: geometrySmoothedPositions } = out;
     const pressureSizeMin = $6fafcf15f6b61d60$var$normalizePressureSizeMin(options.pressureSizeRange?.[0]);
     const pressureOpacityMin = $6fafcf15f6b61d60$var$normalizePressureOpacityMin(options.pressureOpacityRange);
     const pressureOpacityMax = $6fafcf15f6b61d60$var$normalizePressureOpacityMax(options.pressureOpacityRange);
@@ -1523,7 +1547,7 @@ function $6fafcf15f6b61d60$var$generateTubeGeometry(stroke, options, out) {
     const capAspect = $6fafcf15f6b61d60$var$normalizeTubeCapAspect(options.geometryParams?.tubeCapAspect);
     const shapeModifier = $6fafcf15f6b61d60$var$normalizeTubeShapeModifier(options.geometryParams?.tubeShapeModifier);
     const breakAngleMultiplier = $6fafcf15f6b61d60$var$normalizeTubeBreakAngleMultiplier(options.geometryParams?.tubeBreakAngleMultiplier);
-    const totalStrokeLength = $6fafcf15f6b61d60$var$measureStrokeLength(stroke);
+    const totalStrokeLength = $6fafcf15f6b61d60$var$measureScratchPathLength(geometrySmoothedPositions, pointCount);
     let runningDistance = 0;
     let u = random01;
     // Frame state: right/up transported along the stroke by the tangent-to-
@@ -1574,12 +1598,18 @@ function $6fafcf15f6b61d60$var$generateTubeGeometry(stroke, options, out) {
         0,
         0
     ];
+    const center = [
+        0,
+        0,
+        0
+    ];
     for(let pointIndex = 0; pointIndex < pointCount; pointIndex += 1){
         const point = stroke.controlPoints[pointIndex];
+        $6fafcf15f6b61d60$var$readScratchVec3(geometrySmoothedPositions, pointIndex, center);
         const radius = localBrushSize * $6fafcf15f6b61d60$var$getPressureSizeMultiplier(tubeSmoothedPressures[pointIndex], pressureSizeMin) * 0.5;
         let segmentLength = 0;
         if (pointIndex > 0) {
-            segmentLength = $6fafcf15f6b61d60$var$distanceBetweenControlPoints(stroke.controlPoints[pointIndex - 1], point);
+            segmentLength = $6fafcf15f6b61d60$var$distanceBetweenScratchPoints(geometrySmoothedPositions, pointIndex - 1, pointIndex);
             runningDistance += segmentLength;
             const circumference = Math.max(2 * Math.PI * radius, $6fafcf15f6b61d60$var$EPSILON);
             u += segmentLength * tileRate / circumference;
@@ -1588,7 +1618,7 @@ function $6fafcf15f6b61d60$var$generateTubeGeometry(stroke, options, out) {
         const shapeScale = $6fafcf15f6b61d60$var$getTubeShapeScale(shapeModifier, progress, pointIndex, pointCount, options.geometryParams?.tubeTaperScalar);
         const petalOffset = shapeModifier === 5 ? Math.pow(progress, $6fafcf15f6b61d60$var$normalizeTubePetalExponent(options.geometryParams?.tubePetalDisplacementExponent)) * $6fafcf15f6b61d60$var$normalizeTubePetalAmount(options.geometryParams?.tubePetalDisplacementAmount) * localBrushSize * tubeSmoothedPressures[pointIndex] : 0;
         const opacity = $6fafcf15f6b61d60$var$getPressureOpacityMultiplier(tubeSmoothedPressures[pointIndex], pressureOpacityMin, pressureOpacityMax) * descriptorOpacity;
-        $6fafcf15f6b61d60$var$writeCentralDifferenceTangent(stroke, pointIndex, previousTangent, tangent);
+        $6fafcf15f6b61d60$var$writeScratchCentralDifferenceTangent(geometrySmoothedPositions, pointCount, pointIndex, previousTangent, tangent);
         if (pointIndex === 0) $6fafcf15f6b61d60$var$initializeTubeFrame(point.orientation, tangent, bootstrapUp, frameRight, frameUp);
         else {
             $6fafcf15f6b61d60$var$copyVec3(frameRight, priorFrameRight);
@@ -1634,9 +1664,9 @@ function $6fafcf15f6b61d60$var$generateTubeGeometry(stroke, options, out) {
                     const vertex = ringBase + side * 2 + duplicate;
                     $6fafcf15f6b61d60$var$setTubeRadial(frameRight, frameUp, angle + (duplicate === 0 ? -halfStep : halfStep), radial);
                     $6fafcf15f6b61d60$var$writePosition(positions, vertex, [
-                        point.position[0] + displacement[0] * radius * shapeScale + radial[0] * petalOffset,
-                        point.position[1] + displacement[1] * radius * shapeScale + radial[1] * petalOffset,
-                        point.position[2] + displacement[2] * radius * shapeScale + radial[2] * petalOffset
+                        center[0] + displacement[0] * radius * shapeScale + radial[0] * petalOffset,
+                        center[1] + displacement[1] * radius * shapeScale + radial[1] * petalOffset,
+                        center[2] + displacement[2] * radius * shapeScale + radial[2] * petalOffset
                     ]);
                     $6fafcf15f6b61d60$var$writeNormal(normals, vertex, radial);
                     $6fafcf15f6b61d60$var$writeTangent(tangents, vertex, tangent, 1);
@@ -1661,9 +1691,9 @@ function $6fafcf15f6b61d60$var$generateTubeGeometry(stroke, options, out) {
             const angle = ringIndex === sideCount ? 0 : fraction * Math.PI * 2;
             $6fafcf15f6b61d60$var$setTubeRadial(frameRight, frameUp, angle, radial);
             $6fafcf15f6b61d60$var$writePosition(positions, vertex, [
-                point.position[0] + radial[0] * (radius * shapeScale + petalOffset),
-                point.position[1] + radial[1] * (radius * shapeScale + petalOffset),
-                point.position[2] + radial[2] * (radius * shapeScale + petalOffset)
+                center[0] + radial[0] * (radius * shapeScale + petalOffset),
+                center[1] + radial[1] * (radius * shapeScale + petalOffset),
+                center[2] + radial[2] * (radius * shapeScale + petalOffset)
             ]);
             $6fafcf15f6b61d60$var$writeNormal(normals, vertex, radial);
             $6fafcf15f6b61d60$var$writeTangent(tangents, vertex, tangent, 1);
@@ -1729,7 +1759,7 @@ function $6fafcf15f6b61d60$var$generateTubeGeometry(stroke, options, out) {
             if (sectionEnd > sectionStart) for(let capIndex = 0; capIndex < 2; capIndex += 1){
                 const isStart = capIndex === 0;
                 const pointIndex = isStart ? sectionStart : sectionEnd;
-                const point = stroke.controlPoints[pointIndex];
+                $6fafcf15f6b61d60$var$readScratchVec3(geometrySmoothedPositions, pointIndex, center);
                 const capBase = pointCount * ringVertexCount + capVertexCount;
                 capVertexCount += sideCount;
                 const ringBase = pointIndex * ringVertexCount;
@@ -1740,9 +1770,9 @@ function $6fafcf15f6b61d60$var$generateTubeGeometry(stroke, options, out) {
                 const ringU = tubeRingUs[pointIndex];
                 const opacity = tubeOpacities[pointIndex];
                 const direction = isStart ? -1 : 1;
-                capTip[0] = point.position[0] + capTangent[0] * radius * capAspect * direction;
-                capTip[1] = point.position[1] + capTangent[1] * radius * capAspect * direction;
-                capTip[2] = point.position[2] + capTangent[2] * radius * capAspect * direction;
+                capTip[0] = center[0] + capTangent[0] * radius * capAspect * direction;
+                capTip[1] = center[1] + capTangent[1] * radius * capAspect * direction;
+                capTip[2] = center[2] + capTangent[2] * radius * capAspect * direction;
                 const diagonal = radius * Math.hypot(1, capAspect);
                 const uRate = tileRate / Math.max(2 * Math.PI * radius, $6fafcf15f6b61d60$var$EPSILON);
                 const capU = usesStretchUvs ? ringU : ringU + direction * uRate * diagonal;
@@ -2331,8 +2361,36 @@ function $6fafcf15f6b61d60$var$prepareGeometrySmoothedPressures(stroke, options,
         pressures[index] = retained * pressures[index - 1] + (1 - retained) * $6fafcf15f6b61d60$var$clamp01(stroke.controlPoints[index].pressure);
     }
 }
+function $6fafcf15f6b61d60$var$prepareGeometrySmoothedPositions(stroke, out) {
+    const pointCount = stroke.controlPoints.length;
+    for(let index = 0; index < pointCount; index += 1){
+        const current = stroke.controlPoints[index].position;
+        const offset = index * 3;
+        if (index === 0 || index === pointCount - 1) {
+            out.geometrySmoothedPositions[offset] = current[0];
+            out.geometrySmoothedPositions[offset + 1] = current[1];
+            out.geometrySmoothedPositions[offset + 2] = current[2];
+        } else {
+            const previous = stroke.controlPoints[index - 1].position;
+            const next = stroke.controlPoints[index + 1].position;
+            out.geometrySmoothedPositions[offset] = (previous[0] + 2 * current[0] + next[0]) * 0.25;
+            out.geometrySmoothedPositions[offset + 1] = (previous[1] + 2 * current[1] + next[1]) * 0.25;
+            out.geometrySmoothedPositions[offset + 2] = (previous[2] + 2 * current[2] + next[2]) * 0.25;
+        }
+    }
+}
 function $6fafcf15f6b61d60$var$distanceBetweenControlPoints(left, right) {
     return Math.hypot(right.position[0] - left.position[0], right.position[1] - left.position[1], right.position[2] - left.position[2]);
+}
+function $6fafcf15f6b61d60$var$distanceBetweenScratchPoints(positions, leftIndex, rightIndex) {
+    const left = leftIndex * 3;
+    const right = rightIndex * 3;
+    return Math.hypot(positions[right] - positions[left], positions[right + 1] - positions[left + 1], positions[right + 2] - positions[left + 2]);
+}
+function $6fafcf15f6b61d60$var$measureScratchPathLength(positions, pointCount) {
+    let length = 0;
+    for(let index = 1; index < pointCount; index += 1)length += $6fafcf15f6b61d60$var$distanceBetweenScratchPoints(positions, index - 1, index);
+    return length;
 }
 function $6fafcf15f6b61d60$var$clamp01(value) {
     if (!Number.isFinite(value)) return 0;
@@ -2581,6 +2639,23 @@ function $6fafcf15f6b61d60$var$normalizeInPlace(v) {
     out[0] = next[0] - previous[0];
     out[1] = next[1] - previous[1];
     out[2] = next[2] - previous[2];
+    if (!$6fafcf15f6b61d60$var$normalizeInPlace(out)) {
+        out[0] = previousTangent[0];
+        out[1] = previousTangent[1];
+        out[2] = previousTangent[2];
+        if (!$6fafcf15f6b61d60$var$normalizeInPlace(out)) {
+            out[0] = $6fafcf15f6b61d60$var$VEC_FORWARD[0];
+            out[1] = $6fafcf15f6b61d60$var$VEC_FORWARD[1];
+            out[2] = $6fafcf15f6b61d60$var$VEC_FORWARD[2];
+        }
+    }
+}
+function $6fafcf15f6b61d60$var$writeScratchCentralDifferenceTangent(positions, pointCount, index, previousTangent, out) {
+    const previousOffset = Math.max(0, index - 1) * 3;
+    const nextOffset = Math.min(pointCount - 1, index + 1) * 3;
+    out[0] = positions[nextOffset] - positions[previousOffset];
+    out[1] = positions[nextOffset + 1] - positions[previousOffset + 1];
+    out[2] = positions[nextOffset + 2] - positions[previousOffset + 2];
     if (!$6fafcf15f6b61d60$var$normalizeInPlace(out)) {
         out[0] = previousTangent[0];
         out[1] = previousTangent[1];

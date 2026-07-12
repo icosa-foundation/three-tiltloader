@@ -334,3 +334,45 @@ test( 'smooths spray and Genius particle pressure like GeometryBrush', () => {
 	assertClose( genius.colors[ 3 ], expected );
 
 } );
+
+test( 'smooths finalized Tube and 3D Print knot positions', () => {
+
+	const stroke = createStroke();
+	stroke.controlPoints[ 0 ].position = [ 0, 0, 0 ];
+	stroke.controlPoints[ 1 ].position = [ 0, 1, 0 ];
+	stroke.controlPoints.push( {
+		position: [ 1, 2, 0 ],
+		orientation: [ 0, 0, 0, 1 ],
+		pressure: 1,
+		timestampMs: 32
+	} );
+	const tube = generateBrushGeometry( stroke, 'tube', {
+		generatorClass: 'TubeBrush',
+		pressureSizeRange: [ 1, 1 ],
+		geometryParams: { tubeSideCount: 4, tubeEndCaps: false }
+	} );
+	const middleTubeRing = 5;
+	assertClose(
+		( tube.positions[ middleTubeRing * 3 ] + tube.positions[ ( middleTubeRing + 2 ) * 3 ] ) * 0.5,
+		0.25
+	);
+	assertClose(
+		( tube.positions[ middleTubeRing * 3 + 1 ] + tube.positions[ ( middleTubeRing + 2 ) * 3 + 1 ] ) * 0.5,
+		1
+	);
+
+	const print = generateBrushGeometry( stroke, 'print3d', {
+		generatorClass: 'Square3DPrintBrush',
+		pressureSizeRange: [ 1, 1 ]
+	} );
+	const middlePrintRing = 12;
+	let centerX = 0;
+	let centerY = 0;
+	for ( let vertex = 0; vertex < 8; vertex += 1 ) {
+		centerX += print.positions[ ( middlePrintRing + vertex ) * 3 ];
+		centerY += print.positions[ ( middlePrintRing + vertex ) * 3 + 1 ];
+	}
+	assertClose( centerX / 8, 0.25 );
+	assertClose( centerY / 8, 1 );
+
+} );

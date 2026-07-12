@@ -64,6 +64,7 @@ export interface BrushGeometryArrays {
   ribbonSectionLengths: Float32Array;
   ribbonSmoothedPressures: Float32Array;
   geometrySmoothedPressures: Float32Array;
+  geometrySmoothedPositions: Float32Array;
   uv0Size: 2 | 3 | 4;
   uv1Size: 0 | 3 | 4;
   indices: Uint32Array;
@@ -102,6 +103,7 @@ export function createBrushGeometryArrays(): BrushGeometryArrays {
     ribbonSectionLengths: new Float32Array(INITIAL_VERTEX_CAPACITY),
     ribbonSmoothedPressures: new Float32Array(INITIAL_VERTEX_CAPACITY),
     geometrySmoothedPressures: new Float32Array(INITIAL_VERTEX_CAPACITY),
+    geometrySmoothedPositions: new Float32Array(INITIAL_VERTEX_CAPACITY * 3),
     uv0Size: 2,
     uv1Size: 0,
     indices: new Uint32Array(INITIAL_INDEX_CAPACITY),
@@ -204,6 +206,7 @@ function ensureGeometryPressureCapacity(
     capacity *= 2;
   }
   out.geometrySmoothedPressures = new Float32Array(capacity);
+  out.geometrySmoothedPositions = new Float32Array(capacity * 3);
 }
 
 function resetBounds(bounds: BrushGeometryBounds): void {
@@ -998,6 +1001,7 @@ function generateSquare3DPrintGeometry(
   out.uv0Size = 2;
   ensureGeometryPressureCapacity(out, stroke.controlPoints.length);
   prepareGeometrySmoothedPressures(stroke, options, out);
+  prepareGeometrySmoothedPositions(stroke, out);
   const segments: Array<Print3DBasis | undefined> = [undefined];
   const pressureSizeMin = normalizePressureSizeMin(options.pressureSizeRange?.[0]);
   let previousBasis: Print3DBasis | undefined;
@@ -1007,6 +1011,7 @@ function generateSquare3DPrintGeometry(
       i,
       pressureSizeMin,
       out.geometrySmoothedPressures,
+      out.geometrySmoothedPositions,
     );
     const breaksForRotation =
       basis !== undefined &&
@@ -1028,13 +1033,13 @@ function generateSquare3DPrintGeometry(
     while (segment + 1 < segments.length && segments[segment + 1]) segment += 1;
     const lastSegment = segment;
     appendPrint3DSection(
-      stroke,
       segments as Print3DBasis[],
       firstSegment,
       lastSegment,
       positions,
       normals,
       indices,
+      out.geometrySmoothedPositions,
     );
     segment += 1;
   }
@@ -1061,10 +1066,14 @@ function createPrint3DBasis(
   index: number,
   pressureSizeMin: number,
   smoothedPressures: Float32Array,
+  smoothedPositions: Float32Array,
 ): Print3DBasis | undefined {
-  const previous = stroke.controlPoints[index - 1];
   const current = stroke.controlPoints[index];
-  const tangent = subtractVec3(current.position, previous.position);
+  const previousPosition: Vec3 = [0, 0, 0];
+  const currentPosition: Vec3 = [0, 0, 0];
+  readScratchVec3(smoothedPositions, index - 1, previousPosition);
+  readScratchVec3(smoothedPositions, index, currentPosition);
+  const tangent = subtractVec3(currentPosition, previousPosition);
   const distance = Math.sqrt(dotVec3(tangent, tangent));
   if (distance < 0.003 || !normalizeInPlace(tangent)) return undefined;
   const planeNormal: Vec3 = [0, 0, 0];
@@ -1102,17 +1111,19 @@ function createPrint3DBasis(
 }
 
 function appendPrint3DSection(
-  stroke: StrokeData,
   segments: Print3DBasis[],
   firstSegment: number,
   lastSegment: number,
   positions: number[],
   normals: number[],
   indices: number[],
+  smoothedPositions: Float32Array,
 ): void {
   const firstBasis = segments[firstSegment];
+  const center: Vec3 = [0, 0, 0];
+  readScratchVec3(smoothedPositions, firstSegment - 1, center);
   const startCap = appendPrint3DCap(
-    stroke.controlPoints[firstSegment - 1].position,
+    center,
     firstBasis,
     false,
     positions,
@@ -1120,7 +1131,7 @@ function appendPrint3DSection(
     firstBasis.startHalfSize,
   );
   const firstRing = appendPrint3DRing(
-    stroke.controlPoints[firstSegment - 1].position,
+    center,
     firstBasis,
     positions,
     normals,
@@ -1132,8 +1143,9 @@ function appendPrint3DSection(
 
   let previousRing = firstRing;
   for (let i = firstSegment; i <= lastSegment; i += 1) {
+    readScratchVec3(smoothedPositions, i, center);
     const ring = appendPrint3DRing(
-      stroke.controlPoints[i].position,
+      center,
       segments[i],
       positions,
       normals,
@@ -1142,8 +1154,9 @@ function appendPrint3DSection(
     previousRing = ring;
   }
   const lastBasis = segments[lastSegment];
+  readScratchVec3(smoothedPositions, lastSegment, center);
   const endCap = appendPrint3DCap(
-    stroke.controlPoints[lastSegment].position,
+    center,
     lastBasis,
     true,
     positions,
@@ -1821,7 +1834,9 @@ function generateTubeGeometry(
     maximumIndexCount,
   );
   ensureTubeScratchCapacity(out, pointCount);
+  ensureGeometryPressureCapacity(out, pointCount);
   prepareTubeSmoothedPressures(stroke, options, out);
+  prepareGeometrySmoothedPositions(stroke, out);
   const {
     positions,
     normals,
@@ -1839,6 +1854,7 @@ function generateTubeGeometry(
     tubeRingUs,
     tubeOpacities,
     tubeSmoothedPressures,
+    geometrySmoothedPositions,
   } = out;
   const pressureSizeMin = normalizePressureSizeMin(options.pressureSizeRange?.[0]);
   const pressureOpacityMin = normalizePressureOpacityMin(
@@ -1865,7 +1881,10 @@ function generateTubeGeometry(
   const breakAngleMultiplier = normalizeTubeBreakAngleMultiplier(
     options.geometryParams?.tubeBreakAngleMultiplier,
   );
-  const totalStrokeLength = measureStrokeLength(stroke);
+  const totalStrokeLength = measureScratchPathLength(
+    geometrySmoothedPositions,
+    pointCount,
+  );
   let runningDistance = 0;
   let u = random01;
 
@@ -1881,18 +1900,21 @@ function generateTubeGeometry(
   const priorFrameUp: Vec3 = [0, 0, 0];
   const radial: Vec3 = [0, 0, 0];
   const displacement: Vec3 = [0, 0, 0];
+  const center: Vec3 = [0, 0, 0];
 
   for (let pointIndex = 0; pointIndex < pointCount; pointIndex += 1) {
     const point = stroke.controlPoints[pointIndex];
+    readScratchVec3(geometrySmoothedPositions, pointIndex, center);
     const radius =
       localBrushSize *
       getPressureSizeMultiplier(tubeSmoothedPressures[pointIndex], pressureSizeMin) *
       0.5;
     let segmentLength = 0;
     if (pointIndex > 0) {
-      segmentLength = distanceBetweenControlPoints(
-        stroke.controlPoints[pointIndex - 1],
-        point,
+      segmentLength = distanceBetweenScratchPoints(
+        geometrySmoothedPositions,
+        pointIndex - 1,
+        pointIndex,
       );
       runningDistance += segmentLength;
       const circumference = Math.max(2 * Math.PI * radius, EPSILON);
@@ -1927,7 +1949,13 @@ function generateTubeGeometry(
       pressureOpacityMax,
     ) * descriptorOpacity;
 
-    writeCentralDifferenceTangent(stroke, pointIndex, previousTangent, tangent);
+    writeScratchCentralDifferenceTangent(
+      geometrySmoothedPositions,
+      pointCount,
+      pointIndex,
+      previousTangent,
+      tangent,
+    );
     if (pointIndex === 0) {
       initializeTubeFrame(
         point.orientation,
@@ -2015,13 +2043,13 @@ function generateTubeGeometry(
             radial,
           );
           writePosition(positions, vertex, [
-            point.position[0] +
+            center[0] +
               displacement[0] * radius * shapeScale +
               radial[0] * petalOffset,
-            point.position[1] +
+            center[1] +
               displacement[1] * radius * shapeScale +
               radial[1] * petalOffset,
-            point.position[2] +
+            center[2] +
               displacement[2] * radius * shapeScale +
               radial[2] * petalOffset,
           ]);
@@ -2045,9 +2073,9 @@ function generateTubeGeometry(
         const angle = (ringIndex === sideCount ? 0 : fraction * Math.PI * 2);
         setTubeRadial(frameRight, frameUp, angle, radial);
         writePosition(positions, vertex, [
-          point.position[0] + radial[0] * (radius * shapeScale + petalOffset),
-          point.position[1] + radial[1] * (radius * shapeScale + petalOffset),
-          point.position[2] + radial[2] * (radius * shapeScale + petalOffset),
+          center[0] + radial[0] * (radius * shapeScale + petalOffset),
+          center[1] + radial[1] * (radius * shapeScale + petalOffset),
+          center[2] + radial[2] * (radius * shapeScale + petalOffset),
         ]);
         writeNormal(normals, vertex, radial);
         writeTangent(tangents, vertex, tangent, 1);
@@ -2101,7 +2129,7 @@ function generateTubeGeometry(
         for (let capIndex = 0; capIndex < 2; capIndex += 1) {
           const isStart = capIndex === 0;
           const pointIndex = isStart ? sectionStart : sectionEnd;
-          const point = stroke.controlPoints[pointIndex];
+          readScratchVec3(geometrySmoothedPositions, pointIndex, center);
           const capBase =
             pointCount * ringVertexCount + capVertexCount;
           capVertexCount += sideCount;
@@ -2114,13 +2142,13 @@ function generateTubeGeometry(
           const opacity = tubeOpacities[pointIndex];
           const direction = isStart ? -1 : 1;
           capTip[0] =
-            point.position[0] +
+            center[0] +
             capTangent[0] * radius * capAspect * direction;
           capTip[1] =
-            point.position[1] +
+            center[1] +
             capTangent[1] * radius * capAspect * direction;
           capTip[2] =
-            point.position[2] +
+            center[2] +
             capTangent[2] * radius * capAspect * direction;
           const diagonal = radius * Math.hypot(1, capAspect);
           const uRate = tileRate / Math.max(2 * Math.PI * radius, EPSILON);
@@ -3145,6 +3173,31 @@ function prepareGeometrySmoothedPressures(
   }
 }
 
+function prepareGeometrySmoothedPositions(
+  stroke: StrokeData,
+  out: BrushGeometryArrays,
+): void {
+  const pointCount = stroke.controlPoints.length;
+  for (let index = 0; index < pointCount; index += 1) {
+    const current = stroke.controlPoints[index].position;
+    const offset = index * 3;
+    if (index === 0 || index === pointCount - 1) {
+      out.geometrySmoothedPositions[offset] = current[0];
+      out.geometrySmoothedPositions[offset + 1] = current[1];
+      out.geometrySmoothedPositions[offset + 2] = current[2];
+    } else {
+      const previous = stroke.controlPoints[index - 1].position;
+      const next = stroke.controlPoints[index + 1].position;
+      out.geometrySmoothedPositions[offset] =
+        (previous[0] + 2 * current[0] + next[0]) * 0.25;
+      out.geometrySmoothedPositions[offset + 1] =
+        (previous[1] + 2 * current[1] + next[1]) * 0.25;
+      out.geometrySmoothedPositions[offset + 2] =
+        (previous[2] + 2 * current[2] + next[2]) * 0.25;
+    }
+  }
+}
+
 function distanceBetweenControlPoints(
   left: StrokeData["controlPoints"][number],
   right: StrokeData["controlPoints"][number],
@@ -3154,6 +3207,31 @@ function distanceBetweenControlPoints(
     right.position[1] - left.position[1],
     right.position[2] - left.position[2],
   );
+}
+
+function distanceBetweenScratchPoints(
+  positions: Float32Array,
+  leftIndex: number,
+  rightIndex: number,
+): number {
+  const left = leftIndex * 3;
+  const right = rightIndex * 3;
+  return Math.hypot(
+    positions[right] - positions[left],
+    positions[right + 1] - positions[left + 1],
+    positions[right + 2] - positions[left + 2],
+  );
+}
+
+function measureScratchPathLength(
+  positions: Float32Array,
+  pointCount: number,
+): number {
+  let length = 0;
+  for (let index = 1; index < pointCount; index += 1) {
+    length += distanceBetweenScratchPoints(positions, index - 1, index);
+  }
+  return length;
 }
 
 function clamp01(value: number): number {
@@ -3625,6 +3703,30 @@ function writeCentralDifferenceTangent(
   out[0] = next[0] - previous[0];
   out[1] = next[1] - previous[1];
   out[2] = next[2] - previous[2];
+  if (!normalizeInPlace(out)) {
+    out[0] = previousTangent[0];
+    out[1] = previousTangent[1];
+    out[2] = previousTangent[2];
+    if (!normalizeInPlace(out)) {
+      out[0] = VEC_FORWARD[0];
+      out[1] = VEC_FORWARD[1];
+      out[2] = VEC_FORWARD[2];
+    }
+  }
+}
+
+function writeScratchCentralDifferenceTangent(
+  positions: Float32Array,
+  pointCount: number,
+  index: number,
+  previousTangent: Vec3,
+  out: Vec3,
+): void {
+  const previousOffset = Math.max(0, index - 1) * 3;
+  const nextOffset = Math.min(pointCount - 1, index + 1) * 3;
+  out[0] = positions[nextOffset] - positions[previousOffset];
+  out[1] = positions[nextOffset + 1] - positions[previousOffset + 1];
+  out[2] = positions[nextOffset + 2] - positions[previousOffset + 2];
   if (!normalizeInPlace(out)) {
     out[0] = previousTangent[0];
     out[1] = previousTangent[1];
