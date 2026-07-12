@@ -1971,7 +1971,7 @@ function $6fafcf15f6b61d60$var$generateSprayParticleGeometry(stroke, options, ou
             center[2] += randomOffset[2] * size * positionVariance;
             const opacity = randomizeAlpha ? $6fafcf15f6b61d60$var$statelessRandom01(stroke.seed, salt + 5) : baseOpacity;
             const atlasCell = usesAtlas ? Math.min(3, Math.floor($6fafcf15f6b61d60$var$statelessRandom01(stroke.seed, salt + 6) * 4)) : 0;
-            $6fafcf15f6b61d60$var$writeSprayParticleQuad(positions, normals, tangents, colors, uvs, out.uv1s, indices, bounds, quadIndex, center, rotatedFacing, rotatedRight, frameNormal, size * sizeRatioX * 0.5, size * sizeRatioY * 0.5, stroke.color, opacity, usesAtlas, atlasCell, hasLifetime, point.timestampMs * 0.001);
+            $6fafcf15f6b61d60$var$writeSprayParticleQuad(positions, normals, tangents, colors, uvs, out.uv1s, indices, bounds, quadIndex, center, rotatedFacing, rotatedRight, frameNormal, size * sizeRatioX * 0.5, size * sizeRatioY * 0.5, stroke.color, opacity, usesAtlas, atlasCell, hasLifetime, options.deterministicBirthTime === true ? 0 : point.timestampMs * 0.001);
             quadIndex += 1;
         }
     }
@@ -2083,7 +2083,7 @@ function $6fafcf15f6b61d60$var$generateGeniusParticleGeometry(stroke, options, o
         const atlasCell = atlasRows > 1 ? Math.min(3, Math.floor($6fafcf15f6b61d60$var$statelessRandom01(stroke.seed, salt + 8) * 4)) : 0;
         const halfRotationRange = $6fafcf15f6b61d60$var$normalizeNonNegative(options.geometryParams?.particleInitialRotationRange) * Math.PI / 360;
         const initialRotation = ($6fafcf15f6b61d60$var$statelessRandom01(stroke.seed, salt + 7) * 2 - 1) * halfRotationRange;
-        const birthTimeSeconds = currentPoint.timestampMs * 0.001;
+        const birthTimeSeconds = options.deterministicBirthTime === true ? 0 : currentPoint.timestampMs * 0.001;
         $6fafcf15f6b61d60$var$writeGeniusParticleQuad(positions, normals, tangents, colors, uvs, particleUvs, uv1s, indices, bounds, particleIndex, center, particleUp, particleRight, size, stroke.color, opacity, atlasRows > 1, atlasCell, initialRotation, birthTimeSeconds, previousPoint.position, currentPoint.position, ratio);
         particleWithinKnot += 1;
     }

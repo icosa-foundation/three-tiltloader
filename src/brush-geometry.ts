@@ -32,6 +32,7 @@ export interface BrushGeometryOptions {
   pressureOpacityRange?: BrushPressureOpacityRange;
   geometryParams?: BrushGeometryParams;
   generatorClass?: string;
+  deterministicBirthTime?: boolean;
 }
 
 /**
@@ -2523,7 +2524,9 @@ function generateSprayParticleGeometry(
         usesAtlas,
         atlasCell,
         hasLifetime,
-        point.timestampMs * 0.001,
+        options.deterministicBirthTime === true
+          ? 0
+          : point.timestampMs * 0.001,
       );
       quadIndex += 1;
     }
@@ -2703,7 +2706,10 @@ function generateGeniusParticleGeometry(
     const initialRotation =
       (statelessRandom01(stroke.seed, salt + 7) * 2 - 1) *
       halfRotationRange;
-    const birthTimeSeconds = currentPoint.timestampMs * 0.001;
+    const birthTimeSeconds =
+      options.deterministicBirthTime === true
+        ? 0
+        : currentPoint.timestampMs * 0.001;
     writeGeniusParticleQuad(
       positions,
       normals,
