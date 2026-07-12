@@ -242,6 +242,7 @@ function $6fafcf15f6b61d60$var$generateRibbonGeometry(stroke, family, options, o
         0,
         0
     ];
+    const flatHalfRights = usesFlatGeometrySmoothing ? new Float32Array(pointCount * 3) : undefined;
     for(let index = 0; index < pointCount; index += 1){
         const point = stroke.controlPoints[index];
         const previousPoint = stroke.controlPoints[Math.max(0, index - 1)];
@@ -268,6 +269,12 @@ function $6fafcf15f6b61d60$var$generateRibbonGeometry(stroke, family, options, o
         previousTangent[0] = tangent[0];
         previousTangent[1] = tangent[1];
         previousTangent[2] = tangent[2];
+        if (flatHalfRights) {
+            const offset = index * 3;
+            flatHalfRights[offset] = right[0] * width;
+            flatHalfRights[offset + 1] = right[1] * width;
+            flatHalfRights[offset + 2] = right[2] * width;
+        }
         const leftVertex = index * 2;
         const rightVertex = leftVertex + 1;
         $6fafcf15f6b61d60$var$writePosition(positions, leftVertex, [
@@ -313,6 +320,7 @@ function $6fafcf15f6b61d60$var$generateRibbonGeometry(stroke, family, options, o
         $6fafcf15f6b61d60$var$includeBounds(bounds, positions, leftVertex);
         $6fafcf15f6b61d60$var$includeBounds(bounds, positions, rightVertex);
     }
+    if (flatHalfRights) $6fafcf15f6b61d60$var$smoothFlatGeometryEdges(stroke, positions, flatHalfRights, ribbonBreakBefore, bounds);
     let indexOffset = 0;
     for(let segment = 0; segment < segmentCount; segment += 1){
         if (ribbonBreakBefore[segment + 1] === 1) continue;
@@ -354,6 +362,51 @@ function $6fafcf15f6b61d60$var$generateRibbonGeometry(stroke, family, options, o
     out.vertexCount = vertexCount;
     out.indexCount = indexCount;
     return reallocated;
+}
+function $6fafcf15f6b61d60$var$smoothFlatGeometryEdges(stroke, positions, halfRights, breakBefore, bounds) {
+    $6fafcf15f6b61d60$var$resetBounds(bounds);
+    const pointCount = stroke.controlPoints.length;
+    for(let index = 0; index < pointCount; index += 1){
+        const startsSection = index === 0 || breakBefore[index] === 1;
+        const endsSection = index === pointCount - 1 || breakBefore[index + 1] === 1;
+        const previousIndex = startsSection ? index : index - 1;
+        const nextIndex = endsSection ? index : index + 1;
+        const point = stroke.controlPoints[index].position;
+        const previous = stroke.controlPoints[previousIndex].position;
+        const next = stroke.controlPoints[nextIndex].position;
+        const center = startsSection ? point : [
+            previous[0] * 0.3 + point[0] * 0.4 + next[0] * 0.3,
+            previous[1] * 0.3 + point[1] * 0.4 + next[1] * 0.3,
+            previous[2] * 0.3 + point[2] * 0.4 + next[2] * 0.3
+        ];
+        const rightSource = startsSection && !endsSection ? nextIndex : index;
+        const rightOffset = rightSource * 3;
+        let rightX = halfRights[rightOffset];
+        let rightY = halfRights[rightOffset + 1];
+        let rightZ = halfRights[rightOffset + 2];
+        if (!startsSection && !endsSection) {
+            const previousOffset = previousIndex * 3;
+            const currentOffset = index * 3;
+            const nextOffset = nextIndex * 3;
+            rightX = halfRights[previousOffset] * 0.3 + halfRights[currentOffset] * 0.4 + halfRights[nextOffset] * 0.3;
+            rightY = halfRights[previousOffset + 1] * 0.3 + halfRights[currentOffset + 1] * 0.4 + halfRights[nextOffset + 1] * 0.3;
+            rightZ = halfRights[previousOffset + 2] * 0.3 + halfRights[currentOffset + 2] * 0.4 + halfRights[nextOffset + 2] * 0.3;
+        }
+        const leftVertex = index * 2;
+        const rightVertex = leftVertex + 1;
+        $6fafcf15f6b61d60$var$writePosition(positions, leftVertex, [
+            center[0] - rightX,
+            center[1] - rightY,
+            center[2] - rightZ
+        ]);
+        $6fafcf15f6b61d60$var$writePosition(positions, rightVertex, [
+            center[0] + rightX,
+            center[1] + rightY,
+            center[2] + rightZ
+        ]);
+        $6fafcf15f6b61d60$var$includeBounds(bounds, positions, leftVertex);
+        $6fafcf15f6b61d60$var$includeBounds(bounds, positions, rightVertex);
+    }
 }
 function $6fafcf15f6b61d60$var$generateUnitizedRibbonGeometry(stroke, family, options, out) {
     out.uv0Size = 2;
@@ -2054,7 +2107,7 @@ function $6fafcf15f6b61d60$var$prepareRibbonSections(stroke, out) {
         const directionX = deltaX * inverseLength;
         const directionY = deltaY * inverseLength;
         const directionZ = deltaZ * inverseLength;
-        const reverses = hasPreviousDirection && previousDirectionX * directionX + previousDirectionY * directionY + previousDirectionZ * directionZ <= 0;
+        const reverses = hasPreviousDirection && previousDirectionX * directionX + previousDirectionY * directionY + previousDirectionZ * directionZ < 0;
         const breaks = segmentLength < $6fafcf15f6b61d60$var$OPEN_BRUSH_RIBBON_MINIMUM_MOVE_METERS || reverses;
         if (breaks) {
             ribbonBreakBefore[index] = 1;

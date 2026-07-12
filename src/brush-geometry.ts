@@ -338,6 +338,9 @@ function generateRibbonGeometry(
   const pointerUp: Vec3 = [0, 0, 0];
   const right: Vec3 = [0, 0, 0];
   const normal: Vec3 = [0, 0, 0];
+  const flatHalfRights = usesFlatGeometrySmoothing
+    ? new Float32Array(pointCount * 3)
+    : undefined;
 
   for (let index = 0; index < pointCount; index += 1) {
     const point = stroke.controlPoints[index];
@@ -381,6 +384,12 @@ function generateRibbonGeometry(
     previousTangent[0] = tangent[0];
     previousTangent[1] = tangent[1];
     previousTangent[2] = tangent[2];
+    if (flatHalfRights) {
+      const offset = index * 3;
+      flatHalfRights[offset] = right[0] * width;
+      flatHalfRights[offset + 1] = right[1] * width;
+      flatHalfRights[offset + 2] = right[2] * width;
+    }
 
     const leftVertex = index * 2;
     const rightVertex = leftVertex + 1;
@@ -429,6 +438,16 @@ function generateRibbonGeometry(
     }
     includeBounds(bounds, positions, leftVertex);
     includeBounds(bounds, positions, rightVertex);
+  }
+
+  if (flatHalfRights) {
+    smoothFlatGeometryEdges(
+      stroke,
+      positions,
+      flatHalfRights,
+      ribbonBreakBefore,
+      bounds,
+    );
   }
 
   let indexOffset = 0;
@@ -488,6 +507,70 @@ function generateRibbonGeometry(
   out.vertexCount = vertexCount;
   out.indexCount = indexCount;
   return reallocated;
+}
+
+function smoothFlatGeometryEdges(
+  stroke: StrokeData,
+  positions: Float32Array,
+  halfRights: Float32Array,
+  breakBefore: Uint8Array,
+  bounds: BrushGeometryBounds,
+): void {
+  resetBounds(bounds);
+  const pointCount = stroke.controlPoints.length;
+  for (let index = 0; index < pointCount; index += 1) {
+    const startsSection = index === 0 || breakBefore[index] === 1;
+    const endsSection =
+      index === pointCount - 1 || breakBefore[index + 1] === 1;
+    const previousIndex = startsSection ? index : index - 1;
+    const nextIndex = endsSection ? index : index + 1;
+    const point = stroke.controlPoints[index].position;
+    const previous = stroke.controlPoints[previousIndex].position;
+    const next = stroke.controlPoints[nextIndex].position;
+    const center: Vec3 = startsSection
+      ? point
+      : [
+          previous[0] * 0.3 + point[0] * 0.4 + next[0] * 0.3,
+          previous[1] * 0.3 + point[1] * 0.4 + next[1] * 0.3,
+          previous[2] * 0.3 + point[2] * 0.4 + next[2] * 0.3,
+        ];
+    const rightSource = startsSection && !endsSection ? nextIndex : index;
+    const rightOffset = rightSource * 3;
+    let rightX = halfRights[rightOffset];
+    let rightY = halfRights[rightOffset + 1];
+    let rightZ = halfRights[rightOffset + 2];
+    if (!startsSection && !endsSection) {
+      const previousOffset = previousIndex * 3;
+      const currentOffset = index * 3;
+      const nextOffset = nextIndex * 3;
+      rightX =
+        halfRights[previousOffset] * 0.3 +
+        halfRights[currentOffset] * 0.4 +
+        halfRights[nextOffset] * 0.3;
+      rightY =
+        halfRights[previousOffset + 1] * 0.3 +
+        halfRights[currentOffset + 1] * 0.4 +
+        halfRights[nextOffset + 1] * 0.3;
+      rightZ =
+        halfRights[previousOffset + 2] * 0.3 +
+        halfRights[currentOffset + 2] * 0.4 +
+        halfRights[nextOffset + 2] * 0.3;
+    }
+    const leftVertex = index * 2;
+    const rightVertex = leftVertex + 1;
+    writePosition(positions, leftVertex, [
+      center[0] - rightX,
+      center[1] - rightY,
+      center[2] - rightZ,
+    ]);
+    writePosition(positions, rightVertex, [
+      center[0] + rightX,
+      center[1] + rightY,
+      center[2] + rightZ,
+    ]);
+    includeBounds(bounds, positions, leftVertex);
+    includeBounds(bounds, positions, rightVertex);
+  }
 }
 
 function generateUnitizedRibbonGeometry(
@@ -2674,7 +2757,7 @@ function prepareRibbonSections(
       hasPreviousDirection &&
       previousDirectionX * directionX +
         previousDirectionY * directionY +
-        previousDirectionZ * directionZ <=
+        previousDirectionZ * directionZ <
         0;
     const breaks =
       segmentLength < OPEN_BRUSH_RIBBON_MINIMUM_MOVE_METERS || reverses;
