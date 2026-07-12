@@ -369,7 +369,10 @@ function $6fafcf15f6b61d60$var$generateRibbonGeometry(stroke, family, options, o
         $6fafcf15f6b61d60$var$includeBounds(bounds, positions, leftVertex);
         $6fafcf15f6b61d60$var$includeBounds(bounds, positions, rightVertex);
     }
-    if (flatHalfRights) $6fafcf15f6b61d60$var$smoothFlatGeometryEdges(stroke, positions, flatHalfRights, ribbonBreakBefore, bounds);
+    if (flatHalfRights) {
+        $6fafcf15f6b61d60$var$smoothFlatGeometryEdges(stroke, positions, flatHalfRights, ribbonBreakBefore, bounds);
+        $6fafcf15f6b61d60$var$updateFlatGeometryTangents(positions, normals, tangents, uvs, ribbonBreakBefore, pointCount);
+    }
     let indexOffset = 0;
     for(let segment = 0; segment < segmentCount; segment += 1){
         if (ribbonBreakBefore[segment + 1] === 1) continue;
@@ -456,6 +459,92 @@ function $6fafcf15f6b61d60$var$smoothFlatGeometryEdges(stroke, positions, halfRi
         $6fafcf15f6b61d60$var$includeBounds(bounds, positions, leftVertex);
         $6fafcf15f6b61d60$var$includeBounds(bounds, positions, rightVertex);
     }
+}
+function $6fafcf15f6b61d60$var$updateFlatGeometryTangents(positions, normals, tangents, uvs, breakBefore, pointCount) {
+    const firstTriangle = [
+        0,
+        0,
+        0
+    ];
+    const secondTriangle = [
+        0,
+        0,
+        0
+    ];
+    const combined = [
+        0,
+        0,
+        0
+    ];
+    for(let segment = 0; segment < pointCount - 1; segment += 1){
+        if (breakBefore[segment + 1] === 1) continue;
+        const leftPrevious = segment * 2;
+        const rightPrevious = leftPrevious + 1;
+        const leftCurrent = leftPrevious + 2;
+        const rightCurrent = leftPrevious + 3;
+        $6fafcf15f6b61d60$var$computeTriangleSurfaceTangent(positions, uvs, rightPrevious, leftPrevious, leftCurrent, firstTriangle);
+        $6fafcf15f6b61d60$var$computeTriangleSurfaceTangent(positions, uvs, rightPrevious, leftCurrent, rightCurrent, secondTriangle);
+        combined[0] = firstTriangle[0] + secondTriangle[0];
+        combined[1] = firstTriangle[1] + secondTriangle[1];
+        combined[2] = firstTriangle[2] + secondTriangle[2];
+        if (segment === 0 || breakBefore[segment] === 1) {
+            $6fafcf15f6b61d60$var$writeOrthonormalTangent(tangents, normals, leftPrevious, firstTriangle);
+            $6fafcf15f6b61d60$var$writeOrthonormalTangent(tangents, normals, rightPrevious, combined);
+        }
+        $6fafcf15f6b61d60$var$writeOrthonormalTangent(tangents, normals, leftCurrent, combined);
+        $6fafcf15f6b61d60$var$writeOrthonormalTangent(tangents, normals, rightCurrent, secondTriangle);
+    }
+}
+function $6fafcf15f6b61d60$var$computeTriangleSurfaceTangent(positions, uvs, first, second, third, out) {
+    const firstPosition = first * 3;
+    const secondPosition = second * 3;
+    const thirdPosition = third * 3;
+    const firstUv = first * 2;
+    const secondUv = second * 2;
+    const thirdUv = third * 2;
+    const x1 = positions[secondPosition] - positions[firstPosition];
+    const x2 = positions[thirdPosition] - positions[firstPosition];
+    const y1 = positions[secondPosition + 1] - positions[firstPosition + 1];
+    const y2 = positions[thirdPosition + 1] - positions[firstPosition + 1];
+    const z1 = positions[secondPosition + 2] - positions[firstPosition + 2];
+    const z2 = positions[thirdPosition + 2] - positions[firstPosition + 2];
+    const s1 = uvs[secondUv] - uvs[firstUv];
+    const s2 = uvs[thirdUv] - uvs[firstUv];
+    const t1 = uvs[secondUv + 1] - uvs[firstUv + 1];
+    const t2 = uvs[thirdUv + 1] - uvs[firstUv + 1];
+    const determinant = s1 * t2 - s2 * t1;
+    if (Math.abs(determinant) <= $6fafcf15f6b61d60$var$EPSILON) {
+        out[0] = x2;
+        out[1] = y2;
+        out[2] = z2;
+        return;
+    }
+    const reciprocal = 1 / determinant;
+    out[0] = reciprocal * (t2 * x1 - t1 * x2);
+    out[1] = reciprocal * (t2 * y1 - t1 * y2);
+    out[2] = reciprocal * (t2 * z1 - t1 * z2);
+}
+function $6fafcf15f6b61d60$var$writeOrthonormalTangent(tangents, normals, vertex, source) {
+    const normalOffset = vertex * 3;
+    const projection = source[0] * normals[normalOffset] + source[1] * normals[normalOffset + 1] + source[2] * normals[normalOffset + 2];
+    let x = source[0] - projection * normals[normalOffset];
+    let y = source[1] - projection * normals[normalOffset + 1];
+    let z = source[2] - projection * normals[normalOffset + 2];
+    const length = Math.sqrt(x * x + y * y + z * z);
+    if (length > $6fafcf15f6b61d60$var$EPSILON) {
+        x /= length;
+        y /= length;
+        z /= length;
+    } else {
+        x = 1;
+        y = 0;
+        z = 0;
+    }
+    const tangentOffset = vertex * 4;
+    tangents[tangentOffset] = x;
+    tangents[tangentOffset + 1] = y;
+    tangents[tangentOffset + 2] = z;
+    tangents[tangentOffset + 3] = 1;
 }
 function $6fafcf15f6b61d60$var$generateUnitizedRibbonGeometry(stroke, family, options, out) {
     out.uv0Size = 2;

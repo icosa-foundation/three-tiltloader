@@ -499,6 +499,14 @@ function generateRibbonGeometry(
       ribbonBreakBefore,
       bounds,
     );
+    updateFlatGeometryTangents(
+      positions,
+      normals,
+      tangents,
+      uvs,
+      ribbonBreakBefore,
+      pointCount,
+    );
   }
 
   let indexOffset = 0;
@@ -622,6 +630,136 @@ function smoothFlatGeometryEdges(
     includeBounds(bounds, positions, leftVertex);
     includeBounds(bounds, positions, rightVertex);
   }
+}
+
+function updateFlatGeometryTangents(
+  positions: Float32Array,
+  normals: Float32Array,
+  tangents: Float32Array,
+  uvs: Float32Array,
+  breakBefore: Uint8Array,
+  pointCount: number,
+): void {
+  const firstTriangle: Vec3 = [0, 0, 0];
+  const secondTriangle: Vec3 = [0, 0, 0];
+  const combined: Vec3 = [0, 0, 0];
+  for (let segment = 0; segment < pointCount - 1; segment += 1) {
+    if (breakBefore[segment + 1] === 1) {
+      continue;
+    }
+    const leftPrevious = segment * 2;
+    const rightPrevious = leftPrevious + 1;
+    const leftCurrent = leftPrevious + 2;
+    const rightCurrent = leftPrevious + 3;
+    computeTriangleSurfaceTangent(
+      positions,
+      uvs,
+      rightPrevious,
+      leftPrevious,
+      leftCurrent,
+      firstTriangle,
+    );
+    computeTriangleSurfaceTangent(
+      positions,
+      uvs,
+      rightPrevious,
+      leftCurrent,
+      rightCurrent,
+      secondTriangle,
+    );
+    combined[0] = firstTriangle[0] + secondTriangle[0];
+    combined[1] = firstTriangle[1] + secondTriangle[1];
+    combined[2] = firstTriangle[2] + secondTriangle[2];
+    if (segment === 0 || breakBefore[segment] === 1) {
+      writeOrthonormalTangent(
+        tangents,
+        normals,
+        leftPrevious,
+        firstTriangle,
+      );
+      writeOrthonormalTangent(
+        tangents,
+        normals,
+        rightPrevious,
+        combined,
+      );
+    }
+    writeOrthonormalTangent(tangents, normals, leftCurrent, combined);
+    writeOrthonormalTangent(
+      tangents,
+      normals,
+      rightCurrent,
+      secondTriangle,
+    );
+  }
+}
+
+function computeTriangleSurfaceTangent(
+  positions: Float32Array,
+  uvs: Float32Array,
+  first: number,
+  second: number,
+  third: number,
+  out: Vec3,
+): void {
+  const firstPosition = first * 3;
+  const secondPosition = second * 3;
+  const thirdPosition = third * 3;
+  const firstUv = first * 2;
+  const secondUv = second * 2;
+  const thirdUv = third * 2;
+  const x1 = positions[secondPosition] - positions[firstPosition];
+  const x2 = positions[thirdPosition] - positions[firstPosition];
+  const y1 = positions[secondPosition + 1] - positions[firstPosition + 1];
+  const y2 = positions[thirdPosition + 1] - positions[firstPosition + 1];
+  const z1 = positions[secondPosition + 2] - positions[firstPosition + 2];
+  const z2 = positions[thirdPosition + 2] - positions[firstPosition + 2];
+  const s1 = uvs[secondUv] - uvs[firstUv];
+  const s2 = uvs[thirdUv] - uvs[firstUv];
+  const t1 = uvs[secondUv + 1] - uvs[firstUv + 1];
+  const t2 = uvs[thirdUv + 1] - uvs[firstUv + 1];
+  const determinant = s1 * t2 - s2 * t1;
+  if (Math.abs(determinant) <= EPSILON) {
+    out[0] = x2;
+    out[1] = y2;
+    out[2] = z2;
+    return;
+  }
+  const reciprocal = 1 / determinant;
+  out[0] = reciprocal * (t2 * x1 - t1 * x2);
+  out[1] = reciprocal * (t2 * y1 - t1 * y2);
+  out[2] = reciprocal * (t2 * z1 - t1 * z2);
+}
+
+function writeOrthonormalTangent(
+  tangents: Float32Array,
+  normals: Float32Array,
+  vertex: number,
+  source: Vec3,
+): void {
+  const normalOffset = vertex * 3;
+  const projection =
+    source[0] * normals[normalOffset] +
+    source[1] * normals[normalOffset + 1] +
+    source[2] * normals[normalOffset + 2];
+  let x = source[0] - projection * normals[normalOffset];
+  let y = source[1] - projection * normals[normalOffset + 1];
+  let z = source[2] - projection * normals[normalOffset + 2];
+  const length = Math.sqrt(x * x + y * y + z * z);
+  if (length > EPSILON) {
+    x /= length;
+    y /= length;
+    z /= length;
+  } else {
+    x = 1;
+    y = 0;
+    z = 0;
+  }
+  const tangentOffset = vertex * 4;
+  tangents[tangentOffset] = x;
+  tangents[tangentOffset + 1] = y;
+  tangents[tangentOffset + 2] = z;
+  tangents[tangentOffset + 3] = 1;
 }
 
 function generateUnitizedRibbonGeometry(
