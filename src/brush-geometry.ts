@@ -421,42 +421,42 @@ function generateRibbonGeometry(
       ribbonBreakBefore[index] === 0
     ) {
       cross(previousRight, previousFlatNormal, previousFlatForward);
-      flatEdge[0] = center[0] + 0.5 * size * right[0] - previousFlatCenter[0];
-      flatEdge[1] = center[1] + 0.5 * size * right[1] - previousFlatCenter[1];
-      flatEdge[2] = center[2] + 0.5 * size * right[2] - previousFlatCenter[2];
+      flatEdge[0] = point.position[0] + 0.5 * size * right[0] - previousFlatCenter[0];
+      flatEdge[1] = point.position[1] + 0.5 * size * right[1] - previousFlatCenter[1];
+      flatEdge[2] = point.position[2] + 0.5 * size * right[2] - previousFlatCenter[2];
       const dotRight = dotVec3(previousFlatForward, flatEdge);
-      flatEdge[0] = center[0] - 0.5 * size * right[0] - previousFlatCenter[0];
-      flatEdge[1] = center[1] - 0.5 * size * right[1] - previousFlatCenter[1];
-      flatEdge[2] = center[2] - 0.5 * size * right[2] - previousFlatCenter[2];
+      flatEdge[0] = point.position[0] - 0.5 * size * right[0] - previousFlatCenter[0];
+      flatEdge[1] = point.position[1] - 0.5 * size * right[1] - previousFlatCenter[1];
+      flatEdge[2] = point.position[2] - 0.5 * size * right[2] - previousFlatCenter[2];
       const dotLeft = dotVec3(previousFlatForward, flatEdge);
       if ((dotLeft < 0 && dotRight > 0) || (dotLeft > 0 && dotRight < 0)) {
         const turnSign = dotLeft < 0 ? -1 : 1;
         flatEdge[0] =
           previousFlatCenter[0] +
           turnSign * 0.5 * previousFlatSize * previousRight[0] -
-          center[0];
+          point.position[0];
         flatEdge[1] =
           previousFlatCenter[1] +
           turnSign * 0.5 * previousFlatSize * previousRight[1] -
-          center[1];
+          point.position[1];
         flatEdge[2] =
           previousFlatCenter[2] +
           turnSign * 0.5 * previousFlatSize * previousRight[2] -
-          center[2];
+          point.position[2];
         size = Math.sqrt(dotVec3(flatEdge, flatEdge));
       }
       const moveLength = Math.sqrt(
-        (center[0] - previousFlatCenter[0]) ** 2 +
-          (center[1] - previousFlatCenter[1]) ** 2 +
-          (center[2] - previousFlatCenter[2]) ** 2,
+        (point.position[0] - previousFlatCenter[0]) ** 2 +
+          (point.position[1] - previousFlatCenter[1]) ** 2 +
+          (point.position[2] - previousFlatCenter[2]) ** 2,
       );
       size = Math.min(size, previousFlatSize + moveLength);
     }
     const width = size * 0.5;
     previousFlatSize = size;
-    previousFlatCenter[0] = center[0];
-    previousFlatCenter[1] = center[1];
-    previousFlatCenter[2] = center[2];
+    previousFlatCenter[0] = point.position[0];
+    previousFlatCenter[1] = point.position[1];
+    previousFlatCenter[2] = point.position[2];
     previousFlatNormal[0] = normal[0];
     previousFlatNormal[1] = normal[1];
     previousFlatNormal[2] = normal[2];
