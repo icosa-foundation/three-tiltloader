@@ -429,7 +429,10 @@ function $6fafcf15f6b61d60$var$generateRibbonGeometry(stroke, family, options, o
             backIndexOffset += 6;
         }
     }
-    if (usesQuadStripTriangleSoup) $6fafcf15f6b61d60$var$expandRibbonTriangleSoup(out, ribbonBreakBefore, renderPointCount, frontVertexCount, frontIndexCount, hasBackfaces, vertexCount);
+    if (usesQuadStripTriangleSoup) {
+        $6fafcf15f6b61d60$var$expandRibbonTriangleSoup(out, ribbonBreakBefore, renderPointCount, frontVertexCount, frontIndexCount, hasBackfaces, vertexCount);
+        $6fafcf15f6b61d60$var$applyQuadStripMidpointFusion(out, ribbonBreakBefore, renderPointCount, frontIndexCount / 6, hasBackfaces);
+    }
     out.family = family;
     out.vertexCount = vertexCount;
     out.indexCount = indexCount;
@@ -477,6 +480,116 @@ function $6fafcf15f6b61d60$var$copyRibbonVertex(out, source, destination) {
     $6fafcf15f6b61d60$var$copyVec4At(out.colors, source, destination);
     $6fafcf15f6b61d60$var$copyVec2At(out.uvs, source, destination);
     if (out.uv1Size === 3) $6fafcf15f6b61d60$var$copyVec3At(out.vectorUvs, source, destination);
+}
+function $6fafcf15f6b61d60$var$applyQuadStripMidpointFusion(out, breakBefore, pointCount, frontSolidCount, hasBackfaces) {
+    let solid = 0;
+    let sectionStart = 0;
+    for(let segment = 0; segment < pointCount - 1; segment += 1){
+        if (breakBefore[segment + 1] === 1) {
+            sectionStart = solid;
+            continue;
+        }
+        const sectionLength = solid - sectionStart + 1;
+        if (sectionLength === 2) $6fafcf15f6b61d60$var$fuseQuadStripSolids(out, solid - 1, solid);
+        else if (sectionLength > 2) {
+            $6fafcf15f6b61d60$var$averageQuadStripSolid(out, solid - 2, solid - 1, solid);
+            $6fafcf15f6b61d60$var$fuseQuadStripSolids(out, solid - 2, solid - 1);
+            $6fafcf15f6b61d60$var$fuseQuadStripSolids(out, solid - 1, solid);
+        }
+        solid += 1;
+    }
+    $6fafcf15f6b61d60$var$updateQuadStripTangents(out, frontSolidCount);
+    if (hasBackfaces) {
+        const backVertexOffset = frontSolidCount * 6;
+        const reverse = [
+            0,
+            2,
+            1,
+            3,
+            5,
+            4
+        ];
+        for(let frontSolid = 0; frontSolid < frontSolidCount; frontSolid += 1){
+            const frontVertex = frontSolid * 6;
+            const backVertex = backVertexOffset + frontVertex;
+            for(let corner = 0; corner < 6; corner += 1){
+                $6fafcf15f6b61d60$var$copyPosition(out.positions, frontVertex + reverse[corner], backVertex + corner);
+                $6fafcf15f6b61d60$var$copyNegatedNormal(out.normals, frontVertex + reverse[corner], backVertex + corner);
+                $6fafcf15f6b61d60$var$copyTangent(out.tangents, frontVertex + reverse[corner], backVertex + corner, true);
+            }
+        }
+    }
+    $6fafcf15f6b61d60$var$resetBounds(out.bounds);
+    const vertexCount = frontSolidCount * 6 * (hasBackfaces ? 2 : 1);
+    for(let vertex = 0; vertex < vertexCount; vertex += 1)$6fafcf15f6b61d60$var$includeBounds(out.bounds, out.positions, vertex);
+}
+function $6fafcf15f6b61d60$var$updateQuadStripTangents(out, solidCount) {
+    const triangleTangent = [
+        0,
+        0,
+        0
+    ];
+    for(let solid = 0; solid < solidCount; solid += 1){
+        const vertex = solid * 6;
+        $6fafcf15f6b61d60$var$computeTriangleSurfaceTangent(out.positions, out.uvs, vertex, vertex + 1, vertex + 2, triangleTangent);
+        for(let corner = 0; corner < 3; corner += 1)$6fafcf15f6b61d60$var$writeOrthonormalTangent(out.tangents, out.normals, vertex + corner, triangleTangent);
+        $6fafcf15f6b61d60$var$computeTriangleSurfaceTangent(out.positions, out.uvs, vertex + 3, vertex + 4, vertex + 5, triangleTangent);
+        for(let corner = 3; corner < 6; corner += 1)$6fafcf15f6b61d60$var$writeOrthonormalTangent(out.tangents, out.normals, vertex + corner, triangleTangent);
+    }
+}
+function $6fafcf15f6b61d60$var$averageQuadStripSolid(out, backSolid, middleSolid, frontSolid) {
+    const backVertex = backSolid * 6;
+    const middleVertex = middleSolid * 6;
+    const frontVertex = frontSolid * 6;
+    for(let corner = 0; corner < 6; corner += 1){
+        const backOffset = (backVertex + corner) * 3;
+        const middleOffset = (middleVertex + corner) * 3;
+        const frontOffset = (frontVertex + corner) * 3;
+        out.positions[middleOffset] = (out.positions[backOffset] + out.positions[frontOffset]) * 0.5;
+        out.positions[middleOffset + 1] = (out.positions[backOffset + 1] + out.positions[frontOffset + 1]) * 0.5;
+        out.positions[middleOffset + 2] = (out.positions[backOffset + 2] + out.positions[frontOffset + 2]) * 0.5;
+    }
+}
+function $6fafcf15f6b61d60$var$fuseQuadStripSolids(out, backSolid, frontSolid) {
+    const backVertex = backSolid * 6;
+    const frontVertex = frontSolid * 6;
+    $6fafcf15f6b61d60$var$fuseQuadStripEdge(out, backVertex, frontVertex, 1, 0);
+    $6fafcf15f6b61d60$var$fuseQuadStripEdge(out, backVertex, frontVertex, 5, 2);
+    $6fafcf15f6b61d60$var$copyPosition(out.positions, backVertex + 1, backVertex + 4);
+    $6fafcf15f6b61d60$var$copyPosition(out.positions, frontVertex + 2, frontVertex + 3);
+    $6fafcf15f6b61d60$var$copyVec3At(out.normals, backVertex + 1, backVertex + 4);
+    $6fafcf15f6b61d60$var$copyVec3At(out.normals, backVertex + 5, frontVertex + 3);
+}
+function $6fafcf15f6b61d60$var$fuseQuadStripEdge(out, backVertex, frontVertex, backCorner, frontCorner) {
+    const backOffset = (backVertex + backCorner) * 3;
+    const frontOffset = (frontVertex + frontCorner) * 3;
+    const x = (out.positions[backOffset] + out.positions[frontOffset]) * 0.5;
+    const y = (out.positions[backOffset + 1] + out.positions[frontOffset + 1]) * 0.5;
+    const z = (out.positions[backOffset + 2] + out.positions[frontOffset + 2]) * 0.5;
+    let nx = out.normals[backOffset] + out.normals[frontOffset];
+    let ny = out.normals[backOffset + 1] + out.normals[frontOffset + 1];
+    let nz = out.normals[backOffset + 2] + out.normals[frontOffset + 2];
+    const normalLength = Math.hypot(nx, ny, nz);
+    if (normalLength > $6fafcf15f6b61d60$var$EPSILON) {
+        nx /= normalLength;
+        ny /= normalLength;
+        nz /= normalLength;
+    } else {
+        nx = out.normals[backOffset];
+        ny = out.normals[backOffset + 1];
+        nz = out.normals[backOffset + 2];
+    }
+    $6fafcf15f6b61d60$var$writeQuadStripFusedCorner(out, backVertex + backCorner, x, y, z, nx, ny, nz);
+    $6fafcf15f6b61d60$var$writeQuadStripFusedCorner(out, frontVertex + frontCorner, x, y, z, nx, ny, nz);
+}
+function $6fafcf15f6b61d60$var$writeQuadStripFusedCorner(out, vertex, x, y, z, nx, ny, nz) {
+    const offset = vertex * 3;
+    out.positions[offset] = x;
+    out.positions[offset + 1] = y;
+    out.positions[offset + 2] = z;
+    out.normals[offset] = nx;
+    out.normals[offset + 1] = ny;
+    out.normals[offset + 2] = nz;
 }
 function $6fafcf15f6b61d60$var$smoothFlatGeometryEdges(stroke, positions, halfRights, breakBefore, bounds, pointCount) {
     $6fafcf15f6b61d60$var$resetBounds(bounds);
@@ -613,6 +726,7 @@ function $6fafcf15f6b61d60$var$generateUnitizedRibbonGeometry(stroke, family, op
     out.uv1Size = 0;
     const pointCount = stroke.controlPoints.length;
     $6fafcf15f6b61d60$var$ensureRibbonScratchCapacity(out, pointCount);
+    out.ribbonBreakBefore.fill(0, 0, pointCount);
     $6fafcf15f6b61d60$var$prepareRibbonSmoothedPressures(stroke, options, out);
     const segmentCount = Math.max(0, pointCount - 1);
     const sourceFrontVertexCount = segmentCount * 4;
@@ -781,6 +895,7 @@ function $6fafcf15f6b61d60$var$generateUnitizedRibbonGeometry(stroke, family, op
         }
     }
     $6fafcf15f6b61d60$var$expandUnitizedRibbonTriangleSoup(out, segmentCount, sourceFrontVertexCount, frontIndexCount, hasBackfaces, vertexCount);
+    $6fafcf15f6b61d60$var$applyQuadStripMidpointFusion(out, out.ribbonBreakBefore, pointCount, segmentCount, hasBackfaces);
     out.family = family;
     out.vertexCount = vertexCount;
     out.indexCount = indexCount;

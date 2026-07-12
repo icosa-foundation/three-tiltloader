@@ -624,6 +624,13 @@ function generateRibbonGeometry(
       hasBackfaces,
       vertexCount,
     );
+    applyQuadStripMidpointFusion(
+      out,
+      ribbonBreakBefore,
+      renderPointCount,
+      frontIndexCount / 6,
+      hasBackfaces,
+    );
   }
 
   out.family = family;
@@ -694,6 +701,214 @@ function copyRibbonVertex(
   if (out.uv1Size === 3) {
     copyVec3At(out.vectorUvs, source, destination);
   }
+}
+
+function applyQuadStripMidpointFusion(
+  out: BrushGeometryArrays,
+  breakBefore: Uint8Array,
+  pointCount: number,
+  frontSolidCount: number,
+  hasBackfaces: boolean,
+): void {
+  let solid = 0;
+  let sectionStart = 0;
+  for (let segment = 0; segment < pointCount - 1; segment += 1) {
+    if (breakBefore[segment + 1] === 1) {
+      sectionStart = solid;
+      continue;
+    }
+    const sectionLength = solid - sectionStart + 1;
+    if (sectionLength === 2) {
+      fuseQuadStripSolids(out, solid - 1, solid);
+    } else if (sectionLength > 2) {
+      averageQuadStripSolid(out, solid - 2, solid - 1, solid);
+      fuseQuadStripSolids(out, solid - 2, solid - 1);
+      fuseQuadStripSolids(out, solid - 1, solid);
+    }
+    solid += 1;
+  }
+
+  updateQuadStripTangents(out, frontSolidCount);
+
+  if (hasBackfaces) {
+    const backVertexOffset = frontSolidCount * 6;
+    const reverse = [0, 2, 1, 3, 5, 4] as const;
+    for (let frontSolid = 0; frontSolid < frontSolidCount; frontSolid += 1) {
+      const frontVertex = frontSolid * 6;
+      const backVertex = backVertexOffset + frontVertex;
+      for (let corner = 0; corner < 6; corner += 1) {
+        copyPosition(
+          out.positions,
+          frontVertex + reverse[corner],
+          backVertex + corner,
+        );
+        copyNegatedNormal(
+          out.normals,
+          frontVertex + reverse[corner],
+          backVertex + corner,
+        );
+        copyTangent(
+          out.tangents,
+          frontVertex + reverse[corner],
+          backVertex + corner,
+          true,
+        );
+      }
+    }
+  }
+
+  resetBounds(out.bounds);
+  const vertexCount = frontSolidCount * 6 * (hasBackfaces ? 2 : 1);
+  for (let vertex = 0; vertex < vertexCount; vertex += 1) {
+    includeBounds(out.bounds, out.positions, vertex);
+  }
+}
+
+function updateQuadStripTangents(
+  out: BrushGeometryArrays,
+  solidCount: number,
+): void {
+  const triangleTangent: Vec3 = [0, 0, 0];
+  for (let solid = 0; solid < solidCount; solid += 1) {
+    const vertex = solid * 6;
+    computeTriangleSurfaceTangent(
+      out.positions,
+      out.uvs,
+      vertex,
+      vertex + 1,
+      vertex + 2,
+      triangleTangent,
+    );
+    for (let corner = 0; corner < 3; corner += 1) {
+      writeOrthonormalTangent(
+        out.tangents,
+        out.normals,
+        vertex + corner,
+        triangleTangent,
+      );
+    }
+    computeTriangleSurfaceTangent(
+      out.positions,
+      out.uvs,
+      vertex + 3,
+      vertex + 4,
+      vertex + 5,
+      triangleTangent,
+    );
+    for (let corner = 3; corner < 6; corner += 1) {
+      writeOrthonormalTangent(
+        out.tangents,
+        out.normals,
+        vertex + corner,
+        triangleTangent,
+      );
+    }
+  }
+}
+
+function averageQuadStripSolid(
+  out: BrushGeometryArrays,
+  backSolid: number,
+  middleSolid: number,
+  frontSolid: number,
+): void {
+  const backVertex = backSolid * 6;
+  const middleVertex = middleSolid * 6;
+  const frontVertex = frontSolid * 6;
+  for (let corner = 0; corner < 6; corner += 1) {
+    const backOffset = (backVertex + corner) * 3;
+    const middleOffset = (middleVertex + corner) * 3;
+    const frontOffset = (frontVertex + corner) * 3;
+    out.positions[middleOffset] =
+      (out.positions[backOffset] + out.positions[frontOffset]) * 0.5;
+    out.positions[middleOffset + 1] =
+      (out.positions[backOffset + 1] + out.positions[frontOffset + 1]) * 0.5;
+    out.positions[middleOffset + 2] =
+      (out.positions[backOffset + 2] + out.positions[frontOffset + 2]) * 0.5;
+  }
+}
+
+function fuseQuadStripSolids(
+  out: BrushGeometryArrays,
+  backSolid: number,
+  frontSolid: number,
+): void {
+  const backVertex = backSolid * 6;
+  const frontVertex = frontSolid * 6;
+  fuseQuadStripEdge(out, backVertex, frontVertex, 1, 0);
+  fuseQuadStripEdge(out, backVertex, frontVertex, 5, 2);
+  copyPosition(out.positions, backVertex + 1, backVertex + 4);
+  copyPosition(out.positions, frontVertex + 2, frontVertex + 3);
+  copyVec3At(out.normals, backVertex + 1, backVertex + 4);
+  copyVec3At(out.normals, backVertex + 5, frontVertex + 3);
+}
+
+function fuseQuadStripEdge(
+  out: BrushGeometryArrays,
+  backVertex: number,
+  frontVertex: number,
+  backCorner: number,
+  frontCorner: number,
+): void {
+  const backOffset = (backVertex + backCorner) * 3;
+  const frontOffset = (frontVertex + frontCorner) * 3;
+  const x = (out.positions[backOffset] + out.positions[frontOffset]) * 0.5;
+  const y =
+    (out.positions[backOffset + 1] + out.positions[frontOffset + 1]) * 0.5;
+  const z =
+    (out.positions[backOffset + 2] + out.positions[frontOffset + 2]) * 0.5;
+  let nx = out.normals[backOffset] + out.normals[frontOffset];
+  let ny = out.normals[backOffset + 1] + out.normals[frontOffset + 1];
+  let nz = out.normals[backOffset + 2] + out.normals[frontOffset + 2];
+  const normalLength = Math.hypot(nx, ny, nz);
+  if (normalLength > EPSILON) {
+    nx /= normalLength;
+    ny /= normalLength;
+    nz /= normalLength;
+  } else {
+    nx = out.normals[backOffset];
+    ny = out.normals[backOffset + 1];
+    nz = out.normals[backOffset + 2];
+  }
+  writeQuadStripFusedCorner(
+    out,
+    backVertex + backCorner,
+    x,
+    y,
+    z,
+    nx,
+    ny,
+    nz,
+  );
+  writeQuadStripFusedCorner(
+    out,
+    frontVertex + frontCorner,
+    x,
+    y,
+    z,
+    nx,
+    ny,
+    nz,
+  );
+}
+
+function writeQuadStripFusedCorner(
+  out: BrushGeometryArrays,
+  vertex: number,
+  x: number,
+  y: number,
+  z: number,
+  nx: number,
+  ny: number,
+  nz: number,
+): void {
+  const offset = vertex * 3;
+  out.positions[offset] = x;
+  out.positions[offset + 1] = y;
+  out.positions[offset + 2] = z;
+  out.normals[offset] = nx;
+  out.normals[offset + 1] = ny;
+  out.normals[offset + 2] = nz;
 }
 
 function smoothFlatGeometryEdges(
@@ -900,6 +1115,7 @@ function generateUnitizedRibbonGeometry(
   out.uv1Size = 0;
   const pointCount = stroke.controlPoints.length;
   ensureRibbonScratchCapacity(out, pointCount);
+  out.ribbonBreakBefore.fill(0, 0, pointCount);
   prepareRibbonSmoothedPressures(stroke, options, out);
   const segmentCount = Math.max(0, pointCount - 1);
   const sourceFrontVertexCount = segmentCount * 4;
@@ -1067,6 +1283,13 @@ function generateUnitizedRibbonGeometry(
     frontIndexCount,
     hasBackfaces,
     vertexCount,
+  );
+  applyQuadStripMidpointFusion(
+    out,
+    out.ribbonBreakBefore,
+    pointCount,
+    segmentCount,
+    hasBackfaces,
   );
 
   out.family = family;

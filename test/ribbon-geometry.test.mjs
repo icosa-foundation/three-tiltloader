@@ -117,6 +117,65 @@ test( 'preserves reversal breaks and explicit backfaces', () => {
 
 } );
 
+test( 'smooths QuadStrip bends with the source midpoint and fuse pass', () => {
+
+	const stroke = createStroke();
+	stroke.controlPoints.push(
+		{
+			position: [ 1, 1, 0 ],
+			orientation: [ 0, 0, 0, 1 ],
+			pressure: 1,
+			timestampMs: 32
+		},
+		{
+			position: [ 0, 1, 0 ],
+			orientation: [ 0, 0, 0, 1 ],
+			pressure: 1,
+			timestampMs: 48
+		}
+	);
+	const geometry = generateBrushGeometry( stroke, 'ribbon', {
+		generatorClass: 'QuadStripBrushStretchUV'
+	} );
+	const baseline = generateBrushGeometry( stroke, 'ribbon' );
+	assert.equal( getGeneratedVertexCount( geometry ), 18 );
+	const position = ( vertex ) => Array.from( geometry.positions.slice( vertex * 3, vertex * 3 + 3 ) );
+	const baselinePosition = ( vertex ) => Array.from( baseline.positions.slice( vertex * 3, vertex * 3 + 3 ) );
+	const pattern = [ 0, 2, 1, 1, 2, 3 ];
+	const sourceSolid = ( segment ) => pattern.map( corner => baselinePosition( segment * 2 + corner ) );
+	const back = sourceSolid( 0 );
+	const firstMiddle = sourceSolid( 1 );
+	const front = sourceSolid( 2 );
+	const average = ( a, b ) => a.map( ( value, axis ) => ( value + b[ axis ] ) * 0.5 );
+	const firstTrailingTop = average( back[ 1 ], firstMiddle[ 0 ] );
+	const firstTrailingBottom = average( back[ 5 ], firstMiddle[ 2 ] );
+	back[ 1 ] = firstTrailingTop;
+	back[ 4 ] = firstTrailingTop;
+	back[ 5 ] = firstTrailingBottom;
+	const middle = back.map( ( point, corner ) => point.map( ( value, axis ) =>
+		( value + front[ corner ][ axis ] ) * 0.5 ) );
+	const trailingTop = average( back[ 1 ], middle[ 0 ] );
+	const trailingBottom = average( back[ 5 ], middle[ 2 ] );
+	middle[ 0 ] = trailingTop;
+	middle[ 2 ] = trailingBottom;
+	middle[ 3 ] = trailingBottom;
+	const leadingTop = average( middle[ 1 ], front[ 0 ] );
+	const leadingBottom = average( middle[ 5 ], front[ 2 ] );
+	middle[ 1 ] = leadingTop;
+	middle[ 4 ] = leadingTop;
+	middle[ 5 ] = leadingBottom;
+	assert.deepEqual( position( 1 ), position( 6 ) );
+	assert.deepEqual( position( 5 ), position( 8 ) );
+	assert.deepEqual( position( 7 ), position( 12 ) );
+	assert.deepEqual( position( 11 ), position( 14 ) );
+	for ( let corner = 0; corner < 6; corner += 1 ) {
+		for ( let axis = 0; axis < 3; axis += 1 ) {
+			assertClose( position( 6 + corner )[ axis ], middle[ corner ][ axis ] );
+		}
+	}
+
+} );
+
 test( 'smooths FlatGeometryBrush centers like Open Brush', () => {
 
 	const stroke = createStroke();
