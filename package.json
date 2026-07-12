@@ -5,7 +5,7 @@
   "scripts": {
     "watch": "parcel watch",
     "build": "parcel build --no-cache",
-    "test": "node --test test/*.test.mjs"
+    "test": "npm run build && node --experimental-strip-types --test test/*.test.mjs"
   },
   "repository": {
     "type": "git",
@@ -36,7 +36,8 @@
   "files": [
     "dist",
     "src/*.d.ts",
-    "src/*.d.mts"
+    "src/*.d.mts",
+    "src/*.ts"
   ],
   "funding": {
     "type": "opencollective",

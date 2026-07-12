@@ -20,7 +20,7 @@ export interface StrokeInput {
     flags: number;
     seed: number;
     groupId: number;
-    strokeGuid: string;
+    guid: string;
     layerIndex: number;
 }
 

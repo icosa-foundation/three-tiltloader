@@ -21,6 +21,27 @@ export {
     type Vec3,
 } from './geometry-api.mjs';
 
+export {
+    createBrushGeometryArrays,
+    generateBrushGeometry,
+    generateBrushGeometryInto,
+    getGeneratedIndexCount,
+    getGeneratedVertexCount,
+    type BrushGeometryArrays,
+    type BrushGeometryBounds,
+    type BrushGeometryOptions,
+    type GeneratedBrushGeometry,
+} from './brush-geometry.js';
+
+export type {
+    BrushGeometryFamily,
+    BrushGeometryParams,
+    BrushPressureOpacityRange,
+    BrushPressureSizeRange,
+} from './brush-types.js';
+
+export type { StrokeData } from './stroke-types.js';
+
 export class TiltLoader extends Loader {
     constructor(manager?: LoadingManager);
 
