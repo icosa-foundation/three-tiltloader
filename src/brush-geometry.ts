@@ -1949,7 +1949,7 @@ function generateTubeGeometry(
       pressureOpacityMax,
     ) * descriptorOpacity;
 
-    writeScratchCentralDifferenceTangent(
+    writeScratchIncomingTangent(
       geometrySmoothedPositions,
       pointCount,
       pointIndex,
@@ -3715,18 +3715,20 @@ function writeCentralDifferenceTangent(
   }
 }
 
-function writeScratchCentralDifferenceTangent(
+function writeScratchIncomingTangent(
   positions: Float32Array,
   pointCount: number,
   index: number,
   previousTangent: Vec3,
   out: Vec3,
 ): void {
-  const previousOffset = Math.max(0, index - 1) * 3;
-  const nextOffset = Math.min(pointCount - 1, index + 1) * 3;
-  out[0] = positions[nextOffset] - positions[previousOffset];
-  out[1] = positions[nextOffset + 1] - positions[previousOffset + 1];
-  out[2] = positions[nextOffset + 2] - positions[previousOffset + 2];
+  const startIndex = index === 0 ? 0 : index - 1;
+  const endIndex = index === 0 ? Math.min(1, pointCount - 1) : index;
+  const startOffset = startIndex * 3;
+  const endOffset = endIndex * 3;
+  out[0] = positions[endOffset] - positions[startOffset];
+  out[1] = positions[endOffset + 1] - positions[startOffset + 1];
+  out[2] = positions[endOffset + 2] - positions[startOffset + 2];
   if (!normalizeInPlace(out)) {
     out[0] = previousTangent[0];
     out[1] = previousTangent[1];

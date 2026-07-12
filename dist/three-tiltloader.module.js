@@ -1618,7 +1618,7 @@ function $6fafcf15f6b61d60$var$generateTubeGeometry(stroke, options, out) {
         const shapeScale = $6fafcf15f6b61d60$var$getTubeShapeScale(shapeModifier, progress, pointIndex, pointCount, options.geometryParams?.tubeTaperScalar);
         const petalOffset = shapeModifier === 5 ? Math.pow(progress, $6fafcf15f6b61d60$var$normalizeTubePetalExponent(options.geometryParams?.tubePetalDisplacementExponent)) * $6fafcf15f6b61d60$var$normalizeTubePetalAmount(options.geometryParams?.tubePetalDisplacementAmount) * localBrushSize * tubeSmoothedPressures[pointIndex] : 0;
         const opacity = $6fafcf15f6b61d60$var$getPressureOpacityMultiplier(tubeSmoothedPressures[pointIndex], pressureOpacityMin, pressureOpacityMax) * descriptorOpacity;
-        $6fafcf15f6b61d60$var$writeScratchCentralDifferenceTangent(geometrySmoothedPositions, pointCount, pointIndex, previousTangent, tangent);
+        $6fafcf15f6b61d60$var$writeScratchIncomingTangent(geometrySmoothedPositions, pointCount, pointIndex, previousTangent, tangent);
         if (pointIndex === 0) $6fafcf15f6b61d60$var$initializeTubeFrame(point.orientation, tangent, bootstrapUp, frameRight, frameUp);
         else {
             $6fafcf15f6b61d60$var$copyVec3(frameRight, priorFrameRight);
@@ -2650,12 +2650,14 @@ function $6fafcf15f6b61d60$var$normalizeInPlace(v) {
         }
     }
 }
-function $6fafcf15f6b61d60$var$writeScratchCentralDifferenceTangent(positions, pointCount, index, previousTangent, out) {
-    const previousOffset = Math.max(0, index - 1) * 3;
-    const nextOffset = Math.min(pointCount - 1, index + 1) * 3;
-    out[0] = positions[nextOffset] - positions[previousOffset];
-    out[1] = positions[nextOffset + 1] - positions[previousOffset + 1];
-    out[2] = positions[nextOffset + 2] - positions[previousOffset + 2];
+function $6fafcf15f6b61d60$var$writeScratchIncomingTangent(positions, pointCount, index, previousTangent, out) {
+    const startIndex = index === 0 ? 0 : index - 1;
+    const endIndex = index === 0 ? Math.min(1, pointCount - 1) : index;
+    const startOffset = startIndex * 3;
+    const endOffset = endIndex * 3;
+    out[0] = positions[endOffset] - positions[startOffset];
+    out[1] = positions[endOffset + 1] - positions[startOffset + 1];
+    out[2] = positions[endOffset + 2] - positions[startOffset + 2];
     if (!$6fafcf15f6b61d60$var$normalizeInPlace(out)) {
         out[0] = previousTangent[0];
         out[1] = previousTangent[1];
