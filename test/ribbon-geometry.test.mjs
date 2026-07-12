@@ -182,6 +182,17 @@ test( 'smooths QuadStrip bends with the source midpoint and fuse pass', () => {
 			assertClose( position( 6 + corner )[ axis ], middle[ corner ][ axis ] );
 		}
 	}
+	const solidLength = ( solid ) => {
+		const distance = ( first, second ) => Math.hypot( ...position( first ).map(
+			( value, axis ) => position( second )[ axis ] - value ) );
+		const vertex = solid * 6;
+		return ( distance( vertex, vertex + 1 ) + distance( vertex + 3, vertex + 5 ) ) * 0.5;
+	};
+	const lengths = [ 0, 1, 2 ].map( solidLength );
+	const totalLength = lengths.reduce( ( total, length ) => total + length, 0 );
+	assertClose( geometry.uvs[ 2 ], lengths[ 0 ] / totalLength );
+	assertClose( geometry.uvs[ 14 ], ( lengths[ 0 ] + lengths[ 1 ] ) / totalLength );
+	assertClose( geometry.uvs[ 26 ], 1 );
 
 } );
 

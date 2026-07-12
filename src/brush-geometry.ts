@@ -637,6 +637,7 @@ function generateRibbonGeometry(
       renderPointCount,
       frontIndexCount / 6,
       hasBackfaces,
+      options.generatorClass,
     );
     if (options.generatorClass === "QuadStripBrushDistanceUV") {
       applyQuadStripDistanceOpacityFade(
@@ -886,6 +887,7 @@ function applyQuadStripMidpointFusion(
   pointCount: number,
   frontSolidCount: number,
   hasBackfaces: boolean,
+  generatorClass: string | undefined,
 ): void {
   let solid = 0;
   let sectionStart = 0;
@@ -903,6 +905,10 @@ function applyQuadStripMidpointFusion(
       fuseQuadStripSolids(out, solid - 1, solid);
     }
     solid += 1;
+  }
+
+  if (generatorClass === "QuadStripBrushStretchUV") {
+    applyQuadStripStretchUvs(out, breakBefore, pointCount);
   }
 
   updateQuadStripTangents(out, frontSolidCount);
@@ -930,6 +936,11 @@ function applyQuadStripMidpointFusion(
           backVertex + corner,
           true,
         );
+        copyUv(
+          out.uvs,
+          frontVertex + reverse[corner],
+          backVertex + corner,
+        );
         out.colors[(backVertex + corner) * 4 + 3] =
           out.colors[(frontVertex + reverse[corner]) * 4 + 3];
         if (out.uv1Size === 3) {
@@ -947,6 +958,52 @@ function applyQuadStripMidpointFusion(
   const vertexCount = frontSolidCount * 6 * (hasBackfaces ? 2 : 1);
   for (let vertex = 0; vertex < vertexCount; vertex += 1) {
     includeBounds(out.bounds, out.positions, vertex);
+  }
+}
+
+function applyQuadStripStretchUvs(
+  out: BrushGeometryArrays,
+  breakBefore: Uint8Array,
+  pointCount: number,
+): void {
+  let sectionStart = 0;
+  let solid = 0;
+  for (let segment = 0; segment < pointCount - 1; segment += 1) {
+    if (breakBefore[segment + 1] === 1) {
+      applyQuadStripStretchUvSection(out, sectionStart, solid);
+      sectionStart = solid;
+      continue;
+    }
+    solid += 1;
+  }
+  applyQuadStripStretchUvSection(out, sectionStart, solid);
+}
+
+function applyQuadStripStretchUvSection(
+  out: BrushGeometryArrays,
+  firstSolid: number,
+  endSolid: number,
+): void {
+  let sectionLength = 0;
+  for (let solid = firstSolid; solid < endSolid; solid += 1) {
+    sectionLength += getQuadStripSolidLength(out.positions, solid);
+  }
+  if (sectionLength <= EPSILON) {
+    sectionLength = 1;
+  }
+  let runningLength = 0;
+  for (let solid = firstSolid; solid < endSolid; solid += 1) {
+    const solidLength = getQuadStripSolidLength(out.positions, solid);
+    const startU = runningLength / sectionLength;
+    runningLength += solidLength;
+    const endU = runningLength / sectionLength;
+    const vertex = solid * 6;
+    out.uvs[vertex * 2] = startU;
+    out.uvs[(vertex + 2) * 2] = startU;
+    out.uvs[(vertex + 3) * 2] = startU;
+    out.uvs[(vertex + 1) * 2] = endU;
+    out.uvs[(vertex + 4) * 2] = endU;
+    out.uvs[(vertex + 5) * 2] = endU;
   }
 }
 
@@ -1577,6 +1634,7 @@ function generateUnitizedRibbonGeometry(
     pointCount,
     segmentCount,
     hasBackfaces,
+    options.generatorClass,
   );
 
   out.family = family;

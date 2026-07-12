@@ -432,7 +432,7 @@ function $6fafcf15f6b61d60$var$generateRibbonGeometry(stroke, family, options, o
     if (usesQuadStripTriangleSoup) {
         $6fafcf15f6b61d60$var$expandRibbonTriangleSoup(out, ribbonBreakBefore, renderPointCount, frontVertexCount, frontIndexCount, hasBackfaces, vertexCount);
         $6fafcf15f6b61d60$var$applyQuadStripPositionQuads(out, stroke, options, ribbonBreakBefore, renderPointCount);
-        $6fafcf15f6b61d60$var$applyQuadStripMidpointFusion(out, ribbonBreakBefore, renderPointCount, frontIndexCount / 6, hasBackfaces);
+        $6fafcf15f6b61d60$var$applyQuadStripMidpointFusion(out, ribbonBreakBefore, renderPointCount, frontIndexCount / 6, hasBackfaces, options.generatorClass);
         if (options.generatorClass === "QuadStripBrushDistanceUV") $6fafcf15f6b61d60$var$applyQuadStripDistanceOpacityFade(out, ribbonBreakBefore, renderPointCount, frontIndexCount / 6, hasBackfaces);
     }
     out.family = family;
@@ -588,7 +588,7 @@ const $6fafcf15f6b61d60$var$QUAD_STRIP_CORNER_SIDES = [
     -1,
     1
 ];
-function $6fafcf15f6b61d60$var$applyQuadStripMidpointFusion(out, breakBefore, pointCount, frontSolidCount, hasBackfaces) {
+function $6fafcf15f6b61d60$var$applyQuadStripMidpointFusion(out, breakBefore, pointCount, frontSolidCount, hasBackfaces, generatorClass) {
     let solid = 0;
     let sectionStart = 0;
     for(let segment = 0; segment < pointCount - 1; segment += 1){
@@ -605,6 +605,7 @@ function $6fafcf15f6b61d60$var$applyQuadStripMidpointFusion(out, breakBefore, po
         }
         solid += 1;
     }
+    if (generatorClass === "QuadStripBrushStretchUV") $6fafcf15f6b61d60$var$applyQuadStripStretchUvs(out, breakBefore, pointCount);
     $6fafcf15f6b61d60$var$updateQuadStripTangents(out, frontSolidCount);
     if (hasBackfaces) {
         const backVertexOffset = frontSolidCount * 6;
@@ -623,6 +624,7 @@ function $6fafcf15f6b61d60$var$applyQuadStripMidpointFusion(out, breakBefore, po
                 $6fafcf15f6b61d60$var$copyPosition(out.positions, frontVertex + reverse[corner], backVertex + corner);
                 $6fafcf15f6b61d60$var$copyNegatedNormal(out.normals, frontVertex + reverse[corner], backVertex + corner);
                 $6fafcf15f6b61d60$var$copyTangent(out.tangents, frontVertex + reverse[corner], backVertex + corner, true);
+                $6fafcf15f6b61d60$var$copyUv(out.uvs, frontVertex + reverse[corner], backVertex + corner);
                 out.colors[(backVertex + corner) * 4 + 3] = out.colors[(frontVertex + reverse[corner]) * 4 + 3];
                 if (out.uv1Size === 3) $6fafcf15f6b61d60$var$copyVec3At(out.vectorUvs, frontVertex + reverse[corner], backVertex + corner);
             }
@@ -631,6 +633,38 @@ function $6fafcf15f6b61d60$var$applyQuadStripMidpointFusion(out, breakBefore, po
     $6fafcf15f6b61d60$var$resetBounds(out.bounds);
     const vertexCount = frontSolidCount * 6 * (hasBackfaces ? 2 : 1);
     for(let vertex = 0; vertex < vertexCount; vertex += 1)$6fafcf15f6b61d60$var$includeBounds(out.bounds, out.positions, vertex);
+}
+function $6fafcf15f6b61d60$var$applyQuadStripStretchUvs(out, breakBefore, pointCount) {
+    let sectionStart = 0;
+    let solid = 0;
+    for(let segment = 0; segment < pointCount - 1; segment += 1){
+        if (breakBefore[segment + 1] === 1) {
+            $6fafcf15f6b61d60$var$applyQuadStripStretchUvSection(out, sectionStart, solid);
+            sectionStart = solid;
+            continue;
+        }
+        solid += 1;
+    }
+    $6fafcf15f6b61d60$var$applyQuadStripStretchUvSection(out, sectionStart, solid);
+}
+function $6fafcf15f6b61d60$var$applyQuadStripStretchUvSection(out, firstSolid, endSolid) {
+    let sectionLength = 0;
+    for(let solid = firstSolid; solid < endSolid; solid += 1)sectionLength += $6fafcf15f6b61d60$var$getQuadStripSolidLength(out.positions, solid);
+    if (sectionLength <= $6fafcf15f6b61d60$var$EPSILON) sectionLength = 1;
+    let runningLength = 0;
+    for(let solid = firstSolid; solid < endSolid; solid += 1){
+        const solidLength = $6fafcf15f6b61d60$var$getQuadStripSolidLength(out.positions, solid);
+        const startU = runningLength / sectionLength;
+        runningLength += solidLength;
+        const endU = runningLength / sectionLength;
+        const vertex = solid * 6;
+        out.uvs[vertex * 2] = startU;
+        out.uvs[(vertex + 2) * 2] = startU;
+        out.uvs[(vertex + 3) * 2] = startU;
+        out.uvs[(vertex + 1) * 2] = endU;
+        out.uvs[(vertex + 4) * 2] = endU;
+        out.uvs[(vertex + 5) * 2] = endU;
+    }
 }
 function $6fafcf15f6b61d60$var$updateQuadStripTangents(out, solidCount) {
     const triangleTangent = [
@@ -1062,7 +1096,7 @@ function $6fafcf15f6b61d60$var$generateUnitizedRibbonGeometry(stroke, family, op
     }
     $6fafcf15f6b61d60$var$expandUnitizedRibbonTriangleSoup(out, segmentCount, sourceFrontVertexCount, frontIndexCount, hasBackfaces, vertexCount);
     $6fafcf15f6b61d60$var$applyQuadStripPositionQuads(out, stroke, options, out.ribbonBreakBefore, pointCount);
-    $6fafcf15f6b61d60$var$applyQuadStripMidpointFusion(out, out.ribbonBreakBefore, pointCount, segmentCount, hasBackfaces);
+    $6fafcf15f6b61d60$var$applyQuadStripMidpointFusion(out, out.ribbonBreakBefore, pointCount, segmentCount, hasBackfaces, options.generatorClass);
     out.family = family;
     out.vertexCount = vertexCount;
     out.indexCount = indexCount;
