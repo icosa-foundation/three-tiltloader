@@ -61,6 +61,7 @@ export interface BrushGeometryArrays {
   ribbonBreakBefore: Uint8Array;
   ribbonRunningLengths: Float32Array;
   ribbonSectionLengths: Float32Array;
+  ribbonSmoothedPressures: Float32Array;
   uv0Size: 2 | 3 | 4;
   uv1Size: 0 | 3 | 4;
   indices: Uint32Array;
@@ -96,6 +97,7 @@ export function createBrushGeometryArrays(): BrushGeometryArrays {
     ribbonBreakBefore: new Uint8Array(INITIAL_VERTEX_CAPACITY),
     ribbonRunningLengths: new Float32Array(INITIAL_VERTEX_CAPACITY),
     ribbonSectionLengths: new Float32Array(INITIAL_VERTEX_CAPACITY),
+    ribbonSmoothedPressures: new Float32Array(INITIAL_VERTEX_CAPACITY),
     uv0Size: 2,
     uv1Size: 0,
     indices: new Uint32Array(INITIAL_INDEX_CAPACITY),
@@ -173,10 +175,12 @@ function ensureRibbonScratchCapacity(
     out.ribbonBreakBefore = new Uint8Array(capacity);
     out.ribbonRunningLengths = new Float32Array(capacity);
     out.ribbonSectionLengths = new Float32Array(capacity);
+    out.ribbonSmoothedPressures = new Float32Array(capacity);
   } else {
     out.ribbonBreakBefore.fill(0, 0, pointCount);
     out.ribbonRunningLengths.fill(0, 0, pointCount);
     out.ribbonSectionLengths.fill(0, 0, pointCount);
+    out.ribbonSmoothedPressures.fill(0, 0, pointCount);
   }
 }
 
@@ -287,6 +291,7 @@ function generateRibbonGeometry(
   const frontVertexCount = pointCount * 2;
   const segmentCount = Math.max(0, pointCount - 1);
   const connectedSegmentCount = prepareRibbonSections(stroke, out);
+  prepareRibbonSmoothedPressures(stroke, options, out);
   const frontIndexCount = connectedSegmentCount * 6;
   const hasBackfaces = options.geometryParams?.renderBackfaces === true;
   const vertexCount = frontVertexCount * (hasBackfaces ? 2 : 1);
@@ -304,6 +309,7 @@ function generateRibbonGeometry(
     ribbonBreakBefore,
     ribbonRunningLengths,
     ribbonSectionLengths,
+    ribbonSmoothedPressures,
   } = out;
   const pressureSizeMin = normalizePressureSizeMin(options.pressureSizeRange?.[0]);
   const pressureOpacityMin = normalizePressureOpacityMin(
@@ -369,7 +375,7 @@ function generateRibbonGeometry(
     }
     let size =
       localBrushSize *
-      getPressureSizeMultiplier(point.pressure, pressureSizeMin);
+      getPressureSizeMultiplier(ribbonSmoothedPressures[index], pressureSizeMin);
 
     writeCentralDifferenceTangent(stroke, index, previousTangent, tangent);
     rotateByQuaternion(point.orientation, VEC_FORWARD, pointerForward);
@@ -459,7 +465,7 @@ function generateRibbonGeometry(
     writeTangent(tangents, leftVertex, tangent, 1);
     writeTangent(tangents, rightVertex, tangent, 1);
     const opacity = getPressureOpacityMultiplier(
-      point.pressure,
+      ribbonSmoothedPressures[index],
       pressureOpacityMin,
       pressureOpacityMax,
     ) * descriptorOpacity;
@@ -770,6 +776,8 @@ function generateUnitizedRibbonGeometry(
 ): boolean {
   out.uv0Size = 2;
   const pointCount = stroke.controlPoints.length;
+  ensureRibbonScratchCapacity(out, pointCount);
+  prepareRibbonSmoothedPressures(stroke, options, out);
   const segmentCount = Math.max(0, pointCount - 1);
   const frontVertexCount = segmentCount * 4;
   const frontIndexCount = segmentCount * 6;
@@ -777,7 +785,16 @@ function generateUnitizedRibbonGeometry(
   const vertexCount = frontVertexCount * (hasBackfaces ? 2 : 1);
   const indexCount = frontIndexCount * (hasBackfaces ? 2 : 1);
   const reallocated = ensureGeometryCapacity(out, vertexCount, indexCount);
-  const { positions, normals, tangents, colors, uvs, indices, bounds } = out;
+  const {
+    positions,
+    normals,
+    tangents,
+    colors,
+    uvs,
+    indices,
+    bounds,
+    ribbonSmoothedPressures,
+  } = out;
   const pressureSizeMin = normalizePressureSizeMin(options.pressureSizeRange?.[0]);
   const pressureOpacityMin = normalizePressureOpacityMin(
     options.pressureOpacityRange,
@@ -809,11 +826,11 @@ function generateUnitizedRibbonGeometry(
     const point = stroke.controlPoints[pointIndex];
     const width =
       localBrushSize *
-      getPressureSizeMultiplier(point.pressure, pressureSizeMin) *
+      getPressureSizeMultiplier(ribbonSmoothedPressures[pointIndex], pressureSizeMin) *
       0.5;
     const opacity =
       getPressureOpacityMultiplier(
-        point.pressure,
+        ribbonSmoothedPressures[pointIndex],
         pressureOpacityMin,
         pressureOpacityMax,
       ) * descriptorOpacity;
@@ -2974,6 +2991,34 @@ function prepareRibbonSections(
     ribbonSectionLengths[sectionIndex] = runningLength;
   }
   return connectedSegmentCount;
+}
+
+function prepareRibbonSmoothedPressures(
+  stroke: StrokeData,
+  options: BrushGeometryOptions,
+  out: BrushGeometryArrays,
+): void {
+  const pointCount = stroke.controlPoints.length;
+  const pressures = out.ribbonSmoothedPressures;
+  if (pointCount === 0) {
+    return;
+  }
+  pressures[0] = clamp01(stroke.controlPoints[0].pressure);
+  const windowMeters =
+    options.generatorClass === "FlatGeometryBrush" &&
+    options.geometryParams?.m11Compatibility === true
+      ? 0.1
+      : 0.2;
+  for (let index = 1; index < pointCount; index += 1) {
+    const distance = distanceBetweenControlPoints(
+      stroke.controlPoints[index - 1],
+      stroke.controlPoints[index],
+    );
+    const retained = Math.pow(0.1, distance / windowMeters);
+    pressures[index] =
+      retained * pressures[index - 1] +
+      (1 - retained) * clamp01(stroke.controlPoints[index].pressure);
+  }
 }
 
 function distanceBetweenControlPoints(

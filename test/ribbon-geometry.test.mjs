@@ -157,7 +157,32 @@ test( 'clips non-M11 flat width growth to distance travelled', () => {
 	// Pressure 0.1 maps to a 0.38 initial width; the smoothed second center
 	// travels 0.07, so Open Brush caps the next width at 0.45.
 	assertClose( clippedWidth, 0.45 );
-	assertClose( retainedWidth, 2 );
+	// M11 keeps the original width topology but still applies its 0.1 m
+	// pressure-smoothing window: 0.1 -> 0.91 pressure -> 1.838 width.
+	assertClose( retainedWidth, 1.838 );
+
+} );
+
+test( 'smooths ribbon pressure over the Open Brush distance window', () => {
+
+	const stroke = createStroke();
+	stroke.brushSize = 1;
+	stroke.controlPoints[ 0 ].pressure = 0;
+	stroke.controlPoints[ 1 ].pressure = 1;
+	stroke.controlPoints[ 1 ].position = [ 0.1, 0, 0 ];
+	const quad = generateBrushGeometry( stroke, 'ribbon', {
+		pressureSizeRange: [ 0, 1 ],
+		generatorClass: 'QuadStripBrushDistanceUV'
+	} );
+	const flatM11 = generateBrushGeometry( stroke, 'ribbon', {
+		pressureSizeRange: [ 0, 1 ],
+		generatorClass: 'FlatGeometryBrush',
+		geometryParams: { m11Compatibility: true }
+	} );
+	const quadWidth = Math.abs( quad.positions[ 10 ] - quad.positions[ 7 ] );
+	const flatWidth = Math.abs( flatM11.positions[ 10 ] - flatM11.positions[ 7 ] );
+	assertClose( quadWidth, 1 - Math.pow( 0.1, 0.5 ) );
+	assertClose( flatWidth, 0.9 );
 
 } );
 

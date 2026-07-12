@@ -57,6 +57,7 @@ function $6fafcf15f6b61d60$export$cbaccd875830d3d0() {
         ribbonBreakBefore: new Uint8Array($6fafcf15f6b61d60$var$INITIAL_VERTEX_CAPACITY),
         ribbonRunningLengths: new Float32Array($6fafcf15f6b61d60$var$INITIAL_VERTEX_CAPACITY),
         ribbonSectionLengths: new Float32Array($6fafcf15f6b61d60$var$INITIAL_VERTEX_CAPACITY),
+        ribbonSmoothedPressures: new Float32Array($6fafcf15f6b61d60$var$INITIAL_VERTEX_CAPACITY),
         uv0Size: 2,
         uv1Size: 0,
         indices: new Uint32Array($6fafcf15f6b61d60$var$INITIAL_INDEX_CAPACITY),
@@ -107,10 +108,12 @@ function $6fafcf15f6b61d60$var$ensureRibbonScratchCapacity(out, pointCount) {
         out.ribbonBreakBefore = new Uint8Array(capacity);
         out.ribbonRunningLengths = new Float32Array(capacity);
         out.ribbonSectionLengths = new Float32Array(capacity);
+        out.ribbonSmoothedPressures = new Float32Array(capacity);
     } else {
         out.ribbonBreakBefore.fill(0, 0, pointCount);
         out.ribbonRunningLengths.fill(0, 0, pointCount);
         out.ribbonSectionLengths.fill(0, 0, pointCount);
+        out.ribbonSmoothedPressures.fill(0, 0, pointCount);
     }
 }
 function $6fafcf15f6b61d60$var$resetBounds(bounds) {
@@ -185,12 +188,13 @@ function $6fafcf15f6b61d60$var$generateRibbonGeometry(stroke, family, options, o
     const frontVertexCount = pointCount * 2;
     const segmentCount = Math.max(0, pointCount - 1);
     const connectedSegmentCount = $6fafcf15f6b61d60$var$prepareRibbonSections(stroke, out);
+    $6fafcf15f6b61d60$var$prepareRibbonSmoothedPressures(stroke, options, out);
     const frontIndexCount = connectedSegmentCount * 6;
     const hasBackfaces = options.geometryParams?.renderBackfaces === true;
     const vertexCount = frontVertexCount * (hasBackfaces ? 2 : 1);
     const indexCount = frontIndexCount * (hasBackfaces ? 2 : 1);
     const reallocated = $6fafcf15f6b61d60$var$ensureGeometryCapacity(out, vertexCount, indexCount);
-    const { positions: positions, normals: normals, tangents: tangents, colors: colors, uvs: uvs, vectorUvs: vectorUvs, indices: indices, bounds: bounds, ribbonBreakBefore: ribbonBreakBefore, ribbonRunningLengths: ribbonRunningLengths, ribbonSectionLengths: ribbonSectionLengths } = out;
+    const { positions: positions, normals: normals, tangents: tangents, colors: colors, uvs: uvs, vectorUvs: vectorUvs, indices: indices, bounds: bounds, ribbonBreakBefore: ribbonBreakBefore, ribbonRunningLengths: ribbonRunningLengths, ribbonSectionLengths: ribbonSectionLengths, ribbonSmoothedPressures: ribbonSmoothedPressures } = out;
     const pressureSizeMin = $6fafcf15f6b61d60$var$normalizePressureSizeMin(options.pressureSizeRange?.[0]);
     const pressureOpacityMin = $6fafcf15f6b61d60$var$normalizePressureOpacityMin(options.pressureOpacityRange);
     const pressureOpacityMax = $6fafcf15f6b61d60$var$normalizePressureOpacityMax(options.pressureOpacityRange);
@@ -279,7 +283,7 @@ function $6fafcf15f6b61d60$var$generateRibbonGeometry(stroke, family, options, o
             v0 = atlasRow / atlasRows;
             v1 = (atlasRow + 1) / atlasRows;
         }
-        let size = localBrushSize * $6fafcf15f6b61d60$var$getPressureSizeMultiplier(point.pressure, pressureSizeMin);
+        let size = localBrushSize * $6fafcf15f6b61d60$var$getPressureSizeMultiplier(ribbonSmoothedPressures[index], pressureSizeMin);
         $6fafcf15f6b61d60$var$writeCentralDifferenceTangent(stroke, index, previousTangent, tangent);
         $6fafcf15f6b61d60$var$rotateByQuaternion(point.orientation, $6fafcf15f6b61d60$var$VEC_FORWARD, pointerForward);
         $6fafcf15f6b61d60$var$rotateByQuaternion(point.orientation, $6fafcf15f6b61d60$var$VEC_UP, pointerUp);
@@ -340,7 +344,7 @@ function $6fafcf15f6b61d60$var$generateRibbonGeometry(stroke, family, options, o
         $6fafcf15f6b61d60$var$writeNormal(normals, rightVertex, normal);
         $6fafcf15f6b61d60$var$writeTangent(tangents, leftVertex, tangent, 1);
         $6fafcf15f6b61d60$var$writeTangent(tangents, rightVertex, tangent, 1);
-        const opacity = $6fafcf15f6b61d60$var$getPressureOpacityMultiplier(point.pressure, pressureOpacityMin, pressureOpacityMax) * descriptorOpacity;
+        const opacity = $6fafcf15f6b61d60$var$getPressureOpacityMultiplier(ribbonSmoothedPressures[index], pressureOpacityMin, pressureOpacityMax) * descriptorOpacity;
         $6fafcf15f6b61d60$var$writeColor(colors, leftVertex, stroke.color, opacity);
         $6fafcf15f6b61d60$var$writeColor(colors, rightVertex, stroke.color, opacity);
         // Open Brush distance ribbons advance by tileRate * segmentLength / size;
@@ -549,6 +553,8 @@ function $6fafcf15f6b61d60$var$writeOrthonormalTangent(tangents, normals, vertex
 function $6fafcf15f6b61d60$var$generateUnitizedRibbonGeometry(stroke, family, options, out) {
     out.uv0Size = 2;
     const pointCount = stroke.controlPoints.length;
+    $6fafcf15f6b61d60$var$ensureRibbonScratchCapacity(out, pointCount);
+    $6fafcf15f6b61d60$var$prepareRibbonSmoothedPressures(stroke, options, out);
     const segmentCount = Math.max(0, pointCount - 1);
     const frontVertexCount = segmentCount * 4;
     const frontIndexCount = segmentCount * 6;
@@ -556,7 +562,7 @@ function $6fafcf15f6b61d60$var$generateUnitizedRibbonGeometry(stroke, family, op
     const vertexCount = frontVertexCount * (hasBackfaces ? 2 : 1);
     const indexCount = frontIndexCount * (hasBackfaces ? 2 : 1);
     const reallocated = $6fafcf15f6b61d60$var$ensureGeometryCapacity(out, vertexCount, indexCount);
-    const { positions: positions, normals: normals, tangents: tangents, colors: colors, uvs: uvs, indices: indices, bounds: bounds } = out;
+    const { positions: positions, normals: normals, tangents: tangents, colors: colors, uvs: uvs, indices: indices, bounds: bounds, ribbonSmoothedPressures: ribbonSmoothedPressures } = out;
     const pressureSizeMin = $6fafcf15f6b61d60$var$normalizePressureSizeMin(options.pressureSizeRange?.[0]);
     const pressureOpacityMin = $6fafcf15f6b61d60$var$normalizePressureOpacityMin(options.pressureOpacityRange);
     const pressureOpacityMax = $6fafcf15f6b61d60$var$normalizePressureOpacityMax(options.pressureOpacityRange);
@@ -630,8 +636,8 @@ function $6fafcf15f6b61d60$var$generateUnitizedRibbonGeometry(stroke, family, op
     let previousOpacity = 1;
     for(let pointIndex = 0; pointIndex < pointCount; pointIndex += 1){
         const point = stroke.controlPoints[pointIndex];
-        const width = localBrushSize * $6fafcf15f6b61d60$var$getPressureSizeMultiplier(point.pressure, pressureSizeMin) * 0.5;
-        const opacity = $6fafcf15f6b61d60$var$getPressureOpacityMultiplier(point.pressure, pressureOpacityMin, pressureOpacityMax) * descriptorOpacity;
+        const width = localBrushSize * $6fafcf15f6b61d60$var$getPressureSizeMultiplier(ribbonSmoothedPressures[pointIndex], pressureSizeMin) * 0.5;
+        const opacity = $6fafcf15f6b61d60$var$getPressureOpacityMultiplier(ribbonSmoothedPressures[pointIndex], pressureOpacityMin, pressureOpacityMax) * descriptorOpacity;
         $6fafcf15f6b61d60$var$writeCentralDifferenceTangent(stroke, pointIndex, previousFallbackTangent, tangent);
         $6fafcf15f6b61d60$var$rotateByQuaternion(point.orientation, $6fafcf15f6b61d60$var$VEC_FORWARD, pointerForward);
         $6fafcf15f6b61d60$var$rotateByQuaternion(point.orientation, $6fafcf15f6b61d60$var$VEC_UP, pointerUp);
@@ -2266,6 +2272,18 @@ function $6fafcf15f6b61d60$var$prepareRibbonSections(stroke, out) {
     }
     for(let sectionIndex = sectionStart; sectionIndex < pointCount; sectionIndex += 1)ribbonSectionLengths[sectionIndex] = runningLength;
     return connectedSegmentCount;
+}
+function $6fafcf15f6b61d60$var$prepareRibbonSmoothedPressures(stroke, options, out) {
+    const pointCount = stroke.controlPoints.length;
+    const pressures = out.ribbonSmoothedPressures;
+    if (pointCount === 0) return;
+    pressures[0] = $6fafcf15f6b61d60$var$clamp01(stroke.controlPoints[0].pressure);
+    const windowMeters = options.generatorClass === "FlatGeometryBrush" && options.geometryParams?.m11Compatibility === true ? 0.1 : 0.2;
+    for(let index = 1; index < pointCount; index += 1){
+        const distance = $6fafcf15f6b61d60$var$distanceBetweenControlPoints(stroke.controlPoints[index - 1], stroke.controlPoints[index]);
+        const retained = Math.pow(0.1, distance / windowMeters);
+        pressures[index] = retained * pressures[index - 1] + (1 - retained) * $6fafcf15f6b61d60$var$clamp01(stroke.controlPoints[index].pressure);
+    }
 }
 function $6fafcf15f6b61d60$var$distanceBetweenControlPoints(left, right) {
     return Math.hypot(right.position[0] - left.position[0], right.position[1] - left.position[1], right.position[2] - left.position[2]);
