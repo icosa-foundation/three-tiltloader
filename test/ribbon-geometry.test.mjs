@@ -532,6 +532,33 @@ test( 'keeps SquareBrush rings on raw control-point positions', () => {
 
 } );
 
+test( 'frames a SquareBrush section from the current pointer orientation', () => {
+
+	const identityStroke = createStroke();
+	identityStroke.brushSize = 1;
+	const rolledStroke = createStroke();
+	rolledStroke.brushSize = 1;
+	rolledStroke.controlPoints[ 1 ].orientation = [
+		Math.SQRT1_2, 0, 0, Math.SQRT1_2
+	];
+	const options = {
+		pressureSizeRange: [ 1, 1 ],
+		generatorClass: 'SquareBrush'
+	};
+	const identity = generateBrushGeometry( identityStroke, 'tube', options );
+	const rolled = generateBrushGeometry( rolledStroke, 'tube', options );
+
+	assert.notDeepEqual(
+		Array.from( identity.positions.slice( 0, 24 ) ),
+		Array.from( rolled.positions.slice( 0, 24 ) )
+	);
+	assert.deepEqual(
+		Array.from( rolled.normals.slice( 0, 24 ) ),
+		Array.from( rolled.normals.slice( 24, 48 ) )
+	);
+
+} );
+
 test( 'restarts tube section frames and atlas rows after a break', () => {
 
 	const stroke = createStroke();

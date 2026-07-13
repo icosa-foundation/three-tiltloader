@@ -2258,6 +2258,7 @@ function $6fafcf15f6b61d60$var$generateTubeGeometry(stroke, options, out) {
             $6fafcf15f6b61d60$var$includeBounds(bounds, positions, vertex);
         }
     }
+    if (isSquareBrush) $6fafcf15f6b61d60$var$rewriteSquareBrushFrames(out, stroke, pointCount, ringVertexCount, sideCount);
     // A broken knot has no geometry in TubeBrush. The following valid knot
     // creates both its own front ring and the broken knot's back ring using the
     // following knot's frame. Correct the retained back-ring frame now that the
@@ -2406,6 +2407,68 @@ function $6fafcf15f6b61d60$var$generateTubeGeometry(stroke, options, out) {
     out.vertexCount = pointCount * ringVertexCount + capVertexCount;
     out.indexCount = indexOffset;
     return reallocated;
+}
+function $6fafcf15f6b61d60$var$rewriteSquareBrushFrames(out, stroke, pointCount, ringVertexCount, sideCount) {
+    const tangent = [
+        0,
+        0,
+        0
+    ];
+    const right = [
+        0,
+        0,
+        0
+    ];
+    const surface = [
+        0,
+        0,
+        0
+    ];
+    const preferredRight = [
+        0,
+        0,
+        0
+    ];
+    const pointerForward = [
+        0,
+        0,
+        0
+    ];
+    const pointerUp = [
+        0,
+        0,
+        0
+    ];
+    for(let pointIndex = 1; pointIndex < pointCount; pointIndex += 1){
+        if (out.tubeBreakBefore[pointIndex] === 1) {
+            preferredRight[0] = 0;
+            preferredRight[1] = 0;
+            preferredRight[2] = 0;
+            continue;
+        }
+        const previous = stroke.controlPoints[pointIndex - 1].position;
+        const point = stroke.controlPoints[pointIndex];
+        tangent[0] = point.position[0] - previous[0];
+        tangent[1] = point.position[1] - previous[1];
+        tangent[2] = point.position[2] - previous[2];
+        if (!$6fafcf15f6b61d60$var$normalizeInPlace(tangent)) continue;
+        $6fafcf15f6b61d60$var$rotateByQuaternion(point.orientation, $6fafcf15f6b61d60$var$VEC_FORWARD, pointerForward);
+        $6fafcf15f6b61d60$var$rotateByQuaternion(point.orientation, $6fafcf15f6b61d60$var$VEC_UP, pointerUp);
+        const startsSection = pointIndex === 1 || out.tubeBreakBefore[pointIndex - 1] === 1;
+        $6fafcf15f6b61d60$var$computeSurfaceFrame(preferredRight, tangent, pointerForward, pointerUp, startsSection, right, surface);
+        $6fafcf15f6b61d60$var$writeScratchVec3(out.tubeFrameRights, pointIndex, right);
+        $6fafcf15f6b61d60$var$writeScratchVec3(out.tubeFrameUps, pointIndex, surface);
+        $6fafcf15f6b61d60$var$writeScratchVec3(out.tubeTangents, pointIndex, tangent);
+        if (startsSection) {
+            $6fafcf15f6b61d60$var$writeScratchVec3(out.tubeFrameRights, pointIndex - 1, right);
+            $6fafcf15f6b61d60$var$writeScratchVec3(out.tubeFrameUps, pointIndex - 1, surface);
+            $6fafcf15f6b61d60$var$writeScratchVec3(out.tubeTangents, pointIndex - 1, tangent);
+        }
+        preferredRight[0] = right[0];
+        preferredRight[1] = right[1];
+        preferredRight[2] = right[2];
+    }
+    $6fafcf15f6b61d60$var$rewriteTubeRingFrames(out, stroke, pointCount, ringVertexCount, sideCount, true, true);
 }
 function $6fafcf15f6b61d60$var$rewriteTubeRingFrames(out, stroke, pointCount, ringVertexCount, sideCount, hardEdges, isSquareBrush) {
     const center = [

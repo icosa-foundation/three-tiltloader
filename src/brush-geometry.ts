@@ -3070,6 +3070,16 @@ function generateTubeGeometry(
     }
   }
 
+  if (isSquareBrush) {
+    rewriteSquareBrushFrames(
+      out,
+      stroke,
+      pointCount,
+      ringVertexCount,
+      sideCount,
+    );
+  }
+
   // A broken knot has no geometry in TubeBrush. The following valid knot
   // creates both its own front ring and the broken knot's back ring using the
   // following knot's frame. Correct the retained back-ring frame now that the
@@ -3270,6 +3280,70 @@ function generateTubeGeometry(
   out.vertexCount = pointCount * ringVertexCount + capVertexCount;
   out.indexCount = indexOffset;
   return reallocated;
+}
+
+function rewriteSquareBrushFrames(
+  out: BrushGeometryArrays,
+  stroke: StrokeData,
+  pointCount: number,
+  ringVertexCount: number,
+  sideCount: number,
+): void {
+  const tangent: Vec3 = [0, 0, 0];
+  const right: Vec3 = [0, 0, 0];
+  const surface: Vec3 = [0, 0, 0];
+  const preferredRight: Vec3 = [0, 0, 0];
+  const pointerForward: Vec3 = [0, 0, 0];
+  const pointerUp: Vec3 = [0, 0, 0];
+  for (let pointIndex = 1; pointIndex < pointCount; pointIndex += 1) {
+    if (out.tubeBreakBefore[pointIndex] === 1) {
+      preferredRight[0] = 0;
+      preferredRight[1] = 0;
+      preferredRight[2] = 0;
+      continue;
+    }
+    const previous = stroke.controlPoints[pointIndex - 1].position;
+    const point = stroke.controlPoints[pointIndex];
+    tangent[0] = point.position[0] - previous[0];
+    tangent[1] = point.position[1] - previous[1];
+    tangent[2] = point.position[2] - previous[2];
+    if (!normalizeInPlace(tangent)) {
+      continue;
+    }
+    rotateByQuaternion(point.orientation, VEC_FORWARD, pointerForward);
+    rotateByQuaternion(point.orientation, VEC_UP, pointerUp);
+    const startsSection =
+      pointIndex === 1 || out.tubeBreakBefore[pointIndex - 1] === 1;
+    computeSurfaceFrame(
+      preferredRight,
+      tangent,
+      pointerForward,
+      pointerUp,
+      startsSection,
+      right,
+      surface,
+    );
+    writeScratchVec3(out.tubeFrameRights, pointIndex, right);
+    writeScratchVec3(out.tubeFrameUps, pointIndex, surface);
+    writeScratchVec3(out.tubeTangents, pointIndex, tangent);
+    if (startsSection) {
+      writeScratchVec3(out.tubeFrameRights, pointIndex - 1, right);
+      writeScratchVec3(out.tubeFrameUps, pointIndex - 1, surface);
+      writeScratchVec3(out.tubeTangents, pointIndex - 1, tangent);
+    }
+    preferredRight[0] = right[0];
+    preferredRight[1] = right[1];
+    preferredRight[2] = right[2];
+  }
+  rewriteTubeRingFrames(
+    out,
+    stroke,
+    pointCount,
+    ringVertexCount,
+    sideCount,
+    true,
+    true,
+  );
 }
 
 function rewriteTubeRingFrames(
