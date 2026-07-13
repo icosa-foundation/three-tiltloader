@@ -651,6 +651,12 @@ test( 'keeps Spray and Genius particle pressure unsmoothed', () => {
 		deterministicBirthTime: true
 	} );
 	assertClose( loadedGenius.packedUvs[ 3 ], 0 );
+	const previewGenius = generateBrushGeometry( stroke, 'particle', {
+		generatorClass: 'GeniusParticlesBrush',
+		geometryParams: { particleRate: 1 },
+		particlePreview: true
+	} );
+	assertClose( previewGenius.packedUvs[ 3 ], -0.016 );
 
 } );
 

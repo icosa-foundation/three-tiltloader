@@ -37,6 +37,8 @@ export interface BrushGeometryOptions {
   particleKnotIndexOffset?: number;
   /** Total local-space length removed from the head of a particle preview. */
   particleDistanceOffset?: number;
+  /** Encode Genius birth times as negative for the preview-shrink shader path. */
+  particlePreview?: boolean;
   finalized?: boolean;
   lastControlPointIsKeeper?: boolean;
 }
@@ -3839,7 +3841,8 @@ function generateGeniusParticleGeometry(
     const birthTimeSeconds =
       options.deterministicBirthTime === true
         ? 0
-        : currentPoint.timestampMs * 0.001;
+        : currentPoint.timestampMs * 0.001 *
+          (options.particlePreview === true ? -1 : 1);
     writeGeniusParticleQuad(
       positions,
       normals,
