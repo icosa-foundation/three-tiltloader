@@ -654,6 +654,44 @@ test( 'keeps Spray and Genius particle pressure unsmoothed', () => {
 
 } );
 
+test( 'preserves Spray particle salts after preview knots decay', () => {
+
+	for ( const generatorClass of [ 'SprayBrush', 'MidpointPlusLifetimeSprayBrush' ] ) {
+		const stroke = createStroke();
+		stroke.brushSize = 1;
+		stroke.controlPoints[ 1 ].position = [ 1, 0, 0 ];
+		stroke.controlPoints.push( {
+			position: [ 2, 0, 0 ],
+			orientation: [ 0, 0, 0, 1 ],
+			pressure: 1,
+			timestampMs: 32
+		} );
+		const options = {
+			generatorClass,
+			pressureSizeRange: [ 1, 1 ],
+			geometryParams: {
+				sprayRateMultiplier: 1,
+				particleSizeVariance: 0.5,
+				particlePositionVariance: 0.5,
+				particleRotationVariance: 45
+			}
+		};
+		const full = generateBrushGeometry( stroke, 'particle', options );
+		const tailStroke = { ...stroke, controlPoints: stroke.controlPoints.slice( 1 ) };
+		const tail = generateBrushGeometry( tailStroke, 'particle', {
+			...options,
+			particleKnotIndexOffset: 1
+		} );
+
+		assert.deepEqual(
+			Array.from( tail.positions.slice( 0, 12 ) ),
+			Array.from( full.positions.slice( 12, 24 ) ),
+			generatorClass
+		);
+	}
+
+} );
+
 test( 'smooths finalized Tube and 3D Print knot positions', () => {
 
 	const stroke = createStroke();

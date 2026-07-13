@@ -33,6 +33,8 @@ export interface BrushGeometryOptions {
   geometryParams?: BrushGeometryParams;
   generatorClass?: string;
   deterministicBirthTime?: boolean;
+  /** Number of leading preview knots already decayed from this stroke. */
+  particleKnotIndexOffset?: number;
   finalized?: boolean;
   lastControlPointIsKeeper?: boolean;
 }
@@ -3536,6 +3538,9 @@ function generateSprayParticleGeometry(
   const randomOffset: Vec3 = [0, 0, 0];
   const center: Vec3 = [0, 0, 0];
   let quadIndex = 0;
+  const knotIndexOffset = normalizeNonNegativeInteger(
+    options.particleKnotIndexOffset,
+  );
 
   for (let pointIndex = 1; pointIndex < stroke.controlPoints.length; pointIndex += 1) {
     const previousPoint = stroke.controlPoints[pointIndex - 1];
@@ -3588,8 +3593,8 @@ function generateSprayParticleGeometry(
 
     for (let segmentQuad = 0; segmentQuad < segmentQuadCount; segmentQuad += 1) {
       const salt = hasLifetime
-        ? 10 * (pointIndex * 5 + segmentQuad)
-        : 10 * (pointIndex * 12 + (segmentQuad % 12));
+        ? 10 * ((pointIndex + knotIndexOffset) * 5 + segmentQuad)
+        : 10 * ((pointIndex + knotIndexOffset) * 12 + (segmentQuad % 12));
       const rotation =
         (statelessRandom01(stroke.seed, salt + 1) * 2 - 1) *
         rotationVarianceRadians;
@@ -3747,6 +3752,9 @@ function generateGeniusParticleGeometry(
         )
       : 0;
   let particleWithinKnot = 0;
+  const knotIndexOffset = normalizeNonNegativeInteger(
+    options.particleKnotIndexOffset,
+  );
 
   for (let particleIndex = 0; particleIndex < particleCount; particleIndex += 1) {
     const distanceOnStroke = particleIndex * spawnInterval;
@@ -3788,7 +3796,8 @@ function generateGeniusParticleGeometry(
       particleCount === 1
         ? Math.max(0.8, currentPoint.pressure)
         : currentPoint.pressure;
-    const salt = 16 * (segmentIndex * 16 + particleWithinKnot);
+    const salt =
+      16 * ((segmentIndex + knotIndexOffset) * 16 + particleWithinKnot);
     const size =
       localBrushSize *
       getPressureSizeMultiplier(pressure, pressureSizeMin) *
@@ -3915,6 +3924,10 @@ function normalizeNonNegative(value: number | undefined): number {
   return typeof value === "number" && Number.isFinite(value)
     ? Math.max(0, value)
     : 0;
+}
+
+function normalizeNonNegativeInteger(value: number | undefined): number {
+  return Math.floor(normalizeNonNegative(value));
 }
 
 function normalizeTileRate(value: number | undefined): number {
