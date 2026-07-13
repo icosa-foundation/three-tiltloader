@@ -35,6 +35,8 @@ export interface BrushGeometryOptions {
   deterministicBirthTime?: boolean;
   /** Number of leading preview knots already decayed from this stroke. */
   particleKnotIndexOffset?: number;
+  /** Total local-space length removed from the head of a particle preview. */
+  particleDistanceOffset?: number;
   finalized?: boolean;
   lastControlPointIsKeeper?: boolean;
 }
@@ -3690,12 +3692,14 @@ function generateGeniusParticleGeometry(
   out.uv0Size = 4;
   out.uv1Size = 4;
   const pointCount = stroke.controlPoints.length;
-  const totalLength = measureStrokeLength(stroke);
   const particleRate = normalizePositive(
     options.geometryParams?.particleRate,
     1,
   );
   const spawnInterval = OPEN_BRUSH_GENIUS_PARTICLE_INTERVAL / particleRate;
+  const distanceRemainder =
+    normalizeNonNegative(options.particleDistanceOffset) % spawnInterval;
+  const totalLength = measureStrokeLength(stroke) + distanceRemainder;
   const particleCount =
     pointCount === 0 ? 0 : Math.floor(totalLength / spawnInterval) + 1;
   const vertexCount = particleCount * 4;
@@ -3746,11 +3750,11 @@ function generateGeniusParticleGeometry(
   let segmentStartLength = 0;
   let segmentEndLength =
     pointCount > 1
-      ? distanceBetweenControlPoints(
+      ? distanceRemainder + distanceBetweenControlPoints(
           stroke.controlPoints[0],
           stroke.controlPoints[1],
         )
-      : 0;
+      : distanceRemainder;
   let particleWithinKnot = 0;
   const knotIndexOffset = normalizeNonNegativeInteger(
     options.particleKnotIndexOffset,

@@ -692,6 +692,29 @@ test( 'preserves Spray particle salts after preview knots decay', () => {
 
 } );
 
+test( 'preserves Genius particle distance phase after preview knots decay', () => {
+
+	const stroke = createStroke();
+	stroke.brushSize = 0.1;
+	stroke.controlPoints[ 0 ].position = [ 1.3, 0, 0 ];
+	stroke.controlPoints[ 1 ].position = [ 2.3, 0, 0 ];
+	const geometry = generateBrushGeometry( stroke, 'particle', {
+		generatorClass: 'GeniusParticlesBrush',
+		particleDistanceOffset: 1.3,
+		geometryParams: {
+			particleRate: 0.0025,
+			particleSizeVariance: 0,
+			particleSpeed: 0,
+			brushSizeRange: [ 0.1, 0.1 ]
+		}
+	} );
+
+	assert.equal( getGeneratedVertexCount( geometry ), 8 );
+	assertClose( geometry.normals[ 0 ], 1.3 );
+	assertClose( geometry.normals[ 12 ], 1.3 + 1 / 1.3 );
+
+} );
+
 test( 'smooths finalized Tube and 3D Print knot positions', () => {
 
 	const stroke = createStroke();
