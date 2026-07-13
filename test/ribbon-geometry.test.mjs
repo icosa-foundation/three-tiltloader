@@ -452,6 +452,38 @@ test( 'smooths tube pressure over the GeometryBrush distance window', () => {
 
 } );
 
+test( 'uses Open Brush radial tangents for hard-edged tube rings', () => {
+
+	const stroke = createStroke();
+	stroke.brushSize = 1;
+	stroke.controlPoints[ 1 ].position = [ 1, 0, 0 ];
+	const geometry = generateBrushGeometry( stroke, 'tube', {
+		pressureSizeRange: [ 1, 1 ],
+		generatorClass: 'TubeBrush',
+		geometryParams: {
+			tubeSideCount: 4,
+			tubeEndCaps: false,
+			tubeHardEdges: true
+		}
+	} );
+
+	for ( let side = 0; side < 4; side += 1 ) {
+		for ( let duplicate = 0; duplicate < 2; duplicate += 1 ) {
+			const vertex = side * 2 + duplicate;
+			const positionOffset = vertex * 3;
+			const tangentOffset = vertex * 4;
+			for ( let axis = 0; axis < 3; axis += 1 ) {
+				assertClose(
+					geometry.tangents[ tangentOffset + axis ],
+					geometry.positions[ positionOffset + axis ] * 2
+				);
+			}
+			assertClose( geometry.tangents[ tangentOffset + 3 ], 1 );
+		}
+	}
+
+} );
+
 test( 'restarts Tube modifiers and StretchUV for each broken section', () => {
 
 	const stroke = createStroke();

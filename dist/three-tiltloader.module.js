@@ -2206,7 +2206,10 @@ function $6fafcf15f6b61d60$var$generateTubeGeometry(stroke, options, out) {
                         center[2] + displacement[2] * radius * shapeScale + radial[2] * petalOffset
                     ]);
                     $6fafcf15f6b61d60$var$writeNormal(normals, vertex, radial);
-                    $6fafcf15f6b61d60$var$writeTangent(tangents, vertex, tangent, 1);
+                    // TubeBrush.MakeClosedCircleHardEdges stores the undisplaced radial
+                    // direction as the tangent; the two duplicated vertices only differ
+                    // in their face normals.
+                    $6fafcf15f6b61d60$var$writeTangent(tangents, vertex, displacement, 1);
                     $6fafcf15f6b61d60$var$writeColor(colors, vertex, stroke.color, opacity);
                     const vFraction = side === 0 && duplicate === 0 ? 1 : side / sideCount;
                     const v = v0 + (v1 - v0) * vFraction;

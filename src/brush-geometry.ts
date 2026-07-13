@@ -3002,7 +3002,10 @@ function generateTubeGeometry(
               radial[2] * petalOffset,
           ]);
           writeNormal(normals, vertex, radial);
-          writeTangent(tangents, vertex, tangent, 1);
+          // TubeBrush.MakeClosedCircleHardEdges stores the undisplaced radial
+          // direction as the tangent; the two duplicated vertices only differ
+          // in their face normals.
+          writeTangent(tangents, vertex, displacement, 1);
           writeColor(colors, vertex, stroke.color, opacity);
           const vFraction = side === 0 && duplicate === 0 ? 1 : side / sideCount;
           const v = v0 + (v1 - v0) * vFraction;
