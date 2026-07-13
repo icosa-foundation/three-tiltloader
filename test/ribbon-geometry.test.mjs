@@ -877,39 +877,65 @@ test( 'smooths Midpoint pressure while keeping Spray and Genius raw', () => {
 
 test( 'preserves Spray particle salts after preview knots decay', () => {
 
-	for ( const generatorClass of [ 'SprayBrush', 'MidpointPlusLifetimeSprayBrush' ] ) {
-		const stroke = createStroke();
-		stroke.brushSize = 1;
-		stroke.controlPoints[ 1 ].position = [ 1, 0, 0 ];
-		stroke.controlPoints.push( {
-			position: [ 2, 0, 0 ],
-			orientation: [ 0, 0, 0, 1 ],
-			pressure: 1,
-			timestampMs: 32
-		} );
-		const options = {
-			generatorClass,
-			pressureSizeRange: [ 1, 1 ],
-			geometryParams: {
-				sprayRateMultiplier: 1,
-				particleSizeVariance: 0.5,
-				particlePositionVariance: 0.5,
-				particleRotationVariance: 45
-			}
-		};
-		const full = generateBrushGeometry( stroke, 'particle', options );
-		const tailStroke = { ...stroke, controlPoints: stroke.controlPoints.slice( 1 ) };
-		const tail = generateBrushGeometry( tailStroke, 'particle', {
-			...options,
-			particleKnotIndexOffset: 1
-		} );
+	const generatorClass = 'SprayBrush';
+	const stroke = createStroke();
+	stroke.brushSize = 1;
+	stroke.controlPoints[ 1 ].position = [ 1, 0, 0 ];
+	stroke.controlPoints.push( {
+		position: [ 2, 0, 0 ],
+		orientation: [ 0, 0, 0, 1 ],
+		pressure: 1,
+		timestampMs: 32
+	} );
+	const options = {
+		generatorClass,
+		pressureSizeRange: [ 1, 1 ],
+		geometryParams: {
+			sprayRateMultiplier: 1,
+			particleSizeVariance: 0.5,
+			particlePositionVariance: 0.5,
+			particleRotationVariance: 45
+		}
+	};
+	const full = generateBrushGeometry( stroke, 'particle', options );
+	const tailStroke = { ...stroke, controlPoints: stroke.controlPoints.slice( 1 ) };
+	const tail = generateBrushGeometry( tailStroke, 'particle', {
+		...options,
+		particleKnotIndexOffset: 1
+	} );
 
-		assert.deepEqual(
-			Array.from( tail.positions.slice( 0, 12 ) ),
-			Array.from( full.positions.slice( 12, 24 ) ),
-			generatorClass
-		);
-	}
+	assert.deepEqual(
+		Array.from( tail.positions.slice( 0, 12 ) ),
+		Array.from( full.positions.slice( 12, 24 ) )
+	);
+
+} );
+
+test( 'restarts Midpoint particle salts with each preview rebuild', () => {
+
+	const stroke = createStroke();
+	stroke.brushSize = 1;
+	stroke.controlPoints[ 1 ].position = [ 1, 0, 0 ];
+	const options = {
+		generatorClass: 'MidpointPlusLifetimeSprayBrush',
+		pressureSizeRange: [ 1, 1 ],
+		geometryParams: {
+			sprayRateMultiplier: 1,
+			particleSizeVariance: 0.5,
+			particlePositionVariance: 0.5,
+			particleRotationVariance: 45
+		}
+	};
+	const rebuilt = generateBrushGeometry( stroke, 'particle', options );
+	const offset = generateBrushGeometry( stroke, 'particle', {
+		...options,
+		particleKnotIndexOffset: 7
+	} );
+
+	assert.deepEqual(
+		Array.from( offset.positions.slice( 0, 12 ) ),
+		Array.from( rebuilt.positions.slice( 0, 12 ) )
+	);
 
 } );
 

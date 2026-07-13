@@ -3856,9 +3856,13 @@ function generateSprayParticleGeometry(
   const randomOffset: Vec3 = [0, 0, 0];
   const center: Vec3 = [0, 0, 0];
   let quadIndex = 0;
-  const knotIndexOffset = normalizeNonNegativeInteger(
-    options.particleKnotIndexOffset,
-  );
+  // SprayBrush decays its preview in place and offsets knot salts to preserve
+  // its random sequence. MidpointPlusLifetimeSprayBrush instead inherits
+  // GeometryBrush's full preview rebuild, so its salts restart with the
+  // rebuilt knot indices.
+  const knotIndexOffset = hasLifetime
+    ? 0
+    : normalizeNonNegativeInteger(options.particleKnotIndexOffset);
 
   for (let pointIndex = 1; pointIndex < stroke.controlPoints.length; pointIndex += 1) {
     const previousPoint = stroke.controlPoints[pointIndex - 1];
