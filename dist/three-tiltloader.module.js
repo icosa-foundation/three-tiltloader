@@ -2920,7 +2920,8 @@ function $6fafcf15f6b61d60$var$generateGeniusParticleGeometry(stroke, options, o
         center[0] = previousPoint.position[0] + (currentPoint.position[0] - previousPoint.position[0]) * ratio;
         center[1] = previousPoint.position[1] + (currentPoint.position[1] - previousPoint.position[1]) * ratio;
         center[2] = previousPoint.position[2] + (currentPoint.position[2] - previousPoint.position[2]) * ratio;
-        const pressure = particleCount === 1 ? Math.max(0.8, currentPoint.pressure) : currentPoint.pressure;
+        const rebuildsFinalTwoKnotParticle = options.finalized === true && pointCount === 2 && particleIndex === particleCount - 1;
+        const pressure = rebuildsFinalTwoKnotParticle ? Math.max(0.8, currentPoint.pressure) : currentPoint.pressure;
         const salt = 16 * ((segmentIndex + knotIndexOffset) * 16 + particleWithinKnot);
         const size = localBrushSize * $6fafcf15f6b61d60$var$getPressureSizeMultiplier(pressure, pressureSizeMin) * (1 + $6fafcf15f6b61d60$var$statelessRandom01(stroke.seed, salt) * sizeVariance);
         $6fafcf15f6b61d60$var$writeRandomUnitSphere(stroke.seed, salt + 2, sphereOffset);

@@ -949,6 +949,40 @@ test( 'keeps a Genius particle on the live pointer until finalization', () => {
 
 } );
 
+test( 'raises only the final particle pressure for a two-knot Genius stroke', () => {
+
+	const stroke = createStroke();
+	stroke.brushSize = 1;
+	stroke.controlPoints[ 1 ].position = [ 0.01, 0, 0 ];
+	stroke.controlPoints[ 1 ].pressure = 0.2;
+	const geometry = generateBrushGeometry( stroke, 'particle', {
+		generatorClass: 'GeniusParticlesBrush',
+		pressureSizeRange: [ 0, 1 ],
+		geometryParams: {
+			particleRate: 1,
+			particleSizeVariance: 0,
+			particleSpeed: 0,
+			brushSizeRange: [ 1, 1 ]
+		},
+		finalized: true
+	} );
+	const particleSize = ( particle ) => {
+		const first = particle * 4 * 3;
+		const second = first + 3;
+		return Math.hypot(
+			geometry.positions[ first ] - geometry.positions[ second ],
+			geometry.positions[ first + 1 ] - geometry.positions[ second + 1 ],
+			geometry.positions[ first + 2 ] - geometry.positions[ second + 2 ]
+		);
+	};
+	const particleCount = getGeneratedVertexCount( geometry ) / 4;
+
+	assert.ok( particleCount > 1 );
+	assertClose( particleSize( 0 ), 0.2 );
+	assertClose( particleSize( particleCount - 1 ), 0.8 );
+
+} );
+
 test( 'smooths finalized Tube and 3D Print knot positions', () => {
 
 	const stroke = createStroke();

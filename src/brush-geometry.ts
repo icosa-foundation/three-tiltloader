@@ -4109,10 +4109,13 @@ function generateGeniusParticleGeometry(
       previousPoint.position[2] +
       (currentPoint.position[2] - previousPoint.position[2]) * ratio;
 
-    const pressure =
-      particleCount === 1
-        ? Math.max(0.8, currentPoint.pressure)
-        : currentPoint.pressure;
+    const rebuildsFinalTwoKnotParticle =
+      options.finalized === true &&
+      pointCount === 2 &&
+      particleIndex === particleCount - 1;
+    const pressure = rebuildsFinalTwoKnotParticle
+      ? Math.max(0.8, currentPoint.pressure)
+      : currentPoint.pressure;
     const salt =
       16 * ((segmentIndex + knotIndexOffset) * 16 + particleWithinKnot);
     const size =
