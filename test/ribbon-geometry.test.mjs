@@ -629,6 +629,13 @@ test( 'keeps Spray and Genius particle pressure unsmoothed', () => {
 		deterministicBirthTime: true
 	} );
 	assertClose( loadedSpray.uv1[ 3 ], 0 );
+	const offsetSpray = generateBrushGeometry( stroke, 'particle', {
+		generatorClass: 'MidpointPlusLifetimeSprayBrush',
+		pressureSizeRange: [ 0.1, 1 ],
+		geometryParams: { sprayRateMultiplier: 20 },
+		particleBirthTimeOffsetSeconds: 2
+	} );
+	assertClose( offsetSpray.uv1[ 3 ], 2.016 );
 
 	const genius = generateBrushGeometry( stroke, 'particle', {
 		generatorClass: 'GeniusParticlesBrush',
@@ -651,6 +658,12 @@ test( 'keeps Spray and Genius particle pressure unsmoothed', () => {
 		deterministicBirthTime: true
 	} );
 	assertClose( loadedGenius.packedUvs[ 3 ], 0 );
+	const offsetGenius = generateBrushGeometry( stroke, 'particle', {
+		generatorClass: 'GeniusParticlesBrush',
+		geometryParams: { particleRate: 1 },
+		particleBirthTimeOffsetSeconds: 2
+	} );
+	assertClose( offsetGenius.packedUvs[ 3 ], 2.016 );
 	const previewGenius = generateBrushGeometry( stroke, 'particle', {
 		generatorClass: 'GeniusParticlesBrush',
 		geometryParams: { particleRate: 1 },

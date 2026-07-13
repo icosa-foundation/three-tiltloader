@@ -39,6 +39,8 @@ export interface BrushGeometryOptions {
   particleDistanceOffset?: number;
   /** Encode Genius birth times as negative for the preview-shrink shader path. */
   particlePreview?: boolean;
+  /** Offset serialized/live particle birth times into the renderer's clock domain. */
+  particleBirthTimeOffsetSeconds?: number;
   finalized?: boolean;
   lastControlPointIsKeeper?: boolean;
 }
@@ -3649,7 +3651,8 @@ function generateSprayParticleGeometry(
         hasLifetime,
         options.deterministicBirthTime === true
           ? 0
-          : point.timestampMs * 0.001,
+          : point.timestampMs * 0.001 +
+            normalizeFinite(options.particleBirthTimeOffsetSeconds),
       );
       quadIndex += 1;
     }
@@ -3841,7 +3844,8 @@ function generateGeniusParticleGeometry(
     const birthTimeSeconds =
       options.deterministicBirthTime === true
         ? 0
-        : currentPoint.timestampMs * 0.001 *
+        : (currentPoint.timestampMs * 0.001 +
+            normalizeFinite(options.particleBirthTimeOffsetSeconds)) *
           (options.particlePreview === true ? -1 : 1);
     writeGeniusParticleQuad(
       positions,
@@ -3934,6 +3938,10 @@ function normalizeNonNegative(value: number | undefined): number {
   return typeof value === "number" && Number.isFinite(value)
     ? Math.max(0, value)
     : 0;
+}
+
+function normalizeFinite(value: number | undefined): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
 function normalizeNonNegativeInteger(value: number | undefined): number {
