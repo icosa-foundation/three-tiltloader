@@ -542,18 +542,52 @@ function $6fafcf15f6b61d60$var$applyQuadStripPositionQuads(out, stroke, options,
         0,
         0
     ];
+    const center = [
+        0,
+        0,
+        0
+    ];
+    const halfForward = [
+        0,
+        0,
+        0
+    ];
+    const halfRight = [
+        0,
+        0,
+        0
+    ];
+    const previousCenter = [
+        0,
+        0,
+        0
+    ];
+    const previousHalfForward = [
+        0,
+        0,
+        0
+    ];
+    const previousHalfRight = [
+        0,
+        0,
+        0
+    ];
     const pressureSizeMin = $6fafcf15f6b61d60$var$normalizePressureSizeMin(options.pressureSizeRange?.[0]);
     const pressureOpacityMin = $6fafcf15f6b61d60$var$normalizePressureOpacityMin(options.pressureOpacityRange);
     const pressureOpacityMax = $6fafcf15f6b61d60$var$normalizePressureOpacityMax(options.pressureOpacityRange);
     const descriptorOpacity = $6fafcf15f6b61d60$var$normalizeDescriptorOpacity(options.geometryParams?.opacity);
     const localBrushSize = $6fafcf15f6b61d60$var$getLocalBrushSize(stroke);
     let previousOpacity = 0;
+    let lastSizeShrink = 0;
+    let sectionSolidCount = 0;
     let solid = 0;
     for(let pointIndex = 1; pointIndex < pointCount; pointIndex += 1){
         if (breakBefore[pointIndex] === 1) {
             previousRight[0] = 0;
             previousRight[1] = 0;
             previousRight[2] = 0;
+            lastSizeShrink = 0;
+            sectionSolidCount = 0;
             continue;
         }
         const previousPoint = stroke.controlPoints[pointIndex - 1];
@@ -561,21 +595,68 @@ function $6fafcf15f6b61d60$var$applyQuadStripPositionQuads(out, stroke, options,
         tangent[0] = point.position[0] - previousPoint.position[0];
         tangent[1] = point.position[1] - previousPoint.position[1];
         tangent[2] = point.position[2] - previousPoint.position[2];
+        const moveLength = Math.hypot(tangent[0], tangent[1], tangent[2]);
         if (!$6fafcf15f6b61d60$var$normalizeInPlace(tangent)) continue;
         $6fafcf15f6b61d60$var$rotateByQuaternion(point.orientation, $6fafcf15f6b61d60$var$VEC_FORWARD, pointerForward);
         $6fafcf15f6b61d60$var$rotateByQuaternion(point.orientation, $6fafcf15f6b61d60$var$VEC_UP, pointerUp);
         $6fafcf15f6b61d60$var$computeSurfaceFrame(previousRight, tangent, pointerForward, pointerUp, solid === 0, right, normal);
-        const size = localBrushSize * $6fafcf15f6b61d60$var$getPressureSizeMultiplier(out.ribbonSmoothedPressures[pointIndex], pressureSizeMin);
-        const halfRightX = right[0] * size * 0.5;
-        const halfRightY = right[1] * size * 0.5;
-        const halfRightZ = right[2] * size * 0.5;
+        const sourceSize = localBrushSize * $6fafcf15f6b61d60$var$getPressureSizeMultiplier(out.ribbonSmoothedPressures[pointIndex], pressureSizeMin);
+        let size = sourceSize - lastSizeShrink;
+        center[0] = (previousPoint.position[0] + point.position[0]) * 0.5;
+        center[1] = (previousPoint.position[1] + point.position[1]) * 0.5;
+        center[2] = (previousPoint.position[2] + point.position[2]) * 0.5;
+        halfForward[0] = (point.position[0] - previousPoint.position[0]) * 0.5;
+        halfForward[1] = (point.position[1] - previousPoint.position[1]) * 0.5;
+        halfForward[2] = (point.position[2] - previousPoint.position[2]) * 0.5;
+        halfRight[0] = right[0] * size * 0.5;
+        halfRight[1] = right[1] * size * 0.5;
+        halfRight[2] = right[2] * size * 0.5;
+        let sizeShrink = lastSizeShrink;
+        if (sectionSolidCount >= 1) {
+            const rightEdgeX = center[0] + halfRight[0] - previousCenter[0];
+            const rightEdgeY = center[1] + halfRight[1] - previousCenter[1];
+            const rightEdgeZ = center[2] + halfRight[2] - previousCenter[2];
+            const leftEdgeX = center[0] - halfRight[0] - previousCenter[0];
+            const leftEdgeY = center[1] - halfRight[1] - previousCenter[1];
+            const leftEdgeZ = center[2] - halfRight[2] - previousCenter[2];
+            const dotRight = previousHalfForward[0] * rightEdgeX + previousHalfForward[1] * rightEdgeY + previousHalfForward[2] * rightEdgeZ;
+            const dotLeft = previousHalfForward[0] * leftEdgeX + previousHalfForward[1] * leftEdgeY + previousHalfForward[2] * leftEdgeZ;
+            if (dotLeft < 0 && dotRight > 0 || dotLeft > 0 && dotRight < 0) {
+                const previousLeftX = previousCenter[0] - previousHalfRight[0];
+                const previousLeftY = previousCenter[1] - previousHalfRight[1];
+                const previousLeftZ = previousCenter[2] - previousHalfRight[2];
+                const previousRightX = previousCenter[0] + previousHalfRight[0];
+                const previousRightY = previousCenter[1] + previousHalfRight[1];
+                const previousRightZ = previousCenter[2] + previousHalfRight[2];
+                if (dotLeft < 0) {
+                    halfRight[0] = center[0] - previousLeftX;
+                    halfRight[1] = center[1] - previousLeftY;
+                    halfRight[2] = center[2] - previousLeftZ;
+                } else {
+                    halfRight[0] = previousRightX - center[0];
+                    halfRight[1] = previousRightY - center[1];
+                    halfRight[2] = previousRightZ - center[2];
+                }
+                size = 2 * Math.hypot(halfRight[0], halfRight[1], halfRight[2]);
+                sizeShrink = lastSizeShrink + (sourceSize - lastSizeShrink - size);
+                const preferredForwardX = center[0] - previousPoint.position[0];
+                const preferredForwardY = center[1] - previousPoint.position[1];
+                const preferredForwardZ = center[2] - previousPoint.position[2];
+                const rightLengthSquared = $6fafcf15f6b61d60$var$dotVec3(halfRight, halfRight);
+                const projection = rightLengthSquared > $6fafcf15f6b61d60$var$EPSILON ? (preferredForwardX * halfRight[0] + preferredForwardY * halfRight[1] + preferredForwardZ * halfRight[2]) / rightLengthSquared : 0;
+                halfForward[0] = preferredForwardX - projection * halfRight[0];
+                halfForward[1] = preferredForwardY - projection * halfRight[1];
+                halfForward[2] = preferredForwardZ - projection * halfRight[2];
+                if ($6fafcf15f6b61d60$var$normalizeInPlace(halfForward)) {
+                    const forwardScale = 0.5 * Math.hypot(center[0] - previousCenter[0], center[1] - previousCenter[1], center[2] - previousCenter[2]);
+                    halfForward[0] *= forwardScale;
+                    halfForward[1] *= forwardScale;
+                    halfForward[2] *= forwardScale;
+                }
+            } else sizeShrink = lastSizeShrink - Math.min(lastSizeShrink, moveLength);
+        }
         const vertex = solid * 6;
-        $6fafcf15f6b61d60$var$writeQuadStripPosition(out.positions, vertex, previousPoint.position, -halfRightX, -halfRightY, -halfRightZ);
-        $6fafcf15f6b61d60$var$writeQuadStripPosition(out.positions, vertex + 1, point.position, -halfRightX, -halfRightY, -halfRightZ);
-        $6fafcf15f6b61d60$var$writeQuadStripPosition(out.positions, vertex + 2, previousPoint.position, halfRightX, halfRightY, halfRightZ);
-        $6fafcf15f6b61d60$var$copyPosition(out.positions, vertex + 2, vertex + 3);
-        $6fafcf15f6b61d60$var$copyPosition(out.positions, vertex + 1, vertex + 4);
-        $6fafcf15f6b61d60$var$writeQuadStripPosition(out.positions, vertex + 5, point.position, halfRightX, halfRightY, halfRightZ);
+        $6fafcf15f6b61d60$var$writeQuadStripPositionQuad(out.positions, vertex, center, halfForward, halfRight);
         for(let corner = 0; corner < 6; corner += 1)$6fafcf15f6b61d60$var$writeNormal(out.normals, vertex + corner, normal);
         const opacity = $6fafcf15f6b61d60$var$getPressureOpacityMultiplier(out.ribbonSmoothedPressures[pointIndex], pressureOpacityMin, pressureOpacityMax) * descriptorOpacity;
         const trailingOpacity = solid === 0 ? opacity : previousOpacity;
@@ -585,20 +666,32 @@ function $6fafcf15f6b61d60$var$applyQuadStripPositionQuads(out, stroke, options,
         $6fafcf15f6b61d60$var$writeColor(out.colors, vertex + 3, stroke.color, trailingOpacity);
         $6fafcf15f6b61d60$var$writeColor(out.colors, vertex + 4, stroke.color, opacity);
         $6fafcf15f6b61d60$var$writeColor(out.colors, vertex + 5, stroke.color, opacity);
-        if (out.uv1Size === 3) $6fafcf15f6b61d60$var$writeQuadStripVectorOffset(out.vectorUvs, vertex, halfRightX, halfRightY, halfRightZ);
+        if (out.uv1Size === 3) $6fafcf15f6b61d60$var$writeQuadStripVectorOffset(out.vectorUvs, vertex, halfRight[0], halfRight[1], halfRight[2]);
         out.ribbonSectionLengths[solid] = size;
         previousOpacity = opacity;
-        previousRight[0] = right[0];
-        previousRight[1] = right[1];
-        previousRight[2] = right[2];
+        $6fafcf15f6b61d60$var$copyVec3(center, previousCenter);
+        $6fafcf15f6b61d60$var$copyVec3(halfForward, previousHalfForward);
+        $6fafcf15f6b61d60$var$copyVec3(halfRight, previousHalfRight);
+        $6fafcf15f6b61d60$var$copyVec3(halfRight, previousRight);
+        $6fafcf15f6b61d60$var$normalizeInPlace(previousRight);
+        lastSizeShrink = sizeShrink;
+        sectionSolidCount += 1;
         solid += 1;
     }
 }
-function $6fafcf15f6b61d60$var$writeQuadStripPosition(target, vertex, point, offsetX, offsetY, offsetZ) {
+function $6fafcf15f6b61d60$var$writeQuadStripPositionQuad(target, vertex, center, halfForward, halfRight) {
+    $6fafcf15f6b61d60$var$writePositionComponents(target, vertex, center[0] - halfForward[0] - halfRight[0], center[1] - halfForward[1] - halfRight[1], center[2] - halfForward[2] - halfRight[2]);
+    $6fafcf15f6b61d60$var$writePositionComponents(target, vertex + 1, center[0] + halfForward[0] - halfRight[0], center[1] + halfForward[1] - halfRight[1], center[2] + halfForward[2] - halfRight[2]);
+    $6fafcf15f6b61d60$var$writePositionComponents(target, vertex + 2, center[0] - halfForward[0] + halfRight[0], center[1] - halfForward[1] + halfRight[1], center[2] - halfForward[2] + halfRight[2]);
+    $6fafcf15f6b61d60$var$copyPosition(target, vertex + 2, vertex + 3);
+    $6fafcf15f6b61d60$var$copyPosition(target, vertex + 1, vertex + 4);
+    $6fafcf15f6b61d60$var$writePositionComponents(target, vertex + 5, center[0] + halfForward[0] + halfRight[0], center[1] + halfForward[1] + halfRight[1], center[2] + halfForward[2] + halfRight[2]);
+}
+function $6fafcf15f6b61d60$var$writePositionComponents(target, vertex, x, y, z) {
     const offset = vertex * 3;
-    target[offset] = point[0] + offsetX;
-    target[offset + 1] = point[1] + offsetY;
-    target[offset + 2] = point[2] + offsetZ;
+    target[offset] = x;
+    target[offset + 1] = y;
+    target[offset + 2] = z;
 }
 function $6fafcf15f6b61d60$var$writeQuadStripVectorOffset(target, vertex, halfRightX, halfRightY, halfRightZ) {
     for(let corner = 0; corner < 6; corner += 1){

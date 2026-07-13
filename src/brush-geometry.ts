@@ -807,6 +807,12 @@ function applyQuadStripPositionQuads(
   const pointerUp: Vec3 = [0, 0, 0];
   const right: Vec3 = [0, 0, 0];
   const normal: Vec3 = [0, 0, 0];
+  const center: Vec3 = [0, 0, 0];
+  const halfForward: Vec3 = [0, 0, 0];
+  const halfRight: Vec3 = [0, 0, 0];
+  const previousCenter: Vec3 = [0, 0, 0];
+  const previousHalfForward: Vec3 = [0, 0, 0];
+  const previousHalfRight: Vec3 = [0, 0, 0];
   const pressureSizeMin = normalizePressureSizeMin(options.pressureSizeRange?.[0]);
   const pressureOpacityMin = normalizePressureOpacityMin(
     options.pressureOpacityRange,
@@ -819,12 +825,16 @@ function applyQuadStripPositionQuads(
   );
   const localBrushSize = getLocalBrushSize(stroke);
   let previousOpacity = 0;
+  let lastSizeShrink = 0;
+  let sectionSolidCount = 0;
   let solid = 0;
   for (let pointIndex = 1; pointIndex < pointCount; pointIndex += 1) {
     if (breakBefore[pointIndex] === 1) {
       previousRight[0] = 0;
       previousRight[1] = 0;
       previousRight[2] = 0;
+      lastSizeShrink = 0;
+      sectionSolidCount = 0;
       continue;
     }
     const previousPoint = stroke.controlPoints[pointIndex - 1];
@@ -832,6 +842,7 @@ function applyQuadStripPositionQuads(
     tangent[0] = point.position[0] - previousPoint.position[0];
     tangent[1] = point.position[1] - previousPoint.position[1];
     tangent[2] = point.position[2] - previousPoint.position[2];
+    const moveLength = Math.hypot(tangent[0], tangent[1], tangent[2]);
     if (!normalizeInPlace(tangent)) {
       continue;
     }
@@ -846,49 +857,93 @@ function applyQuadStripPositionQuads(
       right,
       normal,
     );
-    const size =
+    const sourceSize =
       localBrushSize *
       getPressureSizeMultiplier(
         out.ribbonSmoothedPressures[pointIndex],
         pressureSizeMin,
       );
-    const halfRightX = right[0] * size * 0.5;
-    const halfRightY = right[1] * size * 0.5;
-    const halfRightZ = right[2] * size * 0.5;
+    let size = sourceSize - lastSizeShrink;
+    center[0] = (previousPoint.position[0] + point.position[0]) * 0.5;
+    center[1] = (previousPoint.position[1] + point.position[1]) * 0.5;
+    center[2] = (previousPoint.position[2] + point.position[2]) * 0.5;
+    halfForward[0] = (point.position[0] - previousPoint.position[0]) * 0.5;
+    halfForward[1] = (point.position[1] - previousPoint.position[1]) * 0.5;
+    halfForward[2] = (point.position[2] - previousPoint.position[2]) * 0.5;
+    halfRight[0] = right[0] * size * 0.5;
+    halfRight[1] = right[1] * size * 0.5;
+    halfRight[2] = right[2] * size * 0.5;
+    let sizeShrink = lastSizeShrink;
+    if (sectionSolidCount >= 1) {
+      const rightEdgeX = center[0] + halfRight[0] - previousCenter[0];
+      const rightEdgeY = center[1] + halfRight[1] - previousCenter[1];
+      const rightEdgeZ = center[2] + halfRight[2] - previousCenter[2];
+      const leftEdgeX = center[0] - halfRight[0] - previousCenter[0];
+      const leftEdgeY = center[1] - halfRight[1] - previousCenter[1];
+      const leftEdgeZ = center[2] - halfRight[2] - previousCenter[2];
+      const dotRight =
+        previousHalfForward[0] * rightEdgeX +
+        previousHalfForward[1] * rightEdgeY +
+        previousHalfForward[2] * rightEdgeZ;
+      const dotLeft =
+        previousHalfForward[0] * leftEdgeX +
+        previousHalfForward[1] * leftEdgeY +
+        previousHalfForward[2] * leftEdgeZ;
+      if ((dotLeft < 0 && dotRight > 0) || (dotLeft > 0 && dotRight < 0)) {
+        const previousLeftX = previousCenter[0] - previousHalfRight[0];
+        const previousLeftY = previousCenter[1] - previousHalfRight[1];
+        const previousLeftZ = previousCenter[2] - previousHalfRight[2];
+        const previousRightX = previousCenter[0] + previousHalfRight[0];
+        const previousRightY = previousCenter[1] + previousHalfRight[1];
+        const previousRightZ = previousCenter[2] + previousHalfRight[2];
+        if (dotLeft < 0) {
+          halfRight[0] = center[0] - previousLeftX;
+          halfRight[1] = center[1] - previousLeftY;
+          halfRight[2] = center[2] - previousLeftZ;
+        } else {
+          halfRight[0] = previousRightX - center[0];
+          halfRight[1] = previousRightY - center[1];
+          halfRight[2] = previousRightZ - center[2];
+        }
+        size = 2 * Math.hypot(halfRight[0], halfRight[1], halfRight[2]);
+        sizeShrink = lastSizeShrink + (sourceSize - lastSizeShrink - size);
+        const preferredForwardX = center[0] - previousPoint.position[0];
+        const preferredForwardY = center[1] - previousPoint.position[1];
+        const preferredForwardZ = center[2] - previousPoint.position[2];
+        const rightLengthSquared = dotVec3(halfRight, halfRight);
+        const projection =
+          rightLengthSquared > EPSILON
+            ? (preferredForwardX * halfRight[0] +
+                preferredForwardY * halfRight[1] +
+                preferredForwardZ * halfRight[2]) /
+              rightLengthSquared
+            : 0;
+        halfForward[0] = preferredForwardX - projection * halfRight[0];
+        halfForward[1] = preferredForwardY - projection * halfRight[1];
+        halfForward[2] = preferredForwardZ - projection * halfRight[2];
+        if (normalizeInPlace(halfForward)) {
+          const forwardScale =
+            0.5 *
+            Math.hypot(
+              center[0] - previousCenter[0],
+              center[1] - previousCenter[1],
+              center[2] - previousCenter[2],
+            );
+          halfForward[0] *= forwardScale;
+          halfForward[1] *= forwardScale;
+          halfForward[2] *= forwardScale;
+        }
+      } else {
+        sizeShrink = lastSizeShrink - Math.min(lastSizeShrink, moveLength);
+      }
+    }
     const vertex = solid * 6;
-    writeQuadStripPosition(
+    writeQuadStripPositionQuad(
       out.positions,
       vertex,
-      previousPoint.position,
-      -halfRightX,
-      -halfRightY,
-      -halfRightZ,
-    );
-    writeQuadStripPosition(
-      out.positions,
-      vertex + 1,
-      point.position,
-      -halfRightX,
-      -halfRightY,
-      -halfRightZ,
-    );
-    writeQuadStripPosition(
-      out.positions,
-      vertex + 2,
-      previousPoint.position,
-      halfRightX,
-      halfRightY,
-      halfRightZ,
-    );
-    copyPosition(out.positions, vertex + 2, vertex + 3);
-    copyPosition(out.positions, vertex + 1, vertex + 4);
-    writeQuadStripPosition(
-      out.positions,
-      vertex + 5,
-      point.position,
-      halfRightX,
-      halfRightY,
-      halfRightZ,
+      center,
+      halfForward,
+      halfRight,
     );
     for (let corner = 0; corner < 6; corner += 1) {
       writeNormal(out.normals, vertex + corner, normal);
@@ -910,32 +965,74 @@ function applyQuadStripPositionQuads(
       writeQuadStripVectorOffset(
         out.vectorUvs,
         vertex,
-        halfRightX,
-        halfRightY,
-        halfRightZ,
+        halfRight[0],
+        halfRight[1],
+        halfRight[2],
       );
     }
     out.ribbonSectionLengths[solid] = size;
     previousOpacity = opacity;
-    previousRight[0] = right[0];
-    previousRight[1] = right[1];
-    previousRight[2] = right[2];
+    copyVec3(center, previousCenter);
+    copyVec3(halfForward, previousHalfForward);
+    copyVec3(halfRight, previousHalfRight);
+    copyVec3(halfRight, previousRight);
+    normalizeInPlace(previousRight);
+    lastSizeShrink = sizeShrink;
+    sectionSolidCount += 1;
     solid += 1;
   }
 }
 
-function writeQuadStripPosition(
+function writeQuadStripPositionQuad(
   target: Float32Array,
   vertex: number,
-  point: Vec3,
-  offsetX: number,
-  offsetY: number,
-  offsetZ: number,
+  center: Vec3,
+  halfForward: Vec3,
+  halfRight: Vec3,
+): void {
+  writePositionComponents(
+    target,
+    vertex,
+    center[0] - halfForward[0] - halfRight[0],
+    center[1] - halfForward[1] - halfRight[1],
+    center[2] - halfForward[2] - halfRight[2],
+  );
+  writePositionComponents(
+    target,
+    vertex + 1,
+    center[0] + halfForward[0] - halfRight[0],
+    center[1] + halfForward[1] - halfRight[1],
+    center[2] + halfForward[2] - halfRight[2],
+  );
+  writePositionComponents(
+    target,
+    vertex + 2,
+    center[0] - halfForward[0] + halfRight[0],
+    center[1] - halfForward[1] + halfRight[1],
+    center[2] - halfForward[2] + halfRight[2],
+  );
+  copyPosition(target, vertex + 2, vertex + 3);
+  copyPosition(target, vertex + 1, vertex + 4);
+  writePositionComponents(
+    target,
+    vertex + 5,
+    center[0] + halfForward[0] + halfRight[0],
+    center[1] + halfForward[1] + halfRight[1],
+    center[2] + halfForward[2] + halfRight[2],
+  );
+}
+
+function writePositionComponents(
+  target: Float32Array,
+  vertex: number,
+  x: number,
+  y: number,
+  z: number,
 ): void {
   const offset = vertex * 3;
-  target[offset] = point[0] + offsetX;
-  target[offset + 1] = point[1] + offsetY;
-  target[offset + 2] = point[2] + offsetZ;
+  target[offset] = x;
+  target[offset + 1] = y;
+  target[offset + 2] = z;
 }
 
 function writeQuadStripVectorOffset(

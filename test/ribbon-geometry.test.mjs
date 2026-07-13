@@ -272,6 +272,45 @@ test( 'smooths QuadStrip bends with the source midpoint and fuse pass', () => {
 
 } );
 
+test( 'adjusts and recovers QuadStrip width with the source bend state', () => {
+
+	const angle = Math.PI / 3;
+	const direction = [ Math.cos( angle ), Math.sin( angle ), 0 ];
+	const turn = [ 1 + direction[ 0 ] * 0.1, direction[ 1 ] * 0.1, 0 ];
+	const stroke = createStroke();
+	stroke.brushSize = 2;
+	stroke.controlPoints.push( {
+		position: turn, orientation: [ 0, 0, 0, 1 ], pressure: 1, timestampMs: 32
+	} );
+	const options = { generatorClass: 'QuadStripBrushStretchUV' };
+	const width = ( geometry, first, second ) => Math.hypot( ...[ 0, 1, 2 ].map(
+		axis => geometry.positions[ second * 3 + axis ] - geometry.positions[ first * 3 + axis ] ) );
+	const bend = generateBrushGeometry( stroke, 'ribbon', options );
+	const bendCenter = [ ( 1 + turn[ 0 ] ) * 0.5, turn[ 1 ] * 0.5, 0 ];
+	const expectedBentWidth = 2 * Math.hypot(
+		bendCenter[ 0 ] - 0.5,
+		bendCenter[ 1 ] - 1,
+		0
+	);
+	assertClose( width( bend, 7, 11 ), expectedBentWidth );
+
+	stroke.controlPoints.push( {
+		position: [ turn[ 0 ] + direction[ 0 ] * 3, turn[ 1 ] + direction[ 1 ] * 3, 0 ],
+		orientation: [ 0, 0, 0, 1 ], pressure: 1, timestampMs: 48
+	} );
+	const firstRecovery = generateBrushGeometry( stroke, 'ribbon', options );
+	assertClose( width( firstRecovery, 13, 17 ), expectedBentWidth );
+
+	const previous = stroke.controlPoints[ 3 ].position;
+	stroke.controlPoints.push( {
+		position: [ previous[ 0 ] + direction[ 0 ] * 3, previous[ 1 ] + direction[ 1 ] * 3, 0 ],
+		orientation: [ 0, 0, 0, 1 ], pressure: 1, timestampMs: 64
+	} );
+	const recovered = generateBrushGeometry( stroke, 'ribbon', options );
+	assertClose( width( recovered, 19, 23 ), 2 );
+
+} );
+
 test( 'smooths FlatGeometryBrush centers like Open Brush', () => {
 
 	const stroke = createStroke();
