@@ -2555,6 +2555,7 @@ function $6fafcf15f6b61d60$var$generateSprayParticleGeometry(stroke, options, ou
         0
     ];
     let quadIndex = 0;
+    const knotIndexOffset = $6fafcf15f6b61d60$var$normalizeNonNegativeInteger(options.particleKnotIndexOffset);
     for(let pointIndex = 1; pointIndex < stroke.controlPoints.length; pointIndex += 1){
         const previousPoint = stroke.controlPoints[pointIndex - 1];
         const point = stroke.controlPoints[pointIndex];
@@ -2578,7 +2579,7 @@ function $6fafcf15f6b61d60$var$generateSprayParticleGeometry(stroke, options, ou
         $6fafcf15f6b61d60$var$computeSurfaceFrame(preferredRight, segmentDirection, pointerForward, pointerUp, true, frameRight, frameNormal);
         const baseOpacity = $6fafcf15f6b61d60$var$getPressureOpacityMultiplier(point.pressure, pressureOpacityMin, pressureOpacityMax) * descriptorOpacity;
         for(let segmentQuad = 0; segmentQuad < segmentQuadCount; segmentQuad += 1){
-            const salt = hasLifetime ? 10 * (pointIndex * 5 + segmentQuad) : 10 * (pointIndex * 12 + segmentQuad % 12);
+            const salt = hasLifetime ? 10 * ((pointIndex + knotIndexOffset) * 5 + segmentQuad) : 10 * ((pointIndex + knotIndexOffset) * 12 + segmentQuad % 12);
             const rotation = ($6fafcf15f6b61d60$var$statelessRandom01(stroke.seed, salt + 1) * 2 - 1) * rotationVarianceRadians;
             $6fafcf15f6b61d60$var$rotateAroundAxis(frameRight, frameNormal, rotation, rotatedRight);
             $6fafcf15f6b61d60$var$rotateAroundAxis(segmentDirection, frameNormal, rotation, rotatedFacing);
@@ -2592,7 +2593,7 @@ function $6fafcf15f6b61d60$var$generateSprayParticleGeometry(stroke, options, ou
             center[2] += randomOffset[2] * size * positionVariance;
             const opacity = randomizeAlpha ? $6fafcf15f6b61d60$var$statelessRandom01(stroke.seed, salt + 5) : baseOpacity;
             const atlasCell = usesAtlas ? Math.min(3, Math.floor($6fafcf15f6b61d60$var$statelessRandom01(stroke.seed, salt + 6) * 4)) : 0;
-            $6fafcf15f6b61d60$var$writeSprayParticleQuad(positions, normals, tangents, colors, uvs, out.uv1s, indices, bounds, quadIndex, center, rotatedFacing, rotatedRight, frameNormal, size * sizeRatioX * 0.5, size * sizeRatioY * 0.5, stroke.color, opacity, usesAtlas, atlasCell, hasLifetime, options.deterministicBirthTime === true ? 0 : point.timestampMs * 0.001);
+            $6fafcf15f6b61d60$var$writeSprayParticleQuad(positions, normals, tangents, colors, uvs, out.uv1s, indices, bounds, quadIndex, center, rotatedFacing, rotatedRight, frameNormal, size * sizeRatioX * 0.5, size * sizeRatioY * 0.5, stroke.color, opacity, usesAtlas, atlasCell, hasLifetime, options.deterministicBirthTime === true ? 0 : point.timestampMs * 0.001 + $6fafcf15f6b61d60$var$normalizeFinite(options.particleBirthTimeOffsetSeconds));
             quadIndex += 1;
         }
     }
@@ -2626,10 +2627,12 @@ function $6fafcf15f6b61d60$var$generateGeniusParticleGeometry(stroke, options, o
     out.uv0Size = 4;
     out.uv1Size = 4;
     const pointCount = stroke.controlPoints.length;
-    const totalLength = $6fafcf15f6b61d60$var$measureStrokeLength(stroke);
     const particleRate = $6fafcf15f6b61d60$var$normalizePositive(options.geometryParams?.particleRate, 1);
     const spawnInterval = $6fafcf15f6b61d60$var$OPEN_BRUSH_GENIUS_PARTICLE_INTERVAL / particleRate;
-    const particleCount = pointCount === 0 ? 0 : Math.floor(totalLength / spawnInterval) + 1;
+    const distanceRemainder = $6fafcf15f6b61d60$var$normalizeNonNegative(options.particleDistanceOffset) % spawnInterval;
+    const totalLength = $6fafcf15f6b61d60$var$measureStrokeLength(stroke) + distanceRemainder;
+    const finalizedParticleCount = pointCount === 0 ? 0 : Math.floor(totalLength / spawnInterval) + 1;
+    const particleCount = finalizedParticleCount + (pointCount > 0 && options.finalized !== true ? 1 : 0);
     const vertexCount = particleCount * 4;
     const indexCount = particleCount * 6;
     const reallocated = $6fafcf15f6b61d60$var$ensureGeometryCapacity(out, vertexCount, indexCount);
@@ -2673,8 +2676,9 @@ function $6fafcf15f6b61d60$var$generateGeniusParticleGeometry(stroke, options, o
     ];
     let segmentIndex = Math.min(1, pointCount - 1);
     let segmentStartLength = 0;
-    let segmentEndLength = pointCount > 1 ? $6fafcf15f6b61d60$var$distanceBetweenControlPoints(stroke.controlPoints[0], stroke.controlPoints[1]) : 0;
+    let segmentEndLength = pointCount > 1 ? distanceRemainder + $6fafcf15f6b61d60$var$distanceBetweenControlPoints(stroke.controlPoints[0], stroke.controlPoints[1]) : distanceRemainder;
     let particleWithinKnot = 0;
+    const knotIndexOffset = $6fafcf15f6b61d60$var$normalizeNonNegativeInteger(options.particleKnotIndexOffset);
     for(let particleIndex = 0; particleIndex < particleCount; particleIndex += 1){
         const distanceOnStroke = particleIndex * spawnInterval;
         while(segmentIndex < pointCount - 1 && distanceOnStroke > segmentEndLength){
@@ -2691,7 +2695,7 @@ function $6fafcf15f6b61d60$var$generateGeniusParticleGeometry(stroke, options, o
         center[1] = previousPoint.position[1] + (currentPoint.position[1] - previousPoint.position[1]) * ratio;
         center[2] = previousPoint.position[2] + (currentPoint.position[2] - previousPoint.position[2]) * ratio;
         const pressure = particleCount === 1 ? Math.max(0.8, currentPoint.pressure) : currentPoint.pressure;
-        const salt = 16 * (segmentIndex * 16 + particleWithinKnot);
+        const salt = 16 * ((segmentIndex + knotIndexOffset) * 16 + particleWithinKnot);
         const size = localBrushSize * $6fafcf15f6b61d60$var$getPressureSizeMultiplier(pressure, pressureSizeMin) * (1 + $6fafcf15f6b61d60$var$statelessRandom01(stroke.seed, salt) * sizeVariance);
         $6fafcf15f6b61d60$var$writeRandomUnitSphere(stroke.seed, salt + 2, sphereOffset);
         center[0] += sphereOffset[0] * size * positionScale;
@@ -2704,7 +2708,7 @@ function $6fafcf15f6b61d60$var$generateGeniusParticleGeometry(stroke, options, o
         const atlasCell = atlasRows > 1 ? Math.min(3, Math.floor($6fafcf15f6b61d60$var$statelessRandom01(stroke.seed, salt + 8) * 4)) : 0;
         const halfRotationRange = $6fafcf15f6b61d60$var$normalizeNonNegative(options.geometryParams?.particleInitialRotationRange) * Math.PI / 360;
         const initialRotation = ($6fafcf15f6b61d60$var$statelessRandom01(stroke.seed, salt + 7) * 2 - 1) * halfRotationRange;
-        const birthTimeSeconds = options.deterministicBirthTime === true ? 0 : currentPoint.timestampMs * 0.001;
+        const birthTimeSeconds = options.deterministicBirthTime === true ? 0 : (currentPoint.timestampMs * 0.001 + $6fafcf15f6b61d60$var$normalizeFinite(options.particleBirthTimeOffsetSeconds)) * (options.particlePreview === true ? -1 : 1);
         $6fafcf15f6b61d60$var$writeGeniusParticleQuad(positions, normals, tangents, colors, uvs, particleUvs, uv1s, indices, bounds, particleIndex, center, particleUp, particleRight, size, stroke.color, opacity, atlasRows > 1, atlasCell, initialRotation, birthTimeSeconds, previousPoint.position, currentPoint.position, ratio);
         particleWithinKnot += 1;
     }
@@ -2738,6 +2742,12 @@ function $6fafcf15f6b61d60$var$normalizePositive(value, fallback) {
 }
 function $6fafcf15f6b61d60$var$normalizeNonNegative(value) {
     return typeof value === "number" && Number.isFinite(value) ? Math.max(0, value) : 0;
+}
+function $6fafcf15f6b61d60$var$normalizeFinite(value) {
+    return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+function $6fafcf15f6b61d60$var$normalizeNonNegativeInteger(value) {
+    return Math.floor($6fafcf15f6b61d60$var$normalizeNonNegative(value));
 }
 function $6fafcf15f6b61d60$var$normalizeTileRate(value) {
     return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : 1;
