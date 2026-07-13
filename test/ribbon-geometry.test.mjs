@@ -709,9 +709,35 @@ test( 'preserves Genius particle distance phase after preview knots decay', () =
 		}
 	} );
 
-	assert.equal( getGeneratedVertexCount( geometry ), 8 );
+	assert.equal( getGeneratedVertexCount( geometry ), 12 );
 	assertClose( geometry.normals[ 0 ], 1.3 );
 	assertClose( geometry.normals[ 12 ], 1.3 + 1 / 1.3 );
+
+} );
+
+test( 'keeps a Genius particle on the live pointer until finalization', () => {
+
+	const stroke = createStroke();
+	stroke.brushSize = 0.1;
+	stroke.controlPoints[ 1 ].position = [ 0.5, 0, 0 ];
+	const options = {
+		generatorClass: 'GeniusParticlesBrush',
+		geometryParams: {
+			particleRate: 0.0025,
+			particleSizeVariance: 0,
+			particleSpeed: 0,
+			brushSizeRange: [ 0.1, 0.1 ]
+		}
+	};
+	const live = generateBrushGeometry( stroke, 'particle', options );
+	const finalized = generateBrushGeometry( stroke, 'particle', {
+		...options,
+		finalized: true
+	} );
+
+	assert.equal( getGeneratedVertexCount( live ), 8 );
+	assert.equal( getGeneratedVertexCount( finalized ), 4 );
+	assertClose( live.normals[ 12 ], 0.5 );
 
 } );
 

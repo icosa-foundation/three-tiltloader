@@ -3700,8 +3700,11 @@ function generateGeniusParticleGeometry(
   const distanceRemainder =
     normalizeNonNegative(options.particleDistanceOffset) % spawnInterval;
   const totalLength = measureStrokeLength(stroke) + distanceRemainder;
-  const particleCount =
+  const finalizedParticleCount =
     pointCount === 0 ? 0 : Math.floor(totalLength / spawnInterval) + 1;
+  const particleCount =
+    finalizedParticleCount +
+    (pointCount > 0 && options.finalized !== true ? 1 : 0);
   const vertexCount = particleCount * 4;
   const indexCount = particleCount * 6;
   const reallocated = ensureGeometryCapacity(out, vertexCount, indexCount);
