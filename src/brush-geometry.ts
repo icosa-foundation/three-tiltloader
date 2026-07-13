@@ -1478,7 +1478,11 @@ function smoothFlatGeometryEdges(
     const endsSection =
       index === pointCount - 1 || breakBefore[index + 1] === 1;
     const previousIndex = startsSection ? index : index - 1;
-    const nextIndex = endsSection ? index : index + 1;
+    // Unity still includes the following non-geometry break knot when it
+    // smooths the final rendered center of a section. Only the terminal knot
+    // duplicates itself; edge width deliberately remains unsmoothed below
+    // when the following knot has no geometry.
+    const nextIndex = index === pointCount - 1 ? index : index + 1;
     const point = stroke.controlPoints[index].position;
     const previous = stroke.controlPoints[previousIndex].position;
     const next = stroke.controlPoints[nextIndex].position;

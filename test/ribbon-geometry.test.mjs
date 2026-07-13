@@ -336,6 +336,39 @@ test( 'smooths FlatGeometryBrush centers like Open Brush', () => {
 
 } );
 
+test( 'smooths a FlatGeometry section end toward its break knot', () => {
+
+	const stroke = createStroke();
+	stroke.controlPoints.push(
+		{
+			position: [ 2, 0, 0 ],
+			orientation: [ 0, 0, 0, 1 ],
+			pressure: 1,
+			timestampMs: 32
+		},
+		{
+			position: [ 1, 1, 0 ],
+			orientation: [ 0, 0, 0, 1 ],
+			pressure: 1,
+			timestampMs: 48
+		}
+	);
+	const geometry = generateBrushGeometry( stroke, 'ribbon', {
+		generatorClass: 'FlatGeometryBrush',
+		geometryParams: { m11Compatibility: false }
+	} );
+	const leftVertex = 4;
+	const rightVertex = 5;
+	const centerX =
+		( geometry.positions[ leftVertex * 3 ] + geometry.positions[ rightVertex * 3 ] ) * 0.5;
+	const centerY =
+		( geometry.positions[ leftVertex * 3 + 1 ] + geometry.positions[ rightVertex * 3 + 1 ] ) * 0.5;
+	// 0.3 * previous + 0.4 * current + 0.3 * following break knot.
+	assertClose( centerX, 1.4 );
+	assertClose( centerY, 0.3 );
+
+} );
+
 test( 'clips non-M11 flat width growth to distance travelled', () => {
 
 	const stroke = createStroke();
