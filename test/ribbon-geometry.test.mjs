@@ -484,6 +484,26 @@ test( 'uses Open Brush radial tangents for hard-edged tube rings', () => {
 
 } );
 
+test( 'uses flat SquareBrush caps without tube tip vertices', () => {
+
+	const stroke = createStroke();
+	stroke.brushSize = 1;
+	const geometry = generateBrushGeometry( stroke, 'tube', {
+		pressureSizeRange: [ 1, 1 ],
+		generatorClass: 'SquareBrush'
+	} );
+
+	assert.equal( getGeneratedVertexCount( geometry ), 16 );
+	assert.equal( getGeneratedIndexCount( geometry ), 36 );
+	assert.deepEqual(
+		Array.from( geometry.indices.slice( -12 ) ),
+		[ 5, 6, 2, 2, 6, 1, 13, 10, 14, 14, 10, 9 ]
+	);
+	assertClose( geometry.bounds.min[ 0 ], 0 );
+	assertClose( geometry.bounds.max[ 0 ], 1 );
+
+} );
+
 test( 'restarts tube section frames and atlas rows after a break', () => {
 
 	const stroke = createStroke();

@@ -2060,9 +2060,9 @@ function $6fafcf15f6b61d60$var$generateTubeGeometry(stroke, options, out) {
     // A sharp turn can split every connection into its own capped section.
     // Reserve that upper bound, then publish only the counts actually written.
     const maximumSectionCount = segmentCount;
-    const maximumCapVertexCount = hasCaps ? maximumSectionCount * sideCount * 2 : 0;
+    const maximumCapVertexCount = hasCaps && !isSquareBrush ? maximumSectionCount * sideCount * 2 : 0;
     const maximumVertexCount = pointCount * ringVertexCount + maximumCapVertexCount;
-    const maximumIndexCount = segmentCount * sideCount * 6 + (hasCaps ? maximumSectionCount * 2 * sideCount * 3 : 0);
+    const maximumIndexCount = segmentCount * sideCount * 6 + (hasCaps ? maximumSectionCount * 2 * (isSquareBrush ? 6 : sideCount * 3) : 0);
     const reallocated = $6fafcf15f6b61d60$var$ensureGeometryCapacity(out, maximumVertexCount, maximumIndexCount);
     $6fafcf15f6b61d60$var$ensureTubeScratchCapacity(out, pointCount);
     $6fafcf15f6b61d60$var$ensureGeometryPressureCapacity(out, pointCount);
@@ -2287,7 +2287,33 @@ function $6fafcf15f6b61d60$var$generateTubeGeometry(stroke, options, out) {
         }
     }
     let capVertexCount = 0;
-    if (hasCaps) {
+    if (hasCaps && isSquareBrush) {
+        let sectionStart = 0;
+        for(let boundary = 1; boundary <= pointCount; boundary += 1){
+            const sectionEnds = boundary === pointCount || tubeBreakBefore[boundary] === 1;
+            if (!sectionEnds) continue;
+            const sectionEnd = boundary - 1;
+            if (sectionEnd > sectionStart) {
+                const startRing = sectionStart * ringVertexCount;
+                indices[indexOffset] = startRing + 5;
+                indices[indexOffset + 1] = startRing + 6;
+                indices[indexOffset + 2] = startRing + 2;
+                indices[indexOffset + 3] = startRing + 2;
+                indices[indexOffset + 4] = startRing + 6;
+                indices[indexOffset + 5] = startRing + 1;
+                indexOffset += 6;
+                const endRing = sectionEnd * ringVertexCount;
+                indices[indexOffset] = endRing + 5;
+                indices[indexOffset + 1] = endRing + 2;
+                indices[indexOffset + 2] = endRing + 6;
+                indices[indexOffset + 3] = endRing + 6;
+                indices[indexOffset + 4] = endRing + 2;
+                indices[indexOffset + 5] = endRing + 1;
+                indexOffset += 6;
+            }
+            sectionStart = boundary;
+        }
+    } else if (hasCaps) {
         const capRadial = [
             0,
             0,
