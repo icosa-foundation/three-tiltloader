@@ -2152,7 +2152,7 @@ function $6fafcf15f6b61d60$var$generateTubeGeometry(stroke, options, out) {
             u += segmentLength * tileRate / circumference;
         }
         const progress = totalStrokeLength > $6fafcf15f6b61d60$var$EPSILON ? runningDistance / totalStrokeLength : 0;
-        const shapeScale = $6fafcf15f6b61d60$var$getTubeShapeScale(shapeModifier, progress, pointIndex, pointCount, options.geometryParams?.tubeTaperScalar);
+        const shapeScale = $6fafcf15f6b61d60$var$getTubeShapeScale(shapeModifier, progress, pointIndex, pointCount, options.geometryParams?.tubeTaperScalar, 0);
         const petalOffset = shapeModifier === 5 ? Math.pow(progress, $6fafcf15f6b61d60$var$normalizeTubePetalExponent(options.geometryParams?.tubePetalDisplacementExponent)) * $6fafcf15f6b61d60$var$normalizeTubePetalAmount(options.geometryParams?.tubePetalDisplacementAmount) * localBrushSize * tubeSmoothedPressures[pointIndex] : 0;
         const opacity = $6fafcf15f6b61d60$var$getPressureOpacityMultiplier(tubeSmoothedPressures[pointIndex], pressureOpacityMin, pressureOpacityMax) * descriptorOpacity;
         $6fafcf15f6b61d60$var$writeScratchIncomingTangent(geometrySmoothedPositions, pointCount, pointIndex, previousTangent, tangent);
@@ -2244,7 +2244,7 @@ function $6fafcf15f6b61d60$var$generateTubeGeometry(stroke, options, out) {
             $6fafcf15f6b61d60$var$includeBounds(bounds, positions, vertex);
         }
     }
-    if (shapeModifier !== 0 || usesStretchUvs) $6fafcf15f6b61d60$var$applyTubeSectionShapeAndUvs(out, pointCount, ringVertexCount, sideCount, hardEdges, isSquareBrush, shapeModifier, options.geometryParams?.tubeTaperScalar, options.geometryParams?.tubePetalDisplacementAmount, options.geometryParams?.tubePetalDisplacementExponent, localBrushSize, usesStretchUvs);
+    if (shapeModifier !== 0 || usesStretchUvs) $6fafcf15f6b61d60$var$applyTubeSectionShapeAndUvs(out, stroke, pointCount, ringVertexCount, sideCount, hardEdges, isSquareBrush, shapeModifier, options.geometryParams?.tubeTaperScalar, options.geometryParams?.tubePetalDisplacementAmount, options.geometryParams?.tubePetalDisplacementExponent, localBrushSize, usesStretchUvs, pressureSizeMin, options.geometryParams?.solidMinLengthMeters);
     let indexOffset = 0;
     for(let segment = 0; segment < segmentCount; segment += 1){
         if (tubeBreakBefore[segment + 1] === 1) continue;
@@ -2352,7 +2352,7 @@ function $6fafcf15f6b61d60$var$generateTubeGeometry(stroke, options, out) {
     out.indexCount = indexOffset;
     return reallocated;
 }
-function $6fafcf15f6b61d60$var$applyTubeSectionShapeAndUvs(out, pointCount, ringVertexCount, sideCount, hardEdges, isSquareBrush, shapeModifier, taperScalar, petalAmount, petalExponent, localBrushSize, usesStretchUvs) {
+function $6fafcf15f6b61d60$var$applyTubeSectionShapeAndUvs(out, stroke, pointCount, ringVertexCount, sideCount, hardEdges, isSquareBrush, shapeModifier, taperScalar, petalAmount, petalExponent, localBrushSize, usesStretchUvs, pressureSizeMin, solidMinLengthMeters) {
     const center = [
         0,
         0,
@@ -2387,6 +2387,10 @@ function $6fafcf15f6b61d60$var$applyTubeSectionShapeAndUvs(out, pointCount, ring
         let sectionLength = 0;
         for(let pointIndex = sectionStart + 1; pointIndex <= sectionEnd; pointIndex += 1)sectionLength += $6fafcf15f6b61d60$var$distanceBetweenScratchPoints(out.geometrySmoothedPositions, pointIndex - 1, pointIndex);
         let runningLength = 0;
+        const lastLength = sectionPointCount > 1 ? $6fafcf15f6b61d60$var$distanceBetweenControlPoints(stroke.controlPoints[sectionEnd - 1], stroke.controlPoints[sectionEnd]) : 0;
+        const lastPressuredSize = localBrushSize * $6fafcf15f6b61d60$var$getPressureSizeMultiplier(out.tubeSmoothedPressures[sectionEnd], pressureSizeMin);
+        const solidMinimum = typeof solidMinLengthMeters === "number" && Number.isFinite(solidMinLengthMeters) ? Math.max(0, solidMinLengthMeters) : 0;
+        const loftedPartialProgress = $6fafcf15f6b61d60$var$clamp01(lastLength / Math.max(solidMinimum + lastPressuredSize * $6fafcf15f6b61d60$var$TUBE_SOLID_ASPECT_RATIO, $6fafcf15f6b61d60$var$EPSILON));
         for(let pointIndex = sectionStart; pointIndex <= sectionEnd; pointIndex += 1){
             if (pointIndex > sectionStart) runningLength += $6fafcf15f6b61d60$var$distanceBetweenScratchPoints(out.geometrySmoothedPositions, pointIndex - 1, pointIndex);
             const localIndex = pointIndex - sectionStart;
@@ -2406,7 +2410,7 @@ function $6fafcf15f6b61d60$var$applyTubeSectionShapeAndUvs(out, pointCount, ring
             $6fafcf15f6b61d60$var$readScratchVec3(out.tubeFrameRights, pointIndex, frameRight);
             $6fafcf15f6b61d60$var$readScratchVec3(out.tubeFrameUps, pointIndex, frameUp);
             const radius = out.tubeRadii[pointIndex];
-            const shapeScale = $6fafcf15f6b61d60$var$getTubeShapeScale(shapeModifier, progress, localIndex, sectionPointCount, taperScalar);
+            const shapeScale = $6fafcf15f6b61d60$var$getTubeShapeScale(shapeModifier, progress, localIndex, sectionPointCount, taperScalar, loftedPartialProgress);
             const petalOffset = shapeModifier === 5 ? Math.pow(progress, $6fafcf15f6b61d60$var$normalizeTubePetalExponent(petalExponent)) * $6fafcf15f6b61d60$var$normalizeTubePetalAmount(petalAmount) * localBrushSize * out.tubeSmoothedPressures[pointIndex] : 0;
             if (hardEdges) {
                 const halfStep = Math.PI / sideCount;
@@ -2759,10 +2763,10 @@ function $6fafcf15f6b61d60$var$normalizeTubePetalAmount(value) {
 function $6fafcf15f6b61d60$var$normalizeTubePetalExponent(value) {
     return typeof value === "number" && Number.isFinite(value) ? Math.max(0, value) : 3;
 }
-function $6fafcf15f6b61d60$var$getTubeShapeScale(modifier, progress, pointIndex, pointCount, taperScalar) {
+function $6fafcf15f6b61d60$var$getTubeShapeScale(modifier, progress, pointIndex, pointCount, taperScalar, partialProgress) {
     switch(modifier){
         case 1:
-            return $6fafcf15f6b61d60$var$getLoftedTubeScale(pointIndex, pointCount);
+            return $6fafcf15f6b61d60$var$getLoftedTubeScale(pointIndex, pointCount, partialProgress);
         case 2:
         case 5:
             return Math.abs(Math.sin(progress * Math.PI));
@@ -2774,7 +2778,7 @@ function $6fafcf15f6b61d60$var$getTubeShapeScale(modifier, progress, pointIndex,
             return 1;
     }
 }
-function $6fafcf15f6b61d60$var$getLoftedTubeScale(pointIndex, pointCount) {
+function $6fafcf15f6b61d60$var$getLoftedTubeScale(pointIndex, pointCount, partialProgress) {
     if (pointCount < 3) return 0;
     const halfCount = Math.ceil(Math.min(5, pointCount / 2));
     const nextHalfCount = Math.ceil(Math.min(5, (pointCount + 1) / 2));
@@ -2787,9 +2791,11 @@ function $6fafcf15f6b61d60$var$getLoftedTubeScale(pointIndex, pointCount) {
     if (pointIndex < nextHalfCount) next = pointIndex / Math.max(1, nextHalfCount - 1);
     else if (nextReverseIndex < nextHalfCount) next = Math.max(0, nextReverseIndex - 1) / Math.max(1, nextHalfCount - 1);
     current += (next - current) * 0.185;
-    const attenuation = $6fafcf15f6b61d60$var$clamp01((pointCount - 3) / 7);
+    current += (next - current) * $6fafcf15f6b61d60$var$clamp01(partialProgress);
+    const attenuation = $6fafcf15f6b61d60$var$clamp01((pointCount - 3 + partialProgress) / 7);
     return $6fafcf15f6b61d60$var$clamp01(current * attenuation);
 }
+const $6fafcf15f6b61d60$var$TUBE_SOLID_ASPECT_RATIO = 0.2;
 function $6fafcf15f6b61d60$var$normalizeHueShift(value) {
     return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }

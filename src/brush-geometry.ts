@@ -2867,6 +2867,7 @@ function generateTubeGeometry(
       pointIndex,
       pointCount,
       options.geometryParams?.tubeTaperScalar,
+      0,
     );
     const petalOffset =
       shapeModifier === 5
@@ -3032,6 +3033,7 @@ function generateTubeGeometry(
   if (shapeModifier !== 0 || usesStretchUvs) {
     applyTubeSectionShapeAndUvs(
       out,
+      stroke,
       pointCount,
       ringVertexCount,
       sideCount,
@@ -3043,6 +3045,8 @@ function generateTubeGeometry(
       options.geometryParams?.tubePetalDisplacementExponent,
       localBrushSize,
       usesStretchUvs,
+      pressureSizeMin,
+      options.geometryParams?.solidMinLengthMeters,
     );
   }
 
@@ -3165,6 +3169,7 @@ function generateTubeGeometry(
 
 function applyTubeSectionShapeAndUvs(
   out: BrushGeometryArrays,
+  stroke: StrokeData,
   pointCount: number,
   ringVertexCount: number,
   sideCount: number,
@@ -3176,6 +3181,8 @@ function applyTubeSectionShapeAndUvs(
   petalExponent: number | undefined,
   localBrushSize: number,
   usesStretchUvs: boolean,
+  pressureSizeMin: number,
+  solidMinLengthMeters: number | undefined,
 ): void {
   const center: Vec3 = [0, 0, 0];
   const frameRight: Vec3 = [0, 0, 0];
@@ -3201,6 +3208,31 @@ function applyTubeSectionShapeAndUvs(
       );
     }
     let runningLength = 0;
+    const lastLength =
+      sectionPointCount > 1
+        ? distanceBetweenControlPoints(
+            stroke.controlPoints[sectionEnd - 1],
+            stroke.controlPoints[sectionEnd],
+          )
+        : 0;
+    const lastPressuredSize =
+      localBrushSize *
+      getPressureSizeMultiplier(
+        out.tubeSmoothedPressures[sectionEnd],
+        pressureSizeMin,
+      );
+    const solidMinimum =
+      typeof solidMinLengthMeters === "number" &&
+      Number.isFinite(solidMinLengthMeters)
+        ? Math.max(0, solidMinLengthMeters)
+        : 0;
+    const loftedPartialProgress = clamp01(
+      lastLength /
+        Math.max(
+          solidMinimum + lastPressuredSize * TUBE_SOLID_ASPECT_RATIO,
+          EPSILON,
+        ),
+    );
     for (let pointIndex = sectionStart; pointIndex <= sectionEnd; pointIndex += 1) {
       if (pointIndex > sectionStart) {
         runningLength += distanceBetweenScratchPoints(
@@ -3239,6 +3271,7 @@ function applyTubeSectionShapeAndUvs(
         localIndex,
         sectionPointCount,
         taperScalar,
+        loftedPartialProgress,
       );
       const petalOffset =
         shapeModifier === 5
@@ -3938,10 +3971,15 @@ function getTubeShapeScale(
   pointIndex: number,
   pointCount: number,
   taperScalar: number | undefined,
+  partialProgress: number,
 ): number {
   switch (modifier) {
     case 1:
-      return getLoftedTubeScale(pointIndex, pointCount);
+      return getLoftedTubeScale(
+        pointIndex,
+        pointCount,
+        partialProgress,
+      );
     case 2:
     case 5:
       return Math.abs(Math.sin(progress * Math.PI));
@@ -3955,7 +3993,11 @@ function getTubeShapeScale(
   }
 }
 
-function getLoftedTubeScale(pointIndex: number, pointCount: number): number {
+function getLoftedTubeScale(
+  pointIndex: number,
+  pointCount: number,
+  partialProgress: number,
+): number {
   if (pointCount < 3) {
     return 0;
   }
@@ -3977,9 +4019,12 @@ function getLoftedTubeScale(pointIndex: number, pointCount: number): number {
       Math.max(1, nextHalfCount - 1);
   }
   current += (next - current) * 0.185;
-  const attenuation = clamp01((pointCount - 3) / 7);
+  current += (next - current) * clamp01(partialProgress);
+  const attenuation = clamp01((pointCount - 3 + partialProgress) / 7);
   return clamp01(current * attenuation);
 }
+
+const TUBE_SOLID_ASPECT_RATIO = 0.2;
 
 function normalizeHueShift(value: number | undefined): number {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;

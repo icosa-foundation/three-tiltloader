@@ -490,6 +490,39 @@ test( 'restarts Tube modifiers and StretchUV for each broken section', () => {
 
 } );
 
+test( 'interpolates LoftedProfile from trailing-knot partial progress', () => {
+
+	const stroke = createStroke();
+	stroke.brushSize = 1;
+	stroke.controlPoints = [ 0, 1, 2, 2.1 ].map( ( x, index ) => ( {
+		position: [ x, 0, 0 ],
+		orientation: [ 0, 0, 0, 1 ],
+		pressure: 1,
+		timestampMs: index * 16
+	} ) );
+	const geometry = generateBrushGeometry( stroke, 'tube', {
+		generatorClass: 'TubeBrush',
+		pressureSizeRange: [ 1, 1 ],
+		geometryParams: {
+			tubeSideCount: 4,
+			tubeEndCaps: false,
+			tubeShapeModifier: 1,
+			solidMinLengthMeters: 0
+		}
+	} );
+	const ringVertexCount = 5;
+	const first = ringVertexCount;
+	const opposite = first + 2;
+	const radius = 0.5 * Math.hypot( ...[ 0, 1, 2 ].map( axis =>
+		geometry.positions[ opposite * 3 + axis ] - geometry.positions[ first * 3 + axis ] ) );
+	const partialProgress = 0.5;
+	const currentCurve = 1 + ( 0.5 - 1 ) * 0.185;
+	const interpolatedCurve = currentCurve + ( 0.5 - currentCurve ) * partialProgress;
+	const attenuation = ( 4 - 3 + partialProgress ) / 7;
+	assertClose( radius, 0.5 * interpolatedCurve * attenuation );
+
+} );
+
 test( 'smooths thick-strip size and opacity as a GeometryBrush', () => {
 
 	const stroke = createStroke();
