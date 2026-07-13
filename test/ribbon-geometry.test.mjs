@@ -559,6 +559,26 @@ test( 'frames a SquareBrush section from the current pointer orientation', () =>
 
 } );
 
+test( 'does not break a straight SquareBrush stroke on pointer twist', () => {
+
+	const stroke = createStroke();
+	stroke.brushSize = 10;
+	stroke.controlPoints.push( {
+		position: [ 2, 0, 0 ],
+		orientation: [ 1, 0, 0, 0 ],
+		pressure: 1,
+		timestampMs: 32
+	} );
+	const geometry = generateBrushGeometry( stroke, 'tube', {
+		pressureSizeRange: [ 1, 1 ],
+		generatorClass: 'SquareBrush'
+	} );
+
+	assert.equal( getGeneratedVertexCount( geometry ), 24 );
+	assert.equal( getGeneratedIndexCount( geometry ), 60 );
+
+} );
+
 test( 'restarts tube section frames and atlas rows after a break', () => {
 
 	const stroke = createStroke();

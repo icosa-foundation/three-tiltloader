@@ -2258,7 +2258,10 @@ function $6fafcf15f6b61d60$var$generateTubeGeometry(stroke, options, out) {
             $6fafcf15f6b61d60$var$includeBounds(bounds, positions, vertex);
         }
     }
-    if (isSquareBrush) $6fafcf15f6b61d60$var$rewriteSquareBrushFrames(out, stroke, pointCount, ringVertexCount, sideCount);
+    if (isSquareBrush) {
+        $6fafcf15f6b61d60$var$prepareSquareBrushBreaks(out, stroke, pointCount, localBrushSize, pressureSizeMin);
+        $6fafcf15f6b61d60$var$rewriteSquareBrushFrames(out, stroke, pointCount, ringVertexCount, sideCount);
+    }
     // A broken knot has no geometry in TubeBrush. The following valid knot
     // creates both its own front ring and the broken knot's back ring using the
     // following knot's frame. Correct the retained back-ring frame now that the
@@ -2407,6 +2410,45 @@ function $6fafcf15f6b61d60$var$generateTubeGeometry(stroke, options, out) {
     out.vertexCount = pointCount * ringVertexCount + capVertexCount;
     out.indexCount = indexOffset;
     return reallocated;
+}
+function $6fafcf15f6b61d60$var$prepareSquareBrushBreaks(out, stroke, pointCount, localBrushSize, pressureSizeMin) {
+    out.tubeBreakBefore.fill(0, 0, pointCount);
+    const previousMove = [
+        0,
+        0,
+        0
+    ];
+    const move = [
+        0,
+        0,
+        0
+    ];
+    let previousHasGeometry = false;
+    for(let pointIndex = 1; pointIndex < pointCount; pointIndex += 1){
+        const previous = stroke.controlPoints[pointIndex - 1].position;
+        const current = stroke.controlPoints[pointIndex].position;
+        move[0] = current[0] - previous[0];
+        move[1] = current[1] - previous[1];
+        move[2] = current[2] - previous[2];
+        const length = Math.hypot(move[0], move[1], move[2]);
+        let shouldBreak = length < $6fafcf15f6b61d60$var$OPEN_BRUSH_TUBE_MINIMUM_MOVE_METERS;
+        if (!shouldBreak && previousHasGeometry && pointIndex > 1) {
+            const beforePrevious = stroke.controlPoints[pointIndex - 2].position;
+            previousMove[0] = previous[0] - beforePrevious[0];
+            previousMove[1] = previous[1] - beforePrevious[1];
+            previousMove[2] = previous[2] - beforePrevious[2];
+            $6fafcf15f6b61d60$var$normalizeInPlace(previousMove);
+            move[0] /= length;
+            move[1] /= length;
+            move[2] /= length;
+            const movementAngle = Math.acos(Math.min(1, Math.max(-1, $6fafcf15f6b61d60$var$dot(previousMove, move))));
+            const pressuredSize = Math.max(localBrushSize * $6fafcf15f6b61d60$var$getPressureSizeMultiplier(out.tubeSmoothedPressures[pointIndex], pressureSizeMin), $6fafcf15f6b61d60$var$EPSILON);
+            const breakAngle = Math.atan(length / pressuredSize) * 2;
+            shouldBreak = movementAngle > breakAngle;
+        }
+        if (shouldBreak) out.tubeBreakBefore[pointIndex] = 1;
+        previousHasGeometry = !shouldBreak;
+    }
 }
 function $6fafcf15f6b61d60$var$rewriteSquareBrushFrames(out, stroke, pointCount, ringVertexCount, sideCount) {
     const tangent = [

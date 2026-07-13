@@ -3071,6 +3071,13 @@ function generateTubeGeometry(
   }
 
   if (isSquareBrush) {
+    prepareSquareBrushBreaks(
+      out,
+      stroke,
+      pointCount,
+      localBrushSize,
+      pressureSizeMin,
+    );
     rewriteSquareBrushFrames(
       out,
       stroke,
@@ -3280,6 +3287,55 @@ function generateTubeGeometry(
   out.vertexCount = pointCount * ringVertexCount + capVertexCount;
   out.indexCount = indexOffset;
   return reallocated;
+}
+
+function prepareSquareBrushBreaks(
+  out: BrushGeometryArrays,
+  stroke: StrokeData,
+  pointCount: number,
+  localBrushSize: number,
+  pressureSizeMin: number,
+): void {
+  out.tubeBreakBefore.fill(0, 0, pointCount);
+  const previousMove: Vec3 = [0, 0, 0];
+  const move: Vec3 = [0, 0, 0];
+  let previousHasGeometry = false;
+  for (let pointIndex = 1; pointIndex < pointCount; pointIndex += 1) {
+    const previous = stroke.controlPoints[pointIndex - 1].position;
+    const current = stroke.controlPoints[pointIndex].position;
+    move[0] = current[0] - previous[0];
+    move[1] = current[1] - previous[1];
+    move[2] = current[2] - previous[2];
+    const length = Math.hypot(move[0], move[1], move[2]);
+    let shouldBreak = length < OPEN_BRUSH_TUBE_MINIMUM_MOVE_METERS;
+    if (!shouldBreak && previousHasGeometry && pointIndex > 1) {
+      const beforePrevious = stroke.controlPoints[pointIndex - 2].position;
+      previousMove[0] = previous[0] - beforePrevious[0];
+      previousMove[1] = previous[1] - beforePrevious[1];
+      previousMove[2] = previous[2] - beforePrevious[2];
+      normalizeInPlace(previousMove);
+      move[0] /= length;
+      move[1] /= length;
+      move[2] /= length;
+      const movementAngle = Math.acos(
+        Math.min(1, Math.max(-1, dot(previousMove, move))),
+      );
+      const pressuredSize = Math.max(
+        localBrushSize *
+          getPressureSizeMultiplier(
+            out.tubeSmoothedPressures[pointIndex],
+            pressureSizeMin,
+          ),
+        EPSILON,
+      );
+      const breakAngle = Math.atan(length / pressuredSize) * 2;
+      shouldBreak = movementAngle > breakAngle;
+    }
+    if (shouldBreak) {
+      out.tubeBreakBefore[pointIndex] = 1;
+    }
+    previousHasGeometry = !shouldBreak;
+  }
 }
 
 function rewriteSquareBrushFrames(
