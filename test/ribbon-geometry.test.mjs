@@ -789,7 +789,7 @@ test( 'smooths 3D-print ring pressure without reusing the end size at the start'
 
 } );
 
-test( 'keeps Spray and Genius particle pressure unsmoothed', () => {
+test( 'smooths Midpoint pressure while keeping Spray and Genius raw', () => {
 
 	const stroke = createStroke();
 	stroke.brushSize = 1;
@@ -809,8 +809,21 @@ test( 'keeps Spray and Genius particle pressure unsmoothed', () => {
 		}
 	} );
 	assert.ok( getGeneratedVertexCount( spray ) > 0 );
-	assertClose( spray.colors[ 3 ], 1 );
+	assertClose( spray.colors[ 3 ], 1 - Math.pow( 0.1, 0.5 ) );
 	assertClose( spray.uv1[ 3 ], 0.016 );
+	const rawSpray = generateBrushGeometry( stroke, 'particle', {
+		generatorClass: 'SprayBrush',
+		pressureSizeRange: [ 0.1, 1 ],
+		pressureOpacityRange: [ 0, 1 ],
+		geometryParams: {
+			opacity: 1,
+			sprayRateMultiplier: 20,
+			particleSizeVariance: 0,
+			particlePositionVariance: 0,
+			particleRotationVariance: 0
+		}
+	} );
+	assertClose( rawSpray.colors[ 3 ], 1 );
 	const loadedSpray = generateBrushGeometry( stroke, 'particle', {
 		generatorClass: 'MidpointPlusLifetimeSprayBrush',
 		pressureSizeRange: [ 0.1, 1 ],
