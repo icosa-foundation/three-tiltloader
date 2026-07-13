@@ -2171,6 +2171,10 @@ function $6fafcf15f6b61d60$var$generateTubeGeometry(stroke, options, out) {
             $6fafcf15f6b61d60$var$cross(tangent, frameRight, frameUp);
             $6fafcf15f6b61d60$var$normalizeInPlace(frameUp);
             const previousSectionContinues = tubeBreakBefore[pointIndex - 1] === 0;
+            if (!previousSectionContinues) // The previous knot has no frame in TubeBrush. Seed the next valid
+            // section from the current pointer orientation instead of transporting
+            // the broken incoming frame.
+            $6fafcf15f6b61d60$var$initializeTubeFrame(point.orientation, tangent, bootstrapUp, frameRight, frameUp);
             const pressuredDiameter = Math.max(radius * 2, $6fafcf15f6b61d60$var$EPSILON);
             const breakAngle = Math.atan(segmentLength / pressuredDiameter) * breakAngleMultiplier;
             const frameAngle = $6fafcf15f6b61d60$var$getFrameRotationAngle(priorFrameRight, priorFrameUp, previousTangent, frameRight, frameUp, tangent);
@@ -2247,6 +2251,19 @@ function $6fafcf15f6b61d60$var$generateTubeGeometry(stroke, options, out) {
             $6fafcf15f6b61d60$var$includeBounds(bounds, positions, vertex);
         }
     }
+    // A broken knot has no geometry in TubeBrush. The following valid knot
+    // creates both its own front ring and the broken knot's back ring using the
+    // following knot's frame. Correct the retained back-ring frame now that the
+    // next valid frame is known, then rebuild ring attributes from those frames.
+    let correctedBreakFrame = false;
+    for(let pointIndex = 0; pointIndex + 1 < pointCount; pointIndex += 1){
+        if (tubeBreakBefore[pointIndex] !== 1 || tubeBreakBefore[pointIndex + 1] === 1) continue;
+        $6fafcf15f6b61d60$var$copyScratchVec3(tubeFrameRights, pointIndex + 1, pointIndex);
+        $6fafcf15f6b61d60$var$copyScratchVec3(tubeFrameUps, pointIndex + 1, pointIndex);
+        $6fafcf15f6b61d60$var$copyScratchVec3(tubeTangents, pointIndex + 1, pointIndex);
+        correctedBreakFrame = true;
+    }
+    if (correctedBreakFrame) $6fafcf15f6b61d60$var$rewriteTubeRingFrames(out, stroke, pointCount, ringVertexCount, sideCount, hardEdges, isSquareBrush);
     if (shapeModifier !== 0 || usesStretchUvs) $6fafcf15f6b61d60$var$applyTubeSectionShapeAndUvs(out, stroke, pointCount, ringVertexCount, sideCount, hardEdges, isSquareBrush, shapeModifier, options.geometryParams?.tubeTaperScalar, options.geometryParams?.tubePetalDisplacementAmount, options.geometryParams?.tubePetalDisplacementExponent, localBrushSize, usesStretchUvs, pressureSizeMin, options.geometryParams?.solidMinLengthMeters);
     let indexOffset = 0;
     for(let segment = 0; segment < segmentCount; segment += 1){
@@ -2354,6 +2371,71 @@ function $6fafcf15f6b61d60$var$generateTubeGeometry(stroke, options, out) {
     out.vertexCount = pointCount * ringVertexCount + capVertexCount;
     out.indexCount = indexOffset;
     return reallocated;
+}
+function $6fafcf15f6b61d60$var$rewriteTubeRingFrames(out, stroke, pointCount, ringVertexCount, sideCount, hardEdges, isSquareBrush) {
+    const center = [
+        0,
+        0,
+        0
+    ];
+    const frameRight = [
+        0,
+        0,
+        0
+    ];
+    const frameUp = [
+        0,
+        0,
+        0
+    ];
+    const tangent = [
+        0,
+        0,
+        0
+    ];
+    const radial = [
+        0,
+        0,
+        0
+    ];
+    const displacement = [
+        0,
+        0,
+        0
+    ];
+    $6fafcf15f6b61d60$var$resetBounds(out.bounds);
+    for(let pointIndex = 0; pointIndex < pointCount; pointIndex += 1){
+        $6fafcf15f6b61d60$var$readScratchVec3(out.geometrySmoothedPositions, pointIndex, center);
+        $6fafcf15f6b61d60$var$readScratchVec3(out.tubeFrameRights, pointIndex, frameRight);
+        $6fafcf15f6b61d60$var$readScratchVec3(out.tubeFrameUps, pointIndex, frameUp);
+        $6fafcf15f6b61d60$var$readScratchVec3(out.tubeTangents, pointIndex, tangent);
+        const radius = out.tubeRadii[pointIndex];
+        const ringBase = pointIndex * ringVertexCount;
+        if (hardEdges) {
+            const halfStep = Math.PI / sideCount;
+            for(let side = 0; side < sideCount; side += 1){
+                const angle = side / sideCount * Math.PI * 2 + (isSquareBrush ? Math.PI / 4 : 0);
+                $6fafcf15f6b61d60$var$setTubeRadialScaled(frameRight, frameUp, angle, isSquareBrush ? 0.375 : 1, displacement);
+                for(let duplicate = 0; duplicate < 2; duplicate += 1){
+                    const vertex = ringBase + side * 2 + duplicate;
+                    $6fafcf15f6b61d60$var$setTubeRadial(frameRight, frameUp, angle + (duplicate === 0 ? -halfStep : halfStep), radial);
+                    $6fafcf15f6b61d60$var$writePositionComponents(out.positions, vertex, center[0] + displacement[0] * radius, center[1] + displacement[1] * radius, center[2] + displacement[2] * radius);
+                    $6fafcf15f6b61d60$var$writeNormal(out.normals, vertex, radial);
+                    $6fafcf15f6b61d60$var$writeTangent(out.tangents, vertex, displacement, 1);
+                    $6fafcf15f6b61d60$var$includeBounds(out.bounds, out.positions, vertex);
+                }
+            }
+        } else for(let ringIndex = 0; ringIndex < ringVertexCount; ringIndex += 1){
+            const vertex = ringBase + ringIndex;
+            const fraction = ringIndex / sideCount;
+            const angle = ringIndex === sideCount ? 0 : fraction * Math.PI * 2;
+            $6fafcf15f6b61d60$var$setTubeRadial(frameRight, frameUp, angle, radial);
+            $6fafcf15f6b61d60$var$writePositionComponents(out.positions, vertex, center[0] + radial[0] * radius, center[1] + radial[1] * radius, center[2] + radial[2] * radius);
+            $6fafcf15f6b61d60$var$writeNormal(out.normals, vertex, radial);
+            $6fafcf15f6b61d60$var$writeTangent(out.tangents, vertex, tangent, 1);
+            $6fafcf15f6b61d60$var$includeBounds(out.bounds, out.positions, vertex);
+        }
+    }
 }
 function $6fafcf15f6b61d60$var$applyTubeSectionShapeAndUvs(out, stroke, pointCount, ringVertexCount, sideCount, hardEdges, isSquareBrush, shapeModifier, taperScalar, petalAmount, petalExponent, localBrushSize, usesStretchUvs, pressureSizeMin, solidMinLengthMeters) {
     const center = [
@@ -3204,6 +3286,13 @@ function $6fafcf15f6b61d60$var$readScratchVec3(source, index, out) {
     out[0] = source[offset];
     out[1] = source[offset + 1];
     out[2] = source[offset + 2];
+}
+function $6fafcf15f6b61d60$var$copyScratchVec3(target, sourceIndex, targetIndex) {
+    const sourceOffset = sourceIndex * 3;
+    const targetOffset = targetIndex * 3;
+    target[targetOffset] = target[sourceOffset];
+    target[targetOffset + 1] = target[sourceOffset + 1];
+    target[targetOffset + 2] = target[sourceOffset + 2];
 }
 function $6fafcf15f6b61d60$var$dot(a, b) {
     return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];

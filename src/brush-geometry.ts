@@ -2929,6 +2929,18 @@ function generateTubeGeometry(
       normalizeInPlace(frameUp);
 
       const previousSectionContinues = tubeBreakBefore[pointIndex - 1] === 0;
+      if (!previousSectionContinues) {
+        // The previous knot has no frame in TubeBrush. Seed the next valid
+        // section from the current pointer orientation instead of transporting
+        // the broken incoming frame.
+        initializeTubeFrame(
+          point.orientation,
+          tangent,
+          bootstrapUp,
+          frameRight,
+          frameUp,
+        );
+      }
       const pressuredDiameter = Math.max(radius * 2, EPSILON);
       const breakAngle =
         Math.atan(segmentLength / pressuredDiameter) * breakAngleMultiplier;
@@ -3039,6 +3051,35 @@ function generateTubeGeometry(
         includeBounds(bounds, positions, vertex);
       }
     }
+  }
+
+  // A broken knot has no geometry in TubeBrush. The following valid knot
+  // creates both its own front ring and the broken knot's back ring using the
+  // following knot's frame. Correct the retained back-ring frame now that the
+  // next valid frame is known, then rebuild ring attributes from those frames.
+  let correctedBreakFrame = false;
+  for (let pointIndex = 0; pointIndex + 1 < pointCount; pointIndex += 1) {
+    if (
+      tubeBreakBefore[pointIndex] !== 1 ||
+      tubeBreakBefore[pointIndex + 1] === 1
+    ) {
+      continue;
+    }
+    copyScratchVec3(tubeFrameRights, pointIndex + 1, pointIndex);
+    copyScratchVec3(tubeFrameUps, pointIndex + 1, pointIndex);
+    copyScratchVec3(tubeTangents, pointIndex + 1, pointIndex);
+    correctedBreakFrame = true;
+  }
+  if (correctedBreakFrame) {
+    rewriteTubeRingFrames(
+      out,
+      stroke,
+      pointCount,
+      ringVertexCount,
+      sideCount,
+      hardEdges,
+      isSquareBrush,
+    );
   }
 
   if (shapeModifier !== 0 || usesStretchUvs) {
@@ -3176,6 +3217,83 @@ function generateTubeGeometry(
   out.vertexCount = pointCount * ringVertexCount + capVertexCount;
   out.indexCount = indexOffset;
   return reallocated;
+}
+
+function rewriteTubeRingFrames(
+  out: BrushGeometryArrays,
+  stroke: StrokeData,
+  pointCount: number,
+  ringVertexCount: number,
+  sideCount: number,
+  hardEdges: boolean,
+  isSquareBrush: boolean,
+): void {
+  const center: Vec3 = [0, 0, 0];
+  const frameRight: Vec3 = [0, 0, 0];
+  const frameUp: Vec3 = [0, 0, 0];
+  const tangent: Vec3 = [0, 0, 0];
+  const radial: Vec3 = [0, 0, 0];
+  const displacement: Vec3 = [0, 0, 0];
+  resetBounds(out.bounds);
+  for (let pointIndex = 0; pointIndex < pointCount; pointIndex += 1) {
+    readScratchVec3(out.geometrySmoothedPositions, pointIndex, center);
+    readScratchVec3(out.tubeFrameRights, pointIndex, frameRight);
+    readScratchVec3(out.tubeFrameUps, pointIndex, frameUp);
+    readScratchVec3(out.tubeTangents, pointIndex, tangent);
+    const radius = out.tubeRadii[pointIndex];
+    const ringBase = pointIndex * ringVertexCount;
+    if (hardEdges) {
+      const halfStep = Math.PI / sideCount;
+      for (let side = 0; side < sideCount; side += 1) {
+        const angle =
+          (side / sideCount) * Math.PI * 2 +
+          (isSquareBrush ? Math.PI / 4 : 0);
+        setTubeRadialScaled(
+          frameRight,
+          frameUp,
+          angle,
+          isSquareBrush ? 0.375 : 1,
+          displacement,
+        );
+        for (let duplicate = 0; duplicate < 2; duplicate += 1) {
+          const vertex = ringBase + side * 2 + duplicate;
+          setTubeRadial(
+            frameRight,
+            frameUp,
+            angle + (duplicate === 0 ? -halfStep : halfStep),
+            radial,
+          );
+          writePositionComponents(
+            out.positions,
+            vertex,
+            center[0] + displacement[0] * radius,
+            center[1] + displacement[1] * radius,
+            center[2] + displacement[2] * radius,
+          );
+          writeNormal(out.normals, vertex, radial);
+          writeTangent(out.tangents, vertex, displacement, 1);
+          includeBounds(out.bounds, out.positions, vertex);
+        }
+      }
+    } else {
+      for (let ringIndex = 0; ringIndex < ringVertexCount; ringIndex += 1) {
+        const vertex = ringBase + ringIndex;
+        const fraction = ringIndex / sideCount;
+        const angle = ringIndex === sideCount ? 0 : fraction * Math.PI * 2;
+        setTubeRadial(frameRight, frameUp, angle, radial);
+        writePositionComponents(
+          out.positions,
+          vertex,
+          center[0] + radial[0] * radius,
+          center[1] + radial[1] * radius,
+          center[2] + radial[2] * radius,
+        );
+        writeNormal(out.normals, vertex, radial);
+        writeTangent(out.tangents, vertex, tangent, 1);
+        includeBounds(out.bounds, out.positions, vertex);
+      }
+    }
+  }
 }
 
 function applyTubeSectionShapeAndUvs(
@@ -4793,6 +4911,18 @@ function readScratchVec3(
   out[0] = source[offset];
   out[1] = source[offset + 1];
   out[2] = source[offset + 2];
+}
+
+function copyScratchVec3(
+  target: Float32Array,
+  sourceIndex: number,
+  targetIndex: number,
+): void {
+  const sourceOffset = sourceIndex * 3;
+  const targetOffset = targetIndex * 3;
+  target[targetOffset] = target[sourceOffset];
+  target[targetOffset + 1] = target[sourceOffset + 1];
+  target[targetOffset + 2] = target[sourceOffset + 2];
 }
 
 function dot(a: Vec3, b: Vec3): number {

@@ -484,6 +484,60 @@ test( 'uses Open Brush radial tangents for hard-edged tube rings', () => {
 
 } );
 
+test( 'uses the following valid frame for a tube section back ring', () => {
+
+	const stroke = createStroke();
+	stroke.brushSize = 10;
+	stroke.controlPoints = [
+		{
+			position: [ 0, 0, 0 ],
+			orientation: [ 0, 0, 0, 1 ],
+			pressure: 1,
+			timestampMs: 0
+		},
+		{
+			position: [ 1, 0, 0 ],
+			orientation: [ 0, 0, 0, 1 ],
+			pressure: 1,
+			timestampMs: 16
+		},
+		{
+			position: [ 2, 0, 0 ],
+			orientation: [ 0, 0, 0, 1 ],
+			pressure: 1,
+			timestampMs: 32
+		},
+		{
+			position: [ 2, 1, 0 ],
+			orientation: [ 0, 0, 0, 1 ],
+			pressure: 1,
+			timestampMs: 48
+		},
+		{
+			position: [ 2, 2, 0 ],
+			orientation: [ 0, 0, Math.SQRT1_2, Math.SQRT1_2 ],
+			pressure: 1,
+			timestampMs: 64
+		}
+	];
+	const geometry = generateBrushGeometry( stroke, 'tube', {
+		pressureSizeRange: [ 1, 1 ],
+		generatorClass: 'TubeBrush',
+		geometryParams: { tubeSideCount: 4, tubeEndCaps: false }
+	} );
+	const ringVertexCount = 5;
+
+	for ( let ringVertex = 0; ringVertex < ringVertexCount; ringVertex += 1 ) {
+		for ( let axis = 0; axis < 3; axis += 1 ) {
+			assertClose(
+				geometry.normals[ ( ringVertexCount * 2 + ringVertex ) * 3 + axis ],
+				geometry.normals[ ( ringVertexCount * 3 + ringVertex ) * 3 + axis ]
+			);
+		}
+	}
+
+} );
+
 test( 'restarts Tube modifiers and StretchUV for each broken section', () => {
 
 	const stroke = createStroke();
