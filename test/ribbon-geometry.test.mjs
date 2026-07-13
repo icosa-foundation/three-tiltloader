@@ -452,6 +452,44 @@ test( 'smooths tube pressure over the GeometryBrush distance window', () => {
 
 } );
 
+test( 'restarts Tube modifiers and StretchUV for each broken section', () => {
+
+	const stroke = createStroke();
+	stroke.brushSize = 1;
+	stroke.controlPoints = [ 0, 1, 2, 1, 0, -1 ].map( ( x, index ) => ( {
+		position: [ x, 0, 0 ],
+		orientation: [ 0, 0, 0, 1 ],
+		pressure: 1,
+		timestampMs: index * 16
+	} ) );
+	const geometry = generateBrushGeometry( stroke, 'tube', {
+		generatorClass: 'TubeBrush',
+		pressureSizeRange: [ 1, 1 ],
+		geometryParams: {
+			tubeSideCount: 4,
+			tubeEndCaps: false,
+			tubeShapeModifier: 2,
+			tubeUvStyle: 'stretch'
+		}
+	} );
+	const ringVertexCount = 5;
+	const radius = ( ring ) => {
+		const first = ring * ringVertexCount;
+		const opposite = first + 2;
+		return 0.5 * Math.hypot( ...[ 0, 1, 2 ].map( axis =>
+			geometry.positions[ opposite * 3 + axis ] - geometry.positions[ first * 3 + axis ] ) );
+	};
+	for ( const ring of [ 0, 2, 3, 5 ] ) {
+		assertClose( radius( ring ), 0 );
+	}
+	assert.ok( radius( 1 ) > 0.4 );
+	assert.ok( radius( 4 ) > 0.4 );
+	for ( const [ ring, expectedU ] of [ [ 0, 0 ], [ 1, 0.5 ], [ 2, 1 ], [ 3, 0 ], [ 4, 0.5 ], [ 5, 1 ] ] ) {
+		assertClose( geometry.uvs[ ring * ringVertexCount * 2 ], expectedU );
+	}
+
+} );
+
 test( 'smooths thick-strip size and opacity as a GeometryBrush', () => {
 
 	const stroke = createStroke();

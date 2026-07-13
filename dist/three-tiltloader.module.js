@@ -2244,6 +2244,7 @@ function $6fafcf15f6b61d60$var$generateTubeGeometry(stroke, options, out) {
             $6fafcf15f6b61d60$var$includeBounds(bounds, positions, vertex);
         }
     }
+    if (shapeModifier !== 0 || usesStretchUvs) $6fafcf15f6b61d60$var$applyTubeSectionShapeAndUvs(out, pointCount, ringVertexCount, sideCount, hardEdges, isSquareBrush, shapeModifier, options.geometryParams?.tubeTaperScalar, options.geometryParams?.tubePetalDisplacementAmount, options.geometryParams?.tubePetalDisplacementExponent, localBrushSize, usesStretchUvs);
     let indexOffset = 0;
     for(let segment = 0; segment < segmentCount; segment += 1){
         if (tubeBreakBefore[segment + 1] === 1) continue;
@@ -2350,6 +2351,86 @@ function $6fafcf15f6b61d60$var$generateTubeGeometry(stroke, options, out) {
     out.vertexCount = pointCount * ringVertexCount + capVertexCount;
     out.indexCount = indexOffset;
     return reallocated;
+}
+function $6fafcf15f6b61d60$var$applyTubeSectionShapeAndUvs(out, pointCount, ringVertexCount, sideCount, hardEdges, isSquareBrush, shapeModifier, taperScalar, petalAmount, petalExponent, localBrushSize, usesStretchUvs) {
+    const center = [
+        0,
+        0,
+        0
+    ];
+    const frameRight = [
+        0,
+        0,
+        0
+    ];
+    const frameUp = [
+        0,
+        0,
+        0
+    ];
+    const radial = [
+        0,
+        0,
+        0
+    ];
+    const displacement = [
+        0,
+        0,
+        0
+    ];
+    if (shapeModifier !== 0) $6fafcf15f6b61d60$var$resetBounds(out.bounds);
+    let sectionStart = 0;
+    for(let boundary = 1; boundary <= pointCount; boundary += 1){
+        if (boundary < pointCount && out.tubeBreakBefore[boundary] !== 1) continue;
+        const sectionEnd = boundary - 1;
+        const sectionPointCount = sectionEnd - sectionStart + 1;
+        let sectionLength = 0;
+        for(let pointIndex = sectionStart + 1; pointIndex <= sectionEnd; pointIndex += 1)sectionLength += $6fafcf15f6b61d60$var$distanceBetweenScratchPoints(out.geometrySmoothedPositions, pointIndex - 1, pointIndex);
+        let runningLength = 0;
+        for(let pointIndex = sectionStart; pointIndex <= sectionEnd; pointIndex += 1){
+            if (pointIndex > sectionStart) runningLength += $6fafcf15f6b61d60$var$distanceBetweenScratchPoints(out.geometrySmoothedPositions, pointIndex - 1, pointIndex);
+            const localIndex = pointIndex - sectionStart;
+            const progress = sectionLength > $6fafcf15f6b61d60$var$EPSILON ? runningLength / sectionLength : 0;
+            const ringU = usesStretchUvs ? localIndex / Math.max(sectionPointCount - 1, 1) : out.tubeRingUs[pointIndex];
+            out.tubeRingUs[pointIndex] = ringU;
+            const ringBase = pointIndex * ringVertexCount;
+            for(let ringIndex = 0; ringIndex < ringVertexCount; ringIndex += 1){
+                const vertex = ringBase + ringIndex;
+                if (usesStretchUvs) {
+                    out.uvs[vertex * 2] = ringU;
+                    if (out.uv0Size === 3) out.packedUvs[vertex * 3] = ringU;
+                }
+            }
+            if (shapeModifier === 0) continue;
+            $6fafcf15f6b61d60$var$readScratchVec3(out.geometrySmoothedPositions, pointIndex, center);
+            $6fafcf15f6b61d60$var$readScratchVec3(out.tubeFrameRights, pointIndex, frameRight);
+            $6fafcf15f6b61d60$var$readScratchVec3(out.tubeFrameUps, pointIndex, frameUp);
+            const radius = out.tubeRadii[pointIndex];
+            const shapeScale = $6fafcf15f6b61d60$var$getTubeShapeScale(shapeModifier, progress, localIndex, sectionPointCount, taperScalar);
+            const petalOffset = shapeModifier === 5 ? Math.pow(progress, $6fafcf15f6b61d60$var$normalizeTubePetalExponent(petalExponent)) * $6fafcf15f6b61d60$var$normalizeTubePetalAmount(petalAmount) * localBrushSize * out.tubeSmoothedPressures[pointIndex] : 0;
+            if (hardEdges) {
+                const halfStep = Math.PI / sideCount;
+                for(let side = 0; side < sideCount; side += 1){
+                    const angle = side / sideCount * Math.PI * 2 + (isSquareBrush ? Math.PI / 4 : 0);
+                    $6fafcf15f6b61d60$var$setTubeRadialScaled(frameRight, frameUp, angle, isSquareBrush ? 0.375 : 1, displacement);
+                    for(let duplicate = 0; duplicate < 2; duplicate += 1){
+                        const vertex = ringBase + side * 2 + duplicate;
+                        $6fafcf15f6b61d60$var$setTubeRadial(frameRight, frameUp, angle + (duplicate === 0 ? -halfStep : halfStep), radial);
+                        $6fafcf15f6b61d60$var$writePositionComponents(out.positions, vertex, center[0] + displacement[0] * radius * shapeScale + radial[0] * petalOffset, center[1] + displacement[1] * radius * shapeScale + radial[1] * petalOffset, center[2] + displacement[2] * radius * shapeScale + radial[2] * petalOffset);
+                        $6fafcf15f6b61d60$var$includeBounds(out.bounds, out.positions, vertex);
+                    }
+                }
+            } else for(let ringIndex = 0; ringIndex < ringVertexCount; ringIndex += 1){
+                const vertex = ringBase + ringIndex;
+                const fraction = ringIndex / sideCount;
+                const angle = ringIndex === sideCount ? 0 : fraction * Math.PI * 2;
+                $6fafcf15f6b61d60$var$setTubeRadial(frameRight, frameUp, angle, radial);
+                $6fafcf15f6b61d60$var$writePositionComponents(out.positions, vertex, center[0] + radial[0] * (radius * shapeScale + petalOffset), center[1] + radial[1] * (radius * shapeScale + petalOffset), center[2] + radial[2] * (radius * shapeScale + petalOffset));
+                $6fafcf15f6b61d60$var$includeBounds(out.bounds, out.positions, vertex);
+            }
+        }
+        sectionStart = boundary;
+    }
 }
 function $6fafcf15f6b61d60$var$generateParticleGeometry(stroke, options, out) {
     if (options.generatorClass === "GeniusParticlesBrush") return $6fafcf15f6b61d60$var$generateGeniusParticleGeometry(stroke, options, out);
