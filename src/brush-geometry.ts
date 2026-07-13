@@ -2817,9 +2817,9 @@ function generateTubeGeometry(
   const tileRate = normalizeTileRate(options.geometryParams?.tileRate);
   const random01 = statelessRandom01(stroke.seed, 0);
   const atlasRows = normalizeAtlasRows(options.geometryParams?.textureAtlasV);
-  const atlasRow = Math.floor(random01 * 3331) % atlasRows;
-  const v0 = atlasRow / atlasRows;
-  const v1 = (atlasRow + 1) / atlasRows;
+  let atlasRow = Math.floor(random01 * 3331) % atlasRows;
+  let v0 = atlasRow / atlasRows;
+  let v1 = (atlasRow + 1) / atlasRows;
   const usesStretchUvs = options.geometryParams?.tubeUvStyle === "stretch";
   const capAspect = normalizeTubeCapAspect(options.geometryParams?.tubeCapAspect);
   const shapeModifier = normalizeTubeShapeModifier(
@@ -2964,7 +2964,11 @@ function generateTubeGeometry(
           frameRight,
           frameUp,
         );
-        u = statelessRandom01(stroke.seed, pointIndex);
+        const sectionRandom01 = statelessRandom01(stroke.seed, pointIndex);
+        u = sectionRandom01;
+        atlasRow = Math.floor(sectionRandom01 * 3331) % atlasRows;
+        v0 = atlasRow / atlasRows;
+        v1 = (atlasRow + 1) / atlasRows;
       }
     }
     previousTangent[0] = tangent[0];
@@ -3152,6 +3156,12 @@ function generateTubeGeometry(
           const radius = tubeRadii[pointIndex];
           const ringU = tubeRingUs[pointIndex];
           const opacity = tubeOpacities[pointIndex];
+          const capV0 = uvs[
+            (ringBase + (hardEdges ? 1 : 0)) * 2 + 1
+          ];
+          const capV1 = uvs[
+            (ringBase + (hardEdges ? 0 : ringVertexCount - 1)) * 2 + 1
+          ];
           const direction = isStart ? -1 : 1;
           capTip[0] =
             center[0] +
@@ -3191,7 +3201,7 @@ function generateTubeGeometry(
             );
             writeTangent(tangents, vertex, capRadial, 1);
             writeColor(colors, vertex, stroke.color, opacity);
-            const v = v0 + (v1 - v0) * fraction;
+            const v = capV0 + (capV1 - capV0) * fraction;
             writeUv(uvs, vertex, isSquareBrush ? [0.5, 0.5] : [capU, v]);
             if (storesRadius) {
               writePackedUv(packedUvs, vertex, capU, v, 0);

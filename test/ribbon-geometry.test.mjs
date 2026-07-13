@@ -484,7 +484,7 @@ test( 'uses Open Brush radial tangents for hard-edged tube rings', () => {
 
 } );
 
-test( 'uses the following valid frame for a tube section back ring', () => {
+test( 'restarts tube section frames and atlas rows after a break', () => {
 
 	const stroke = createStroke();
 	stroke.brushSize = 10;
@@ -523,7 +523,11 @@ test( 'uses the following valid frame for a tube section back ring', () => {
 	const geometry = generateBrushGeometry( stroke, 'tube', {
 		pressureSizeRange: [ 1, 1 ],
 		generatorClass: 'TubeBrush',
-		geometryParams: { tubeSideCount: 4, tubeEndCaps: false }
+		geometryParams: {
+			tubeSideCount: 4,
+			tubeEndCaps: false,
+			textureAtlasV: 64
+		}
 	} );
 	const ringVertexCount = 5;
 
@@ -535,6 +539,10 @@ test( 'uses the following valid frame for a tube section back ring', () => {
 			);
 		}
 	}
+	assert.notEqual(
+		geometry.uvs[ 1 ],
+		geometry.uvs[ ringVertexCount * 2 * 2 + 1 ]
+	);
 
 } );
 

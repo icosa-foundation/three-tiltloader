@@ -2077,9 +2077,9 @@ function $6fafcf15f6b61d60$var$generateTubeGeometry(stroke, options, out) {
     const tileRate = $6fafcf15f6b61d60$var$normalizeTileRate(options.geometryParams?.tileRate);
     const random01 = $6fafcf15f6b61d60$var$statelessRandom01(stroke.seed, 0);
     const atlasRows = $6fafcf15f6b61d60$var$normalizeAtlasRows(options.geometryParams?.textureAtlasV);
-    const atlasRow = Math.floor(random01 * 3331) % atlasRows;
-    const v0 = atlasRow / atlasRows;
-    const v1 = (atlasRow + 1) / atlasRows;
+    let atlasRow = Math.floor(random01 * 3331) % atlasRows;
+    let v0 = atlasRow / atlasRows;
+    let v1 = (atlasRow + 1) / atlasRows;
     const usesStretchUvs = options.geometryParams?.tubeUvStyle === "stretch";
     const capAspect = $6fafcf15f6b61d60$var$normalizeTubeCapAspect(options.geometryParams?.tubeCapAspect);
     const shapeModifier = $6fafcf15f6b61d60$var$normalizeTubeShapeModifier(options.geometryParams?.tubeShapeModifier);
@@ -2181,7 +2181,11 @@ function $6fafcf15f6b61d60$var$generateTubeGeometry(stroke, options, out) {
             if (segmentLength < $6fafcf15f6b61d60$var$OPEN_BRUSH_TUBE_MINIMUM_MOVE_METERS || pointIndex > 1 && previousSectionContinues && frameAngle > breakAngle) {
                 tubeBreakBefore[pointIndex] = 1;
                 $6fafcf15f6b61d60$var$initializeTubeFrame(point.orientation, tangent, bootstrapUp, frameRight, frameUp);
-                u = $6fafcf15f6b61d60$var$statelessRandom01(stroke.seed, pointIndex);
+                const sectionRandom01 = $6fafcf15f6b61d60$var$statelessRandom01(stroke.seed, pointIndex);
+                u = sectionRandom01;
+                atlasRow = Math.floor(sectionRandom01 * 3331) % atlasRows;
+                v0 = atlasRow / atlasRows;
+                v1 = (atlasRow + 1) / atlasRows;
             }
         }
         previousTangent[0] = tangent[0];
@@ -2327,6 +2331,8 @@ function $6fafcf15f6b61d60$var$generateTubeGeometry(stroke, options, out) {
                 const radius = tubeRadii[pointIndex];
                 const ringU = tubeRingUs[pointIndex];
                 const opacity = tubeOpacities[pointIndex];
+                const capV0 = uvs[(ringBase + (hardEdges ? 1 : 0)) * 2 + 1];
+                const capV1 = uvs[(ringBase + (hardEdges ? 0 : ringVertexCount - 1)) * 2 + 1];
                 const direction = isStart ? -1 : 1;
                 capTip[0] = center[0] + capTangent[0] * radius * capAspect * direction;
                 capTip[1] = center[1] + capTangent[1] * radius * capAspect * direction;
@@ -2346,7 +2352,7 @@ function $6fafcf15f6b61d60$var$generateTubeGeometry(stroke, options, out) {
                     ]);
                     $6fafcf15f6b61d60$var$writeTangent(tangents, vertex, capRadial, 1);
                     $6fafcf15f6b61d60$var$writeColor(colors, vertex, stroke.color, opacity);
-                    const v = v0 + (v1 - v0) * fraction;
+                    const v = capV0 + (capV1 - capV0) * fraction;
                     $6fafcf15f6b61d60$var$writeUv(uvs, vertex, isSquareBrush ? [
                         0.5,
                         0.5
