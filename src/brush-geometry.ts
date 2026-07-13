@@ -33,6 +33,8 @@ export interface BrushGeometryOptions {
   geometryParams?: BrushGeometryParams;
   generatorClass?: string;
   deterministicBirthTime?: boolean;
+  finalized?: boolean;
+  lastControlPointIsKeeper?: boolean;
 }
 
 /**
@@ -651,10 +653,81 @@ function generateRibbonGeometry(
     }
   }
 
+  const finalizedCounts = usesQuadStripTriangleSoup
+    ? finalizeQuadStripUsedGeometry(
+        out,
+        ribbonBreakBefore,
+        renderPointCount,
+        frontIndexCount / 6,
+        hasBackfaces,
+        options,
+      )
+    : undefined;
   out.family = family;
-  out.vertexCount = vertexCount;
-  out.indexCount = indexCount;
+  out.vertexCount = finalizedCounts?.vertexCount ?? vertexCount;
+  out.indexCount = finalizedCounts?.indexCount ?? indexCount;
   return reallocated;
+}
+
+function finalizeQuadStripUsedGeometry(
+  out: BrushGeometryArrays,
+  breakBefore: Uint8Array,
+  pointCount: number,
+  frontSolidCount: number,
+  hasBackfaces: boolean,
+  options: BrushGeometryOptions,
+): { vertexCount: number; indexCount: number } | undefined {
+  if (
+    options.finalized !== true ||
+    options.lastControlPointIsKeeper !== false ||
+    pointCount < 2
+  ) {
+    return undefined;
+  }
+  const finalSegment = pointCount - 2;
+  const provisionalBreaks = breakBefore[pointCount - 1] === 1;
+  let previousSectionSolidCount = 0;
+  for (let segment = finalSegment - 1; segment >= 0; segment -= 1) {
+    if (breakBefore[segment + 1] === 1) {
+      break;
+    }
+    previousSectionSolidCount += 1;
+  }
+  let removedSolidCount = 0;
+  if (provisionalBreaks) {
+    removedSolidCount = previousSectionSolidCount === 1 ? 1 : 0;
+  } else if (previousSectionSolidCount === 0) {
+    removedSolidCount = 1;
+  } else if (previousSectionSolidCount === 1) {
+    removedSolidCount = 2;
+  }
+  const keptFrontSolidCount = Math.max(
+    0,
+    frontSolidCount - removedSolidCount,
+  );
+  if (keptFrontSolidCount === frontSolidCount) {
+    return undefined;
+  }
+  const oldFrontVertexCount = frontSolidCount * 6;
+  const keptFrontVertexCount = keptFrontSolidCount * 6;
+  if (hasBackfaces) {
+    for (let vertex = 0; vertex < keptFrontVertexCount; vertex += 1) {
+      copyRibbonVertex(
+        out,
+        oldFrontVertexCount + vertex,
+        keptFrontVertexCount + vertex,
+      );
+    }
+  }
+  const vertexCount = keptFrontVertexCount * (hasBackfaces ? 2 : 1);
+  for (let index = 0; index < vertexCount; index += 1) {
+    out.indices[index] = index;
+  }
+  resetBounds(out.bounds);
+  for (let vertex = 0; vertex < vertexCount; vertex += 1) {
+    includeBounds(out.bounds, out.positions, vertex);
+  }
+  return { vertexCount, indexCount: vertexCount };
 }
 
 function expandRibbonTriangleSoup(
@@ -1676,9 +1749,17 @@ function generateUnitizedRibbonGeometry(
     normalizeTileRate(options.geometryParams?.tileRate),
   );
 
+  const finalizedCounts = finalizeQuadStripUsedGeometry(
+    out,
+    out.ribbonBreakBefore,
+    pointCount,
+    segmentCount,
+    hasBackfaces,
+    options,
+  );
   out.family = family;
-  out.vertexCount = vertexCount;
-  out.indexCount = indexCount;
+  out.vertexCount = finalizedCounts?.vertexCount ?? vertexCount;
+  out.indexCount = finalizedCounts?.indexCount ?? indexCount;
   return reallocated;
 }
 

@@ -159,6 +159,40 @@ test( 'preserves reversal breaks and explicit backfaces', () => {
 
 } );
 
+test( 'applies QuadStrip used-vertex cleanup only when finalized', () => {
+
+	const options = {
+		generatorClass: 'QuadStripBrushStretchUV',
+		lastControlPointIsKeeper: false
+	};
+	const oneSolid = createStroke();
+	assert.equal( getGeneratedVertexCount( generateBrushGeometry( oneSolid, 'ribbon', options ) ), 6 );
+	assert.equal( getGeneratedVertexCount( generateBrushGeometry( oneSolid, 'ribbon', {
+		...options, finalized: true
+	} ) ), 0 );
+
+	const twoSolids = createStroke();
+	twoSolids.controlPoints.push( {
+		position: [ 2, 0, 0 ], orientation: [ 0, 0, 0, 1 ], pressure: 1, timestampMs: 32
+	} );
+	assert.equal( getGeneratedVertexCount( generateBrushGeometry( twoSolids, 'ribbon', {
+		...options, finalized: true
+	} ) ), 0 );
+
+	const threeSolids = createStroke();
+	threeSolids.controlPoints.push(
+		{ position: [ 2, 0, 0 ], orientation: [ 0, 0, 0, 1 ], pressure: 1, timestampMs: 32 },
+		{ position: [ 3, 0, 0 ], orientation: [ 0, 0, 0, 1 ], pressure: 1, timestampMs: 48 }
+	);
+	assert.equal( getGeneratedVertexCount( generateBrushGeometry( threeSolids, 'ribbon', {
+		...options, finalized: true
+	} ) ), 18 );
+	assert.equal( getGeneratedVertexCount( generateBrushGeometry( threeSolids, 'ribbon', {
+		...options, finalized: true, lastControlPointIsKeeper: true
+	} ) ), 18 );
+
+} );
+
 test( 'smooths QuadStrip bends with the source midpoint and fuse pass', () => {
 
 	const stroke = createStroke();

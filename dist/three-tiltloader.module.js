@@ -435,10 +435,38 @@ function $6fafcf15f6b61d60$var$generateRibbonGeometry(stroke, family, options, o
         $6fafcf15f6b61d60$var$applyQuadStripMidpointFusion(out, ribbonBreakBefore, renderPointCount, frontIndexCount / 6, hasBackfaces, options.generatorClass, tileRate);
         if (options.generatorClass === "QuadStripBrushDistanceUV") $6fafcf15f6b61d60$var$applyQuadStripDistanceOpacityFade(out, ribbonBreakBefore, renderPointCount, frontIndexCount / 6, hasBackfaces);
     }
+    const finalizedCounts = usesQuadStripTriangleSoup ? $6fafcf15f6b61d60$var$finalizeQuadStripUsedGeometry(out, ribbonBreakBefore, renderPointCount, frontIndexCount / 6, hasBackfaces, options) : undefined;
     out.family = family;
-    out.vertexCount = vertexCount;
-    out.indexCount = indexCount;
+    out.vertexCount = finalizedCounts?.vertexCount ?? vertexCount;
+    out.indexCount = finalizedCounts?.indexCount ?? indexCount;
     return reallocated;
+}
+function $6fafcf15f6b61d60$var$finalizeQuadStripUsedGeometry(out, breakBefore, pointCount, frontSolidCount, hasBackfaces, options) {
+    if (options.finalized !== true || options.lastControlPointIsKeeper !== false || pointCount < 2) return undefined;
+    const finalSegment = pointCount - 2;
+    const provisionalBreaks = breakBefore[pointCount - 1] === 1;
+    let previousSectionSolidCount = 0;
+    for(let segment = finalSegment - 1; segment >= 0; segment -= 1){
+        if (breakBefore[segment + 1] === 1) break;
+        previousSectionSolidCount += 1;
+    }
+    let removedSolidCount = 0;
+    if (provisionalBreaks) removedSolidCount = previousSectionSolidCount === 1 ? 1 : 0;
+    else if (previousSectionSolidCount === 0) removedSolidCount = 1;
+    else if (previousSectionSolidCount === 1) removedSolidCount = 2;
+    const keptFrontSolidCount = Math.max(0, frontSolidCount - removedSolidCount);
+    if (keptFrontSolidCount === frontSolidCount) return undefined;
+    const oldFrontVertexCount = frontSolidCount * 6;
+    const keptFrontVertexCount = keptFrontSolidCount * 6;
+    if (hasBackfaces) for(let vertex = 0; vertex < keptFrontVertexCount; vertex += 1)$6fafcf15f6b61d60$var$copyRibbonVertex(out, oldFrontVertexCount + vertex, keptFrontVertexCount + vertex);
+    const vertexCount = keptFrontVertexCount * (hasBackfaces ? 2 : 1);
+    for(let index = 0; index < vertexCount; index += 1)out.indices[index] = index;
+    $6fafcf15f6b61d60$var$resetBounds(out.bounds);
+    for(let vertex = 0; vertex < vertexCount; vertex += 1)$6fafcf15f6b61d60$var$includeBounds(out.bounds, out.positions, vertex);
+    return {
+        vertexCount: vertexCount,
+        indexCount: vertexCount
+    };
 }
 function $6fafcf15f6b61d60$var$expandRibbonTriangleSoup(out, breakBefore, pointCount, frontSourceVertexCount, frontVertexCount, hasBackfaces, finalVertexCount) {
     const sourceOffset = finalVertexCount;
@@ -1114,9 +1142,10 @@ function $6fafcf15f6b61d60$var$generateUnitizedRibbonGeometry(stroke, family, op
     $6fafcf15f6b61d60$var$expandUnitizedRibbonTriangleSoup(out, segmentCount, sourceFrontVertexCount, frontIndexCount, hasBackfaces, vertexCount);
     $6fafcf15f6b61d60$var$applyQuadStripPositionQuads(out, stroke, options, out.ribbonBreakBefore, pointCount);
     $6fafcf15f6b61d60$var$applyQuadStripMidpointFusion(out, out.ribbonBreakBefore, pointCount, segmentCount, hasBackfaces, options.generatorClass, $6fafcf15f6b61d60$var$normalizeTileRate(options.geometryParams?.tileRate));
+    const finalizedCounts = $6fafcf15f6b61d60$var$finalizeQuadStripUsedGeometry(out, out.ribbonBreakBefore, pointCount, segmentCount, hasBackfaces, options);
     out.family = family;
-    out.vertexCount = vertexCount;
-    out.indexCount = indexCount;
+    out.vertexCount = finalizedCounts?.vertexCount ?? vertexCount;
+    out.indexCount = finalizedCounts?.indexCount ?? indexCount;
     return reallocated;
 }
 function $6fafcf15f6b61d60$var$expandUnitizedRibbonTriangleSoup(out, segmentCount, sourceFrontVertexCount, frontVertexCount, hasBackfaces, finalVertexCount) {
