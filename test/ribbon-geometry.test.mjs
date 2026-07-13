@@ -504,6 +504,34 @@ test( 'uses flat SquareBrush caps without tube tip vertices', () => {
 
 } );
 
+test( 'keeps SquareBrush rings on raw control-point positions', () => {
+
+	const stroke = createStroke();
+	stroke.brushSize = 1;
+	stroke.controlPoints.push( {
+		position: [ 3, 0, 0 ],
+		orientation: [ 0, 0, 0, 1 ],
+		pressure: 1,
+		timestampMs: 32
+	} );
+	stroke.controlPoints[ 1 ].position = [ 1, 1, 0 ];
+	const geometry = generateBrushGeometry( stroke, 'tube', {
+		pressureSizeRange: [ 1, 1 ],
+		generatorClass: 'SquareBrush',
+		finalized: true
+	} );
+	const center = [ 0, 0, 0 ];
+	for ( let vertex = 8; vertex < 16; vertex += 1 ) {
+		for ( let axis = 0; axis < 3; axis += 1 ) {
+			center[ axis ] += geometry.positions[ vertex * 3 + axis ] / 8;
+		}
+	}
+	assertClose( center[ 0 ], 1 );
+	assertClose( center[ 1 ], 1 );
+	assertClose( center[ 2 ], 0 );
+
+} );
+
 test( 'restarts tube section frames and atlas rows after a break', () => {
 
 	const stroke = createStroke();

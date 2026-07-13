@@ -2068,6 +2068,9 @@ function $6fafcf15f6b61d60$var$generateTubeGeometry(stroke, options, out) {
     $6fafcf15f6b61d60$var$ensureGeometryPressureCapacity(out, pointCount);
     $6fafcf15f6b61d60$var$prepareTubeSmoothedPressures(stroke, options, out);
     $6fafcf15f6b61d60$var$prepareGeometrySmoothedPositions(stroke, out);
+    if (isSquareBrush) // SquareBrush frames and emits from point.m_Pos. Unlike TubeBrush, it does
+    // not apply GeometryBrush's finalized three-point center smoothing.
+    for(let pointIndex = 0; pointIndex < pointCount; pointIndex += 1)$6fafcf15f6b61d60$var$writeScratchVec3(out.geometrySmoothedPositions, pointIndex, stroke.controlPoints[pointIndex].position);
     const { positions: positions, normals: normals, tangents: tangents, colors: colors, uvs: uvs, packedUvs: packedUvs, indices: indices, bounds: bounds, tubeBreakBefore: tubeBreakBefore, tubeFrameRights: tubeFrameRights, tubeFrameUps: tubeFrameUps, tubeTangents: tubeTangents, tubeRadii: tubeRadii, tubeRingUs: tubeRingUs, tubeOpacities: tubeOpacities, tubeSmoothedPressures: tubeSmoothedPressures, geometrySmoothedPositions: geometrySmoothedPositions } = out;
     const pressureSizeMin = $6fafcf15f6b61d60$var$normalizePressureSizeMin(options.pressureSizeRange?.[0]);
     const pressureOpacityMin = $6fafcf15f6b61d60$var$normalizePressureOpacityMin(options.pressureOpacityRange);

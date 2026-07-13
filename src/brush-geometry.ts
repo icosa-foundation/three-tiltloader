@@ -2786,6 +2786,17 @@ function generateTubeGeometry(
   ensureGeometryPressureCapacity(out, pointCount);
   prepareTubeSmoothedPressures(stroke, options, out);
   prepareGeometrySmoothedPositions(stroke, out);
+  if (isSquareBrush) {
+    // SquareBrush frames and emits from point.m_Pos. Unlike TubeBrush, it does
+    // not apply GeometryBrush's finalized three-point center smoothing.
+    for (let pointIndex = 0; pointIndex < pointCount; pointIndex += 1) {
+      writeScratchVec3(
+        out.geometrySmoothedPositions,
+        pointIndex,
+        stroke.controlPoints[pointIndex].position,
+      );
+    }
+  }
   const {
     positions,
     normals,
