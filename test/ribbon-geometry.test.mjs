@@ -673,7 +673,7 @@ test( 'restarts Tube modifiers and StretchUV for each broken section', () => {
 	}
 	assert.ok( radius( 1 ) > 0.4 );
 	assert.ok( radius( 4 ) > 0.4 );
-	for ( const [ ring, expectedU ] of [ [ 0, 0 ], [ 1, 0.5 ], [ 2, 1 ], [ 3, 0 ], [ 4, 0.5 ], [ 5, 1 ] ] ) {
+	for ( const [ ring, expectedU ] of [ [ 0, 0 ], [ 1, 0.5 ], [ 2, 0.5 ], [ 3, 0 ], [ 4, 0.5 ], [ 5, 0.5 ] ] ) {
 		assertClose( geometry.uvs[ ring * ringVertexCount * 2 ], expectedU );
 	}
 

@@ -2620,7 +2620,8 @@ function $6fafcf15f6b61d60$var$applyTubeSectionShapeAndUvs(out, stroke, pointCou
             if (pointIndex > sectionStart) runningLength += $6fafcf15f6b61d60$var$distanceBetweenScratchPoints(out.geometrySmoothedPositions, pointIndex - 1, pointIndex);
             const localIndex = pointIndex - sectionStart;
             const progress = sectionLength > $6fafcf15f6b61d60$var$EPSILON ? runningLength / sectionLength : 0;
-            const ringU = usesStretchUvs ? localIndex / Math.max(sectionPointCount - 1, 1) : out.tubeRingUs[pointIndex];
+            const sectionSegmentCount = Math.max(sectionPointCount - 1, 1);
+            const ringU = usesStretchUvs ? Math.min(localIndex, sectionSegmentCount - 1) / sectionSegmentCount : out.tubeRingUs[pointIndex];
             out.tubeRingUs[pointIndex] = ringU;
             const ringBase = pointIndex * ringVertexCount;
             for(let ringIndex = 0; ringIndex < ringVertexCount; ringIndex += 1){

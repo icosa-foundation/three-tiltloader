@@ -3556,8 +3556,9 @@ function applyTubeSectionShapeAndUvs(
       const localIndex = pointIndex - sectionStart;
       const progress =
         sectionLength > EPSILON ? runningLength / sectionLength : 0;
+      const sectionSegmentCount = Math.max(sectionPointCount - 1, 1);
       const ringU = usesStretchUvs
-        ? localIndex / Math.max(sectionPointCount - 1, 1)
+        ? Math.min(localIndex, sectionSegmentCount - 1) / sectionSegmentCount
         : out.tubeRingUs[pointIndex];
       out.tubeRingUs[pointIndex] = ringU;
       const ringBase = pointIndex * ringVertexCount;
