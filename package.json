@@ -5,7 +5,8 @@
   "scripts": {
     "watch": "parcel watch",
     "build": "parcel build --no-cache",
-    "test": "npm run build && node --experimental-strip-types --test test/*.test.mjs"
+    "test": "npm run build && node --experimental-strip-types --test test/*.test.mjs",
+    "compare:open-brush-fixtures": "node --experimental-strip-types scripts/compare-open-brush-fixtures.mjs"
   },
   "repository": {
     "type": "git",
