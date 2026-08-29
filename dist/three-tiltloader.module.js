@@ -5646,6 +5646,7 @@ function $6fafcf15f6b61d60$var$generateRibbonGeometry(stroke, family, options, o
         const nextPointIndex = usesFlatGeometrySmoothing ? out.ribbonNextRetained[index] : Math.min(pointCount - 1, index + 1);
         const previousPoint = stroke.controlPoints[previousPointIndex];
         const nextPoint = stroke.controlPoints[nextPointIndex];
+        const startsFlatSection = usesFlatGeometrySmoothing && index > 0 && ribbonBreakBefore[index] === 0 && !flatPreviousHasGeometry;
         const center = usesFlatGeometrySmoothing && options.geometryParams?.m11Compatibility !== true && index > 0 ? [
             previousPoint.position[0] * 0.3 + point.position[0] * 0.4 + nextPoint.position[0] * 0.3,
             previousPoint.position[1] * 0.3 + point.position[1] * 0.4 + nextPoint.position[1] * 0.3,
@@ -5657,7 +5658,7 @@ function $6fafcf15f6b61d60$var$generateRibbonGeometry(stroke, family, options, o
             v0 = atlasRow / atlasRows;
             v1 = (atlasRow + 1) / atlasRows;
         }
-        if (usesFlatGeometrySmoothing && index > 0 && ribbonBreakBefore[index] === 0 && !flatPreviousHasGeometry) {
+        if (startsFlatSection) {
             // GeometryBrush seeds each FlatGeometry UV section from the index just
             // before the first solid's Open Brush vertex range. Shared continuation
             // edges add two vertices per side; a fresh double-sided solid adds four.
@@ -5688,7 +5689,7 @@ function $6fafcf15f6b61d60$var$generateRibbonGeometry(stroke, family, options, o
         } else $6fafcf15f6b61d60$var$writeCentralDifferenceTangent(stroke, index, previousTangent, tangent);
         $6fafcf15f6b61d60$var$rotateByQuaternion(point.orientation, $6fafcf15f6b61d60$var$VEC_FORWARD, pointerForward);
         $6fafcf15f6b61d60$var$rotateByQuaternion(point.orientation, $6fafcf15f6b61d60$var$VEC_UP, pointerUp);
-        $6fafcf15f6b61d60$var$computeSurfaceFrame(previousRight, tangent, pointerForward, pointerUp, index === 0, right, normal);
+        $6fafcf15f6b61d60$var$computeSurfaceFrame(previousRight, tangent, pointerForward, pointerUp, index === 0 || startsFlatSection, right, normal);
         if (usesFlatGeometrySmoothing && options.geometryParams?.m11Compatibility !== true && index > 0 && ribbonBreakBefore[index] === 0) {
             $6fafcf15f6b61d60$var$cross(previousRight, previousFlatNormal, previousFlatForward);
             flatEdge[0] = point.position[0] + 0.5 * size * right[0] - previousFlatCenter[0];
@@ -5728,6 +5729,26 @@ function $6fafcf15f6b61d60$var$generateRibbonGeometry(stroke, family, options, o
             flatHalfRights[offset] = right[0] * width;
             flatHalfRights[offset + 1] = right[1] * width;
             flatHalfRights[offset + 2] = right[2] * width;
+        }
+        if (startsFlatSection) {
+            // A GeometryBrush section's trailing knot has no frame of its own.
+            // FlatGeometryBrush builds that edge from the first geometry knot's
+            // frame, while retaining the trailing knot's pressure-derived width.
+            const previousLeftVertex = previousPointIndex * 2;
+            const previousRightVertex = previousLeftVertex + 1;
+            $6fafcf15f6b61d60$var$writeNormal(normals, previousLeftVertex, normal);
+            $6fafcf15f6b61d60$var$writeNormal(normals, previousRightVertex, normal);
+            if (hasVectorOffset) {
+                const previousWidth = localBrushSize * $6fafcf15f6b61d60$var$getPressureSizeMultiplier(ribbonSmoothedPressures[previousPointIndex], pressureSizeMin) * 0.5;
+                const leftOffset = previousLeftVertex * 3;
+                const rightOffset = previousRightVertex * 3;
+                vectorUvs[leftOffset] = -right[0] * previousWidth;
+                vectorUvs[leftOffset + 1] = -right[1] * previousWidth;
+                vectorUvs[leftOffset + 2] = -right[2] * previousWidth;
+                vectorUvs[rightOffset] = right[0] * previousWidth;
+                vectorUvs[rightOffset + 1] = right[1] * previousWidth;
+                vectorUvs[rightOffset + 2] = right[2] * previousWidth;
+            }
         }
         const leftVertex = index * 2;
         const rightVertex = leftVertex + 1;

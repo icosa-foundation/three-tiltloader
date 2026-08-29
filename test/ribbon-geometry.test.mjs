@@ -555,6 +555,37 @@ test( 'smooths FlatGeometryBrush centers like Open Brush', () => {
 
 } );
 
+test( 'frames both ends of a new FlatGeometry section from its first solid', () => {
+
+	const stroke = createStroke();
+	stroke.controlPoints = [
+		{
+			position: [ 0, 0, 0 ], orientation: [ 0, 0, 0, 1 ], pressure: 1, timestampMs: 0
+		},
+		{
+			position: [ 0.00001, 0, 0 ], orientation: [ 0, 0, 0, 1 ], pressure: 1,
+			timestampMs: 8
+		},
+		{
+			position: [ 1, 1, 0 ], orientation: [ 0, 0, 0, 1 ], pressure: 1,
+			timestampMs: 16
+		},
+		{
+			position: [ 2, 0, 0 ], orientation: [ 0, 0, 0, 1 ], pressure: 1,
+			timestampMs: 24
+		}
+	];
+	const geometry = generateBrushGeometry( stroke, 'ribbon', {
+		generatorClass: 'FlatGeometryBrush',
+		geometryParams: { m11Compatibility: false }
+	} );
+
+	for ( let axis = 0; axis < 3; axis += 1 ) {
+		assertClose( geometry.normals[ axis ], geometry.normals[ 2 * 3 + axis ] );
+	}
+
+} );
+
 test( 'smooths a FlatGeometry section end toward its break knot', () => {
 
 	const stroke = createStroke();

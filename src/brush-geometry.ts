@@ -488,6 +488,11 @@ function generateRibbonGeometry(
       : Math.min(pointCount - 1, index + 1);
     const previousPoint = stroke.controlPoints[previousPointIndex];
     const nextPoint = stroke.controlPoints[nextPointIndex];
+    const startsFlatSection =
+      usesFlatGeometrySmoothing &&
+      index > 0 &&
+      ribbonBreakBefore[index] === 0 &&
+      !flatPreviousHasGeometry;
     const center: Vec3 =
       usesFlatGeometrySmoothing &&
       options.geometryParams?.m11Compatibility !== true &&
@@ -507,10 +512,7 @@ function generateRibbonGeometry(
       v1 = (atlasRow + 1) / atlasRows;
     }
     if (
-      usesFlatGeometrySmoothing &&
-      index > 0 &&
-      ribbonBreakBefore[index] === 0 &&
-      !flatPreviousHasGeometry
+      startsFlatSection
     ) {
       // GeometryBrush seeds each FlatGeometry UV section from the index just
       // before the first solid's Open Brush vertex range. Shared continuation
@@ -562,7 +564,7 @@ function generateRibbonGeometry(
       tangent,
       pointerForward,
       pointerUp,
-      index === 0,
+      index === 0 || startsFlatSection,
       right,
       normal,
     );
@@ -623,6 +625,33 @@ function generateRibbonGeometry(
       flatHalfRights[offset] = right[0] * width;
       flatHalfRights[offset + 1] = right[1] * width;
       flatHalfRights[offset + 2] = right[2] * width;
+    }
+
+    if (startsFlatSection) {
+      // A GeometryBrush section's trailing knot has no frame of its own.
+      // FlatGeometryBrush builds that edge from the first geometry knot's
+      // frame, while retaining the trailing knot's pressure-derived width.
+      const previousLeftVertex = previousPointIndex * 2;
+      const previousRightVertex = previousLeftVertex + 1;
+      writeNormal(normals, previousLeftVertex, normal);
+      writeNormal(normals, previousRightVertex, normal);
+      if (hasVectorOffset) {
+        const previousWidth =
+          localBrushSize *
+          getPressureSizeMultiplier(
+            ribbonSmoothedPressures[previousPointIndex],
+            pressureSizeMin,
+          ) *
+          0.5;
+        const leftOffset = previousLeftVertex * 3;
+        const rightOffset = previousRightVertex * 3;
+        vectorUvs[leftOffset] = -right[0] * previousWidth;
+        vectorUvs[leftOffset + 1] = -right[1] * previousWidth;
+        vectorUvs[leftOffset + 2] = -right[2] * previousWidth;
+        vectorUvs[rightOffset] = right[0] * previousWidth;
+        vectorUvs[rightOffset + 1] = right[1] * previousWidth;
+        vectorUvs[rightOffset + 2] = right[2] * previousWidth;
+      }
     }
 
     const leftVertex = index * 2;
