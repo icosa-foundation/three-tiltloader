@@ -27,11 +27,17 @@ export {
     generateBrushGeometryInto,
     getGeneratedIndexCount,
     getGeneratedVertexCount,
+    resolveBrushGeometryOptions,
     type BrushGeometryArrays,
     type BrushGeometryBounds,
     type BrushGeometryOptions,
     type GeneratedBrushGeometry,
 } from './brush-geometry.js';
+
+export {
+    getOpenBrushGeometryDefaults,
+    type BrushGeometryDefaults,
+} from './brush-defaults.js';
 
 export type {
     BrushGeometryFamily,

@@ -4,6 +4,7 @@ import type {
   BrushPressureOpacityRange,
   BrushPressureSizeRange,
 } from "./brush-types.js";
+import { getOpenBrushGeometryDefaults } from "./brush-defaults.ts";
 import type { ControlPoint, Quat, Rgba, StrokeData, Vec3 } from "./stroke-types.js";
 
 export interface BrushGeometryBounds {
@@ -43,6 +44,28 @@ export interface BrushGeometryOptions {
   particleBirthTimeOffsetSeconds?: number;
   finalized?: boolean;
   lastControlPointIsKeeper?: boolean;
+}
+
+/** Applies the standard brush-GUID defaults, followed by per-call overrides. */
+export function resolveBrushGeometryOptions(
+  brushGuid: string,
+  options: BrushGeometryOptions = {},
+): BrushGeometryOptions {
+  const defaults = getOpenBrushGeometryDefaults(brushGuid);
+  if (!defaults) {
+    return options;
+  }
+  return {
+    ...options,
+    pressureSizeRange: options.pressureSizeRange ?? defaults.pressureSizeRange,
+    pressureOpacityRange:
+      options.pressureOpacityRange ?? defaults.pressureOpacityRange,
+    generatorClass: options.generatorClass ?? defaults.generatorClass,
+    geometryParams: {
+      ...defaults.geometryParams,
+      ...options.geometryParams,
+    },
+  };
 }
 
 /**
@@ -263,28 +286,34 @@ export function generateBrushGeometryInto(
   options: BrushGeometryOptions,
   out: BrushGeometryArrays,
 ): boolean {
+  const resolvedOptions = resolveBrushGeometryOptions(stroke.brushGuid, options);
   out.warning = undefined;
   out.uv1Size = 0;
   resetBounds(out.bounds);
   switch (family) {
     case "ribbon":
-      return generateRibbonGeometry(stroke, "ribbon", options, out);
+      return generateRibbonGeometry(stroke, "ribbon", resolvedOptions, out);
     case "emissive":
-      return generateRibbonGeometry(stroke, "emissive", options, out);
+      return generateRibbonGeometry(stroke, "emissive", resolvedOptions, out);
     case "tube":
-      return generateTubeGeometry(stroke, options, out);
+      return generateTubeGeometry(stroke, resolvedOptions, out);
     case "thick-strip":
-      return generateThickStripGeometry(stroke, options, out);
+      return generateThickStripGeometry(stroke, resolvedOptions, out);
     case "hull":
-      return generateHullGeometry(stroke, options, out);
+      return generateHullGeometry(stroke, resolvedOptions, out);
     case "concave-hull":
-      return generateConcaveHullGeometry(stroke, options, out);
+      return generateConcaveHullGeometry(stroke, resolvedOptions, out);
     case "print3d":
-      return generateSquare3DPrintGeometry(stroke, options, out);
+      return generateSquare3DPrintGeometry(stroke, resolvedOptions, out);
     case "particle":
-      return generateParticleGeometry(stroke, options, out);
+      return generateParticleGeometry(stroke, resolvedOptions, out);
     case "unsupported": {
-      const reallocated = generateRibbonGeometry(stroke, "unsupported", options, out);
+      const reallocated = generateRibbonGeometry(
+        stroke,
+        "unsupported",
+        resolvedOptions,
+        out,
+      );
       out.warning = "Unsupported brush geometry family; generated fallback ribbon.";
       return reallocated;
     }
