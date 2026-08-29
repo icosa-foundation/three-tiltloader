@@ -105,7 +105,7 @@ test( 'turns each single-sided quad toward the pointer', () => {
 	} );
 	const geometry = generateBrushGeometry( stroke, 'ribbon', {
 		generatorClass: 'QuadStripBrushStretchUV',
-		geometryParams: { renderBackfaces: false }
+		geometryParams: { renderBackfaces: false, backIsInvisible: true }
 	} );
 
 	const firstFacing = geometry.normals[ 2 ];
