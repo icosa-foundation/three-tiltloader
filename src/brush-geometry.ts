@@ -330,9 +330,10 @@ function generateRibbonGeometry(
     options.generatorClass === "QuadStripBrushStretchUV";
   const pointCount = stroke.controlPoints.length;
   if (usesQuadStripTriangleSoup) {
-    prepareQuadStripSections(stroke, out);
+    prepareQuadStripSections(stroke, options, out);
   } else {
     prepareRibbonSections(stroke, out);
+    prepareRibbonSmoothedPressures(stroke, options, out);
   }
   const renderPointCount = resolveRibbonRenderPointCount(
     pointCount,
@@ -346,7 +347,6 @@ function generateRibbonGeometry(
     renderPointCount,
     usesQuadStripTriangleSoup,
   );
-  prepareRibbonSmoothedPressures(stroke, options, out);
   const frontIndexCount = connectedSegmentCount * 6;
   const hasBackfaces = options.geometryParams?.renderBackfaces === true;
   const sourceVertexCount = frontVertexCount * (hasBackfaces ? 2 : 1);
@@ -2106,11 +2106,14 @@ function generateUnitizedRibbonGeometry(
   out.uv0Size = 2;
   out.uv1Size = 0;
   const pointCount = stroke.controlPoints.length;
-  ensureRibbonScratchCapacity(out, pointCount);
-  out.ribbonBreakBefore.fill(0, 0, pointCount);
-  prepareRibbonSmoothedPressures(stroke, options, out);
-  const segmentCount = Math.max(0, pointCount - 1);
-  const sourceFrontVertexCount = segmentCount * 4;
+  prepareQuadStripSections(stroke, options, out);
+  const rawSegmentCount = Math.max(0, pointCount - 1);
+  const segmentCount = countConnectedRibbonSegments(
+    out.ribbonBreakBefore,
+    pointCount,
+    true,
+  );
+  const sourceFrontVertexCount = rawSegmentCount * 4;
   const frontIndexCount = segmentCount * 6;
   const hasBackfaces = options.geometryParams?.renderBackfaces === true;
   const sourceVertexCount = sourceFrontVertexCount * (hasBackfaces ? 2 : 1);
@@ -2283,6 +2286,17 @@ function generateUnitizedRibbonGeometry(
     out.ribbonBreakBefore,
     pointCount,
   );
+  const unitizedUvs = [
+    0, 0,
+    0, 1,
+    1, 0,
+    0, 1,
+    1, 1,
+    1, 0,
+  ] as const;
+  for (let solid = 0; solid < segmentCount; solid += 1) {
+    out.uvs.set(unitizedUvs, solid * 12);
+  }
   applyQuadStripMidpointFusion(
     out,
     out.ribbonBreakBefore,
@@ -2306,6 +2320,13 @@ function generateUnitizedRibbonGeometry(
   out.family = family;
   out.vertexCount = finalizedCounts?.vertexCount ?? vertexCount;
   out.indexCount = finalizedCounts?.indexCount ?? indexCount;
+  if (hasBackfaces && out.vertexCount > 0) {
+    interleaveQuadStripBackfaces(out, out.vertexCount / 12);
+  }
+  resetBounds(out.bounds);
+  for (let vertex = 0; vertex < out.vertexCount; vertex += 1) {
+    includeBounds(out.bounds, out.positions, vertex);
+  }
   return reallocated;
 }
 
@@ -4374,7 +4395,7 @@ function applyTubeSectionShapeAndUvs(
       );
       const petalOffset =
         shapeModifier === 5
-          ? Math.pow(progress, normalizeTubePetalExponent(petalExponent)) *
+          ? Math.pow(ownerProgress, normalizeTubePetalExponent(petalExponent)) *
             normalizeTubePetalAmount(petalAmount) *
             localBrushSize *
             out.tubeSmoothedPressures[ownerPointIndex]
@@ -5377,10 +5398,12 @@ function prepareRibbonSections(
  */
 function prepareQuadStripSections(
   stroke: StrokeData,
+  options: BrushGeometryOptions,
   out: BrushGeometryArrays,
 ): void {
   const pointCount = stroke.controlPoints.length;
   ensureRibbonScratchCapacity(out, pointCount);
+  prepareRibbonSmoothedPressures(stroke, options, out);
   const {
     ribbonBreakBefore,
     ribbonRunningLengths,
@@ -5393,6 +5416,8 @@ function prepareQuadStripSections(
   let previousDirectionY = 0;
   let previousDirectionZ = 0;
   let hasPreviousDirection = false;
+  const localBrushSize = getLocalBrushSize(stroke);
+  const pressureSizeMin = normalizePressureSizeMin(options.pressureSizeRange?.[0]);
 
   for (let index = 1; index < pointCount; index += 1) {
     const previous = stroke.controlPoints[lastSpawnIndex].position;
@@ -5402,6 +5427,26 @@ function prepareQuadStripSections(
     const deltaZ = current[2] - previous[2];
     const segmentLength = Math.hypot(deltaX, deltaY, deltaZ);
     if (segmentLength < OPEN_BRUSH_RIBBON_MINIMUM_MOVE_METERS) {
+      ribbonBreakBefore[index] = 2;
+      ribbonRunningLengths[index] = runningLength;
+      continue;
+    }
+
+    // QuadStripBrush keeps one mutable leading quad for samples that have moved
+    // far enough to update the brush but not far enough to commit a new solid.
+    // A later sample overwrites that quad; only the final provisional sample is
+    // visible in a live/finalized mesh. GetSpawnInterval is the fixed 1.5 mm
+    // floor plus 20% of the pressure-adjusted brush size.
+    const spawnInterval =
+      0.0015 +
+      localBrushSize *
+        getPressureSizeMultiplier(
+          out.ribbonSmoothedPressures[index],
+          pressureSizeMin,
+        ) *
+        0.2;
+    const isFinalProvisional = index === pointCount - 1;
+    if (segmentLength < spawnInterval && !isFinalProvisional) {
       ribbonBreakBefore[index] = 2;
       ribbonRunningLengths[index] = runningLength;
       continue;
@@ -5428,11 +5473,13 @@ function prepareQuadStripSections(
       runningLength += segmentLength;
     }
     ribbonRunningLengths[index] = runningLength;
-    lastSpawnIndex = index;
-    previousDirectionX = directionX;
-    previousDirectionY = directionY;
-    previousDirectionZ = directionZ;
-    hasPreviousDirection = true;
+    if (segmentLength >= spawnInterval) {
+      lastSpawnIndex = index;
+      previousDirectionX = directionX;
+      previousDirectionY = directionY;
+      previousDirectionZ = directionZ;
+      hasPreviousDirection = true;
+    }
   }
   for (let sectionIndex = sectionStart; sectionIndex < pointCount; sectionIndex += 1) {
     ribbonSectionLengths[sectionIndex] = runningLength;

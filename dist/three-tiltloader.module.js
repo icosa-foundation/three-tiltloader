@@ -198,13 +198,15 @@ function $6fafcf15f6b61d60$var$generateRibbonGeometry(stroke, family, options, o
     if (options.generatorClass === "QuadStripUnitizedUVBrush") return $6fafcf15f6b61d60$var$generateUnitizedRibbonGeometry(stroke, family, options, out);
     const usesQuadStripTriangleSoup = options.generatorClass === "QuadStripBrushDistanceUV" || options.generatorClass === "QuadStripBrushStretchUV";
     const pointCount = stroke.controlPoints.length;
-    if (usesQuadStripTriangleSoup) $6fafcf15f6b61d60$var$prepareQuadStripSections(stroke, out);
-    else $6fafcf15f6b61d60$var$prepareRibbonSections(stroke, out);
+    if (usesQuadStripTriangleSoup) $6fafcf15f6b61d60$var$prepareQuadStripSections(stroke, options, out);
+    else {
+        $6fafcf15f6b61d60$var$prepareRibbonSections(stroke, out);
+        $6fafcf15f6b61d60$var$prepareRibbonSmoothedPressures(stroke, options, out);
+    }
     const renderPointCount = $6fafcf15f6b61d60$var$resolveRibbonRenderPointCount(pointCount, options, out.ribbonBreakBefore);
     const frontVertexCount = renderPointCount * 2;
     const segmentCount = Math.max(0, renderPointCount - 1);
     const connectedSegmentCount = $6fafcf15f6b61d60$var$countConnectedRibbonSegments(out.ribbonBreakBefore, renderPointCount, usesQuadStripTriangleSoup);
-    $6fafcf15f6b61d60$var$prepareRibbonSmoothedPressures(stroke, options, out);
     const frontIndexCount = connectedSegmentCount * 6;
     const hasBackfaces = options.geometryParams?.renderBackfaces === true;
     const sourceVertexCount = frontVertexCount * (hasBackfaces ? 2 : 1);
@@ -1294,11 +1296,10 @@ function $6fafcf15f6b61d60$var$generateUnitizedRibbonGeometry(stroke, family, op
     out.uv0Size = 2;
     out.uv1Size = 0;
     const pointCount = stroke.controlPoints.length;
-    $6fafcf15f6b61d60$var$ensureRibbonScratchCapacity(out, pointCount);
-    out.ribbonBreakBefore.fill(0, 0, pointCount);
-    $6fafcf15f6b61d60$var$prepareRibbonSmoothedPressures(stroke, options, out);
-    const segmentCount = Math.max(0, pointCount - 1);
-    const sourceFrontVertexCount = segmentCount * 4;
+    $6fafcf15f6b61d60$var$prepareQuadStripSections(stroke, options, out);
+    const rawSegmentCount = Math.max(0, pointCount - 1);
+    const segmentCount = $6fafcf15f6b61d60$var$countConnectedRibbonSegments(out.ribbonBreakBefore, pointCount, true);
+    const sourceFrontVertexCount = rawSegmentCount * 4;
     const frontIndexCount = segmentCount * 6;
     const hasBackfaces = options.geometryParams?.renderBackfaces === true;
     const sourceVertexCount = sourceFrontVertexCount * (hasBackfaces ? 2 : 1);
@@ -1465,11 +1466,29 @@ function $6fafcf15f6b61d60$var$generateUnitizedRibbonGeometry(stroke, family, op
     }
     $6fafcf15f6b61d60$var$expandUnitizedRibbonTriangleSoup(out, segmentCount, sourceFrontVertexCount, frontIndexCount, hasBackfaces, vertexCount);
     $6fafcf15f6b61d60$var$applyQuadStripPositionQuads(out, stroke, options, out.ribbonBreakBefore, pointCount);
+    const unitizedUvs = [
+        0,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        1,
+        1,
+        0
+    ];
+    for(let solid = 0; solid < segmentCount; solid += 1)out.uvs.set(unitizedUvs, solid * 12);
     $6fafcf15f6b61d60$var$applyQuadStripMidpointFusion(out, out.ribbonBreakBefore, pointCount, segmentCount, hasBackfaces, options.generatorClass, $6fafcf15f6b61d60$var$normalizeTileRate(options.geometryParams?.tileRate), $6fafcf15f6b61d60$var$normalizeAtlasRows(options.geometryParams?.textureAtlasV), stroke.seed);
     const finalizedCounts = $6fafcf15f6b61d60$var$finalizeQuadStripUsedGeometry(out, out.ribbonBreakBefore, pointCount, segmentCount, hasBackfaces, options);
     out.family = family;
     out.vertexCount = finalizedCounts?.vertexCount ?? vertexCount;
     out.indexCount = finalizedCounts?.indexCount ?? indexCount;
+    if (hasBackfaces && out.vertexCount > 0) $6fafcf15f6b61d60$var$interleaveQuadStripBackfaces(out, out.vertexCount / 12);
+    $6fafcf15f6b61d60$var$resetBounds(out.bounds);
+    for(let vertex = 0; vertex < out.vertexCount; vertex += 1)$6fafcf15f6b61d60$var$includeBounds(out.bounds, out.positions, vertex);
     return reallocated;
 }
 function $6fafcf15f6b61d60$var$expandUnitizedRibbonTriangleSoup(out, segmentCount, sourceFrontVertexCount, frontVertexCount, hasBackfaces, finalVertexCount) {
@@ -3153,7 +3172,7 @@ function $6fafcf15f6b61d60$var$applyTubeSectionShapeAndUvs(out, stroke, pointCou
             $6fafcf15f6b61d60$var$readScratchVec3(out.tubeFrameUps, pointIndex, frameUp);
             const radius = out.tubeRadii[ownerPointIndex];
             const shapeScale = $6fafcf15f6b61d60$var$getTubeShapeScale(shapeModifier, ownerProgress, Math.max(0, ownerLocalIndex - 1), Math.max(0, sectionPointCount - 1), taperScalar, loftedPartialProgress);
-            const petalOffset = shapeModifier === 5 ? Math.pow(progress, $6fafcf15f6b61d60$var$normalizeTubePetalExponent(petalExponent)) * $6fafcf15f6b61d60$var$normalizeTubePetalAmount(petalAmount) * localBrushSize * out.tubeSmoothedPressures[ownerPointIndex] : 0;
+            const petalOffset = shapeModifier === 5 ? Math.pow(ownerProgress, $6fafcf15f6b61d60$var$normalizeTubePetalExponent(petalExponent)) * $6fafcf15f6b61d60$var$normalizeTubePetalAmount(petalAmount) * localBrushSize * out.tubeSmoothedPressures[ownerPointIndex] : 0;
             if (hardEdges) {
                 const halfStep = Math.PI / sideCount;
                 for(let side = 0; side < sideCount; side += 1){
@@ -3712,9 +3731,10 @@ function $6fafcf15f6b61d60$var$prepareRibbonSections(stroke, out) {
  * brush state untouched; the latter still emits the current solid as the first
  * member of a new, unfused section. Values in ribbonBreakBefore therefore mean
  * 0 = ordinary solid, 1 = generated section start, and 2 = skipped sample.
- */ function $6fafcf15f6b61d60$var$prepareQuadStripSections(stroke, out) {
+ */ function $6fafcf15f6b61d60$var$prepareQuadStripSections(stroke, options, out) {
     const pointCount = stroke.controlPoints.length;
     $6fafcf15f6b61d60$var$ensureRibbonScratchCapacity(out, pointCount);
+    $6fafcf15f6b61d60$var$prepareRibbonSmoothedPressures(stroke, options, out);
     const { ribbonBreakBefore: ribbonBreakBefore, ribbonRunningLengths: ribbonRunningLengths, ribbonSectionLengths: ribbonSectionLengths } = out;
     let sectionStart = 0;
     let runningLength = 0;
@@ -3723,6 +3743,8 @@ function $6fafcf15f6b61d60$var$prepareRibbonSections(stroke, out) {
     let previousDirectionY = 0;
     let previousDirectionZ = 0;
     let hasPreviousDirection = false;
+    const localBrushSize = $6fafcf15f6b61d60$var$getLocalBrushSize(stroke);
+    const pressureSizeMin = $6fafcf15f6b61d60$var$normalizePressureSizeMin(options.pressureSizeRange?.[0]);
     for(let index = 1; index < pointCount; index += 1){
         const previous = stroke.controlPoints[lastSpawnIndex].position;
         const current = stroke.controlPoints[index].position;
@@ -3731,6 +3753,18 @@ function $6fafcf15f6b61d60$var$prepareRibbonSections(stroke, out) {
         const deltaZ = current[2] - previous[2];
         const segmentLength = Math.hypot(deltaX, deltaY, deltaZ);
         if (segmentLength < $6fafcf15f6b61d60$var$OPEN_BRUSH_RIBBON_MINIMUM_MOVE_METERS) {
+            ribbonBreakBefore[index] = 2;
+            ribbonRunningLengths[index] = runningLength;
+            continue;
+        }
+        // QuadStripBrush keeps one mutable leading quad for samples that have moved
+        // far enough to update the brush but not far enough to commit a new solid.
+        // A later sample overwrites that quad; only the final provisional sample is
+        // visible in a live/finalized mesh. GetSpawnInterval is the fixed 1.5 mm
+        // floor plus 20% of the pressure-adjusted brush size.
+        const spawnInterval = 0.0015 + localBrushSize * $6fafcf15f6b61d60$var$getPressureSizeMultiplier(out.ribbonSmoothedPressures[index], pressureSizeMin) * 0.2;
+        const isFinalProvisional = index === pointCount - 1;
+        if (segmentLength < spawnInterval && !isFinalProvisional) {
             ribbonBreakBefore[index] = 2;
             ribbonRunningLengths[index] = runningLength;
             continue;
@@ -3747,11 +3781,13 @@ function $6fafcf15f6b61d60$var$prepareRibbonSections(stroke, out) {
             runningLength = segmentLength;
         } else runningLength += segmentLength;
         ribbonRunningLengths[index] = runningLength;
-        lastSpawnIndex = index;
-        previousDirectionX = directionX;
-        previousDirectionY = directionY;
-        previousDirectionZ = directionZ;
-        hasPreviousDirection = true;
+        if (segmentLength >= spawnInterval) {
+            lastSpawnIndex = index;
+            previousDirectionX = directionX;
+            previousDirectionY = directionY;
+            previousDirectionZ = directionZ;
+            hasPreviousDirection = true;
+        }
     }
     for(let sectionIndex = sectionStart; sectionIndex < pointCount; sectionIndex += 1)ribbonSectionLengths[sectionIndex] = runningLength;
 }
