@@ -15,6 +15,12 @@ function assertClose( actual, expected, tolerance = 1e-6 ) {
 
 }
 
+function colorByte( value ) {
+
+	return Math.floor( Math.max( 0, Math.min( 1, value ) ) * 255 ) / 255;
+
+}
+
 function createStroke() {
 
 	return {
@@ -706,7 +712,7 @@ test( 'smooths ribbon pressure over the Open Brush distance window', () => {
 	assertClose( quadLeadingWidth, 1 - Math.pow( 0.1, 0.5 ) );
 	assertClose( quadTrailingWidth, quadLeadingWidth );
 	for ( let vertex = 0; vertex < 6; vertex += 1 ) {
-		assertClose( quad.colors[ vertex * 4 + 3 ], quadLeadingWidth );
+		assertClose( quad.colors[ vertex * 4 + 3 ], colorByte( quadLeadingWidth ) );
 	}
 	assertClose( flatWidth, 0.9 );
 
@@ -743,8 +749,9 @@ test( 'smooths tube pressure over the GeometryBrush distance window', () => {
 	stroke.controlPoints[ 1 ].position = [ 0.1, 0, 0 ];
 	const tube = generateBrushGeometry( stroke, 'tube', {
 		pressureSizeRange: [ 0, 1 ],
+		pressureOpacityRange: [ 0, 0 ],
 		generatorClass: 'TubeBrush',
-		geometryParams: { tubeSideCount: 4, tubeEndCaps: false }
+		geometryParams: { opacity: 0.25, tubeSideCount: 4, tubeEndCaps: false }
 	} );
 	const tubeM11Stroke = createStroke();
 	tubeM11Stroke.brushSize = 1;
@@ -767,6 +774,8 @@ test( 'smooths tube pressure over the GeometryBrush distance window', () => {
 		} )
 	);
 	assertClose( radiusAtSecondRing( tube ), ( 1 - Math.pow( 0.1, 0.5 ) ) * 0.5 );
+	assertClose( tube.colors[ 3 ], 1 );
+	assertClose( tube.colors[ 5 * 4 + 3 ], 1 );
 	assertClose( radiusAtSecondRing( tubeM11 ), 0.45 );
 	assertClose( Math.hypot( tubeM11.positions[ 1 ], tubeM11.positions[ 2 ] ), 0 );
 
@@ -1136,7 +1145,7 @@ test( 'smooths thick-strip size and opacity as a GeometryBrush', () => {
 		geometry.positions[ positive + 2 ] - geometry.positions[ negative + 2 ]
 	);
 	assertClose( width, expected );
-	assertClose( geometry.colors[ 6 * 4 + 3 ], expected );
+	assertClose( geometry.colors[ 6 * 4 + 3 ], colorByte( expected ) );
 
 } );
 
@@ -1290,7 +1299,7 @@ test( 'smooths Midpoint pressure while keeping Spray and Genius raw', () => {
 		}
 	} );
 	assert.ok( getGeneratedVertexCount( spray ) > 0 );
-	assertClose( spray.colors[ 3 ], 1 - Math.pow( 0.1, 0.5 ) );
+	assertClose( spray.colors[ 3 ], colorByte( 1 - Math.pow( 0.1, 0.5 ) ) );
 	assertClose( spray.uv1[ 3 ], 0.016 );
 	const rawSpray = generateBrushGeometry( stroke, 'particle', {
 		generatorClass: 'SprayBrush',

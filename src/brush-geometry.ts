@@ -4280,15 +4280,6 @@ function generateTubeGeometry(
     geometrySmoothedPositions,
   } = out;
   const pressureSizeMin = normalizePressureSizeMin(options.pressureSizeRange?.[0]);
-  const pressureOpacityMin = normalizePressureOpacityMin(
-    options.pressureOpacityRange,
-  );
-  const pressureOpacityMax = normalizePressureOpacityMax(
-    options.pressureOpacityRange,
-  );
-  const descriptorOpacity = normalizeDescriptorOpacity(
-    options.geometryParams?.opacity,
-  );
   const localBrushSize = getLocalBrushSize(stroke);
   const tileRate = normalizeTileRate(options.geometryParams?.tileRate);
   // The first TubeBrush knot starts writing at vertex zero and salts its
@@ -4371,11 +4362,9 @@ function generateTubeGeometry(
           localBrushSize *
           tubeSmoothedPressures[pointIndex]
         : 0;
-    const opacity = getPressureOpacityMultiplier(
-      tubeSmoothedPressures[pointIndex],
-      pressureOpacityMin,
-      pressureOpacityMax,
-    ) * descriptorOpacity;
+    // TubeBrush writes m_Color directly and does not apply the descriptor's
+    // pressure-opacity range while constructing its live mesh.
+    const opacity = 1;
 
     writeScratchIncomingTangent(
       geometrySmoothedPositions,
@@ -7660,10 +7649,12 @@ function writeColor(
   opacityMultiplier = 1,
 ): void {
   const offset = vertex * 4;
-  target[offset] = value[0];
-  target[offset + 1] = value[1];
-  target[offset + 2] = value[2];
-  target[offset + 3] = clamp01(value[3] * opacityMultiplier);
+  target[offset] = quantizeColorByte(clamp01(value[0]));
+  target[offset + 1] = quantizeColorByte(clamp01(value[1]));
+  target[offset + 2] = quantizeColorByte(clamp01(value[2]));
+  target[offset + 3] = quantizeColorByte(
+    clamp01(value[3] * opacityMultiplier),
+  );
 }
 
 function writeColorFromAlpha(
@@ -7673,10 +7664,10 @@ function writeColorFromAlpha(
   alpha: number,
 ): void {
   const offset = vertex * 4;
-  target[offset] = value[0];
-  target[offset + 1] = value[1];
-  target[offset + 2] = value[2];
-  target[offset + 3] = clamp01(alpha);
+  target[offset] = quantizeColorByte(clamp01(value[0]));
+  target[offset + 1] = quantizeColorByte(clamp01(value[1]));
+  target[offset + 2] = quantizeColorByte(clamp01(value[2]));
+  target[offset + 3] = quantizeColorByte(clamp01(alpha));
 }
 
 function writeUv(target: Float32Array, vertex: number, value: [number, number]): void {

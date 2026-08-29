@@ -8241,9 +8241,6 @@ function $6fafcf15f6b61d60$var$generateTubeGeometry(stroke, options, out) {
     for(let pointIndex = 0; pointIndex < pointCount; pointIndex += 1)$6fafcf15f6b61d60$var$writeScratchVec3(out.geometrySmoothedPositions, pointIndex, stroke.controlPoints[pointIndex].position);
     const { positions: positions, normals: normals, tangents: tangents, colors: colors, uvs: uvs, packedUvs: packedUvs, indices: indices, bounds: bounds, tubeBreakBefore: tubeBreakBefore, tubeFrameRights: tubeFrameRights, tubeFrameUps: tubeFrameUps, tubeTangents: tubeTangents, tubeRadii: tubeRadii, tubeRingUs: tubeRingUs, tubeOpacities: tubeOpacities, tubeSmoothedPressures: tubeSmoothedPressures, geometrySmoothedPositions: geometrySmoothedPositions } = out;
     const pressureSizeMin = $6fafcf15f6b61d60$var$normalizePressureSizeMin(options.pressureSizeRange?.[0]);
-    const pressureOpacityMin = $6fafcf15f6b61d60$var$normalizePressureOpacityMin(options.pressureOpacityRange);
-    const pressureOpacityMax = $6fafcf15f6b61d60$var$normalizePressureOpacityMax(options.pressureOpacityRange);
-    const descriptorOpacity = $6fafcf15f6b61d60$var$normalizeDescriptorOpacity(options.geometryParams?.opacity);
     const localBrushSize = $6fafcf15f6b61d60$var$getLocalBrushSize(stroke);
     const tileRate = $6fafcf15f6b61d60$var$normalizeTileRate(options.geometryParams?.tileRate);
     // The first TubeBrush knot starts writing at vertex zero and salts its
@@ -8329,7 +8326,9 @@ function $6fafcf15f6b61d60$var$generateTubeGeometry(stroke, options, out) {
         const progress = totalStrokeLength > $6fafcf15f6b61d60$var$EPSILON ? runningDistance / totalStrokeLength : 0;
         const shapeScale = $6fafcf15f6b61d60$var$getTubeShapeScale(shapeModifier, progress, pointIndex, pointCount, options.geometryParams?.tubeTaperScalar, 0);
         const petalOffset = shapeModifier === 5 ? Math.pow(progress, $6fafcf15f6b61d60$var$normalizeTubePetalExponent(options.geometryParams?.tubePetalDisplacementExponent)) * $6fafcf15f6b61d60$var$normalizeTubePetalAmount(options.geometryParams?.tubePetalDisplacementAmount) * localBrushSize * tubeSmoothedPressures[pointIndex] : 0;
-        const opacity = $6fafcf15f6b61d60$var$getPressureOpacityMultiplier(tubeSmoothedPressures[pointIndex], pressureOpacityMin, pressureOpacityMax) * descriptorOpacity;
+        // TubeBrush writes m_Color directly and does not apply the descriptor's
+        // pressure-opacity range while constructing its live mesh.
+        const opacity = 1;
         $6fafcf15f6b61d60$var$writeScratchIncomingTangent(geometrySmoothedPositions, pointCount, pointIndex, previousTangent, tangent);
         if (pointIndex === 0) $6fafcf15f6b61d60$var$initializeTubeFrame(point.orientation, tangent, bootstrapUp, frameRight, frameUp);
         else {
@@ -10391,17 +10390,17 @@ function $6fafcf15f6b61d60$var$copyTangent(target, sourceVertex, targetVertex, f
 }
 function $6fafcf15f6b61d60$var$writeColor(target, vertex, value, opacityMultiplier = 1) {
     const offset = vertex * 4;
-    target[offset] = value[0];
-    target[offset + 1] = value[1];
-    target[offset + 2] = value[2];
-    target[offset + 3] = $6fafcf15f6b61d60$var$clamp01(value[3] * opacityMultiplier);
+    target[offset] = $6fafcf15f6b61d60$var$quantizeColorByte($6fafcf15f6b61d60$var$clamp01(value[0]));
+    target[offset + 1] = $6fafcf15f6b61d60$var$quantizeColorByte($6fafcf15f6b61d60$var$clamp01(value[1]));
+    target[offset + 2] = $6fafcf15f6b61d60$var$quantizeColorByte($6fafcf15f6b61d60$var$clamp01(value[2]));
+    target[offset + 3] = $6fafcf15f6b61d60$var$quantizeColorByte($6fafcf15f6b61d60$var$clamp01(value[3] * opacityMultiplier));
 }
 function $6fafcf15f6b61d60$var$writeColorFromAlpha(target, vertex, value, alpha) {
     const offset = vertex * 4;
-    target[offset] = value[0];
-    target[offset + 1] = value[1];
-    target[offset + 2] = value[2];
-    target[offset + 3] = $6fafcf15f6b61d60$var$clamp01(alpha);
+    target[offset] = $6fafcf15f6b61d60$var$quantizeColorByte($6fafcf15f6b61d60$var$clamp01(value[0]));
+    target[offset + 1] = $6fafcf15f6b61d60$var$quantizeColorByte($6fafcf15f6b61d60$var$clamp01(value[1]));
+    target[offset + 2] = $6fafcf15f6b61d60$var$quantizeColorByte($6fafcf15f6b61d60$var$clamp01(value[2]));
+    target[offset + 3] = $6fafcf15f6b61d60$var$quantizeColorByte($6fafcf15f6b61d60$var$clamp01(alpha));
 }
 function $6fafcf15f6b61d60$var$writeUv(target, vertex, value) {
     const offset = vertex * 2;
