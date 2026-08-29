@@ -515,7 +515,7 @@ function $6fafcf15f6b61d60$var$generateRibbonGeometry(stroke, family, options, o
     }
     if (usesQuadStripTriangleSoup) {
         $6fafcf15f6b61d60$var$expandRibbonTriangleSoup(out, ribbonBreakBefore, renderPointCount, frontVertexCount, frontIndexCount, hasBackfaces, vertexCount);
-        $6fafcf15f6b61d60$var$applyQuadStripPositionQuads(out, stroke, options, ribbonBreakBefore, renderPointCount, hasBackfaces);
+        $6fafcf15f6b61d60$var$applyQuadStripPositionQuads(out, stroke, options, ribbonBreakBefore, renderPointCount);
         $6fafcf15f6b61d60$var$applyQuadStripMidpointFusion(out, ribbonBreakBefore, renderPointCount, frontIndexCount / 6, hasBackfaces, options.generatorClass, tileRate, atlasRows, stroke.seed);
     }
     const finalizedCounts = usesQuadStripTriangleSoup ? $6fafcf15f6b61d60$var$finalizeQuadStripUsedGeometry(out, ribbonBreakBefore, renderPointCount, frontIndexCount / 6, hasBackfaces, options) : undefined;
@@ -795,7 +795,7 @@ function $6fafcf15f6b61d60$var$copyRibbonVertex(out, source, destination) {
     $6fafcf15f6b61d60$var$copyVec2At(out.uvs, source, destination);
     if (out.uv1Size === 3) $6fafcf15f6b61d60$var$copyVec3At(out.vectorUvs, source, destination);
 }
-function $6fafcf15f6b61d60$var$applyQuadStripPositionQuads(out, stroke, options, breakBefore, pointCount, hasBackfaces) {
+function $6fafcf15f6b61d60$var$applyQuadStripPositionQuads(out, stroke, options, breakBefore, pointCount) {
     const previousRight = [
         0,
         0,
@@ -879,7 +879,7 @@ function $6fafcf15f6b61d60$var$applyQuadStripPositionQuads(out, stroke, options,
         if (!$6fafcf15f6b61d60$var$normalizeInPlace(tangent)) continue;
         $6fafcf15f6b61d60$var$rotateByQuaternion(point.orientation, $6fafcf15f6b61d60$var$VEC_FORWARD, pointerForward);
         $6fafcf15f6b61d60$var$rotateByQuaternion(point.orientation, $6fafcf15f6b61d60$var$VEC_UP, pointerUp);
-        $6fafcf15f6b61d60$var$computeSurfaceFrame(previousRight, tangent, pointerForward, pointerUp, solid === 0 || !hasBackfaces, right, normal, true);
+        $6fafcf15f6b61d60$var$computeSurfaceFrame(previousRight, tangent, pointerForward, pointerUp, solid === 0 || options.geometryParams?.backIsInvisible === true, right, normal, true);
         const sourceSize = localBrushSize * $6fafcf15f6b61d60$var$getPressureSizeMultiplier(out.ribbonSmoothedPressures[pointIndex], pressureSizeMin);
         let size = sourceSize - lastSizeShrink;
         center[0] = (previousPoint.position[0] + point.position[0]) * 0.5;

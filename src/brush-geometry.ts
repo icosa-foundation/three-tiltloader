@@ -781,7 +781,6 @@ function generateRibbonGeometry(
       options,
       ribbonBreakBefore,
       renderPointCount,
-      hasBackfaces,
     );
     applyQuadStripMidpointFusion(
       out,
@@ -1368,7 +1367,6 @@ function applyQuadStripPositionQuads(
   options: BrushGeometryOptions,
   breakBefore: Uint8Array,
   pointCount: number,
-  hasBackfaces: boolean,
 ): void {
   const previousRight: Vec3 = [0, 0, 0];
   const tangent: Vec3 = [0, 0, 0];
@@ -1422,7 +1420,7 @@ function applyQuadStripPositionQuads(
       tangent,
       pointerForward,
       pointerUp,
-      solid === 0 || !hasBackfaces,
+      solid === 0 || options.geometryParams?.backIsInvisible === true,
       right,
       normal,
       true,

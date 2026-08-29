@@ -17,6 +17,7 @@ export interface BrushGeometryParams {
   tileRate?: number;
   textureAtlasV?: number;
   renderBackfaces?: boolean;
+  backIsInvisible?: boolean;
   backfaceHueShift?: number;
   tubeStoreRadiusInTexcoord0Z?: boolean;
   tubeCapAspect?: number;
