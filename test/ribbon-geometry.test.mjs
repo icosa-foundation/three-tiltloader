@@ -3,8 +3,10 @@ import test from 'node:test';
 import {
 	generateBrushGeometry,
 	getGeneratedIndexCount,
-	getGeneratedVertexCount
+	getGeneratedVertexCount,
+	resolveBrushGeometryOptions
 } from '../src/brush-geometry.ts';
+import { getOpenBrushGeometryDefaults } from '../src/brush-defaults.ts';
 
 function assertClose( actual, expected, tolerance = 1e-6 ) {
 
@@ -17,7 +19,7 @@ function createStroke() {
 
 	return {
 		guid: 'ribbon-fixture',
-		brushGuid: '2241cd32-8ba2-48a5-9ee7-2caef7e9ed62',
+		brushGuid: '00000000-0000-0000-0000-000000000000',
 		brushSize: 0.2,
 		brushScale: 1,
 		color: [ 1, 1, 1, 1 ],
@@ -111,6 +113,45 @@ test( 'turns each single-sided quad toward the pointer', () => {
 	const firstFacing = geometry.normals[ 2 ];
 	const finalFacing = geometry.normals[ geometry.normals.length - 1 ];
 	assert.ok( firstFacing * finalFacing < -0.9 );
+
+} );
+
+test( 'applies brush GUID defaults before per-call overrides', () => {
+
+	const singleSidedGuid = 'f0a2298a-be80-432c-9fee-a86dcc06f4f9';
+	const defaults = getOpenBrushGeometryDefaults( singleSidedGuid.toUpperCase() );
+	assert.equal( defaults.generatorClass, 'QuadStripBrushStretchUV' );
+	assert.equal( defaults.geometryParams.backIsInvisible, true );
+
+	const resolved = resolveBrushGeometryOptions( singleSidedGuid, {
+		geometryParams: {
+			backIsInvisible: false,
+			tileRate: 2
+		}
+	} );
+	assert.equal( resolved.generatorClass, 'QuadStripBrushStretchUV' );
+	assert.equal( resolved.geometryParams.backIsInvisible, false );
+	assert.equal( resolved.geometryParams.textureAtlasV, 1 );
+	assert.equal( resolved.geometryParams.tileRate, 2 );
+
+	const stroke = createStroke();
+	stroke.brushGuid = singleSidedGuid;
+	stroke.controlPoints[ 1 ].position = [ 0, 1, 0 ];
+	stroke.controlPoints.push( {
+		position: [ 0, 2, 0 ],
+		orientation: [ 0, 1, 0, 0 ],
+		pressure: 1,
+		timestampMs: 32
+	} );
+	const defaulted = generateBrushGeometry( stroke, 'ribbon' );
+	const explicit = generateBrushGeometry( stroke, 'ribbon', {
+		generatorClass: 'QuadStripBrushStretchUV',
+		geometryParams: { backIsInvisible: true }
+	} );
+	assert.deepEqual(
+		Array.from( defaulted.normals ),
+		Array.from( explicit.normals )
+	);
 
 } );
 

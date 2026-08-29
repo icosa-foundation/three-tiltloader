@@ -1,6 +1,7 @@
 import { readFile, readdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
+import { getOpenBrushGeometryDefaults } from '../src/brush-defaults.ts';
 import { generateBrushGeometry } from '../src/brush-geometry.ts';
 
 const DEFAULT_TOLERANCE = 1e-5;
@@ -19,7 +20,7 @@ function usage() {
 		'Compare three-tiltloader geometry with Open Brush live-mesh fixtures.',
 		'',
 		'Usage:',
-		'  npm run compare:open-brush-fixtures -- --fixtures <directory> --brush-assets <file> [options]',
+		'  npm run compare:open-brush-fixtures -- --fixtures <directory> [options]',
 		'',
 		'Options:',
 		'  --tolerance <number>  Maximum absolute float error (default: 1e-5)',
@@ -36,7 +37,6 @@ function usage() {
 function parseArguments( argv ) {
 	const options = {
 		fixtures: undefined,
-		brushAssets: undefined,
 		tolerance: DEFAULT_TOLERANCE,
 		unitScale: DEFAULT_UNIT_SCALE,
 		handedness: 'unity-to-three',
@@ -59,9 +59,6 @@ function parseArguments( argv ) {
 			case '--fixtures':
 				options.fixtures = value;
 				break;
-			case '--brush-assets':
-				options.brushAssets = value;
-				break;
 			case '--tolerance':
 				options.tolerance = Number( value );
 				break;
@@ -83,7 +80,6 @@ function parseArguments( argv ) {
 	}
 	if ( options.help ) return options;
 	if ( ! options.fixtures ) throw new Error( '--fixtures is required.' );
-	if ( ! options.brushAssets ) throw new Error( '--brush-assets is required.' );
 	if ( ! Number.isFinite( options.tolerance ) || options.tolerance < 0 ) {
 		throw new Error( '--tolerance must be a finite non-negative number.' );
 	}
@@ -100,34 +96,22 @@ function parseArguments( argv ) {
 }
 
 function resolveGeometryFamily( record ) {
-	if ( record.generatorClass === 'SquareBrush' ) return 'tube';
-	if ( record.generatorClass === 'Square3DPrintBrush' ) return 'print3d';
-	if ( record.generatorClass === 'ConcaveHullBrush' ) return 'concave-hull';
-	switch ( record.generatorFamily ) {
+	switch ( record.family ) {
 		case 'ribbon':
 		case 'tube':
 		case 'particle':
 		case 'thick-strip':
 		case 'hull':
+		case 'concave-hull':
 		case 'print3d':
-			return record.generatorFamily;
+			return record.family;
 		default:
 			return undefined;
 	}
 }
 
-function createGeometryOptions( record ) {
-	const geometry = record.geometry ?? {};
-	const {
-		pressureSizeRange,
-		pressureOpacityRange,
-		...geometryParams
-	} = geometry;
+function createGeometryOptions() {
 	return {
-		pressureSizeRange,
-		pressureOpacityRange,
-		geometryParams,
-		generatorClass: record.generatorClass,
 		// UiScreenshotter records a finalized stroke before copying its live mesh.
 		finalized: true,
 		// The fixture does not currently expose keeper/trailing-point state.
@@ -737,7 +721,7 @@ function compareStroke(
 	const geometry = generateBrushGeometry(
 		stroke,
 		family,
-		createGeometryOptions( record )
+		createGeometryOptions()
 	);
 	const actual = actualChannels( geometry );
 	const expected = normalizeReferenceMesh(
@@ -813,11 +797,6 @@ async function loadJson( file ) {
 }
 
 async function compareFixtures( options ) {
-	const brushAssetDocument = await loadJson( options.brushAssets );
-	const brushAssets = brushAssetDocument.brushes;
-	if ( ! brushAssets || typeof brushAssets !== 'object' ) {
-		throw new Error( 'Brush assets file must contain a "brushes" object.' );
-	}
 	const fixtureFiles = ( await readdir( options.fixtures, { withFileTypes: true } ) )
 		.filter( ( entry ) => entry.isFile() && entry.name.endsWith( '.mesh.json' ) )
 		.map( ( entry ) => entry.name )
@@ -839,14 +818,14 @@ async function compareFixtures( options ) {
 			} );
 			continue;
 		}
-		const record = brushAssets[ fixture.brushGuid.toLowerCase() ];
+		const record = getOpenBrushGeometryDefaults( fixture.brushGuid );
 		if ( ! record ) {
 			brushes.push( {
 				file,
 				brushGuid: fixture.brushGuid,
 				durableName: fixture.durableName,
 				status: 'configuration-error',
-				error: 'Brush GUID is absent from the supplied brush assets.'
+				error: 'Brush GUID is absent from three-tiltloader defaults.'
 			} );
 			continue;
 		}
