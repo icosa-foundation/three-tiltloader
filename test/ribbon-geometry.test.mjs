@@ -1305,6 +1305,42 @@ test( 'preserves Genius particle distance phase after preview knots decay', () =
 
 } );
 
+test( 'matches Genius particle keeper timing and vertex layout', () => {
+
+	const stroke = createStroke();
+	stroke.seed = 0;
+	stroke.brushSize = 0.1;
+	stroke.controlPoints = [ 0, 0.00001, 0.02, 0.04, 0.06 ].map(
+		( x, index ) => ( {
+			position: [ x, 0, 0 ],
+			orientation: [ 0, 0, 0, 1 ],
+			pressure: 1,
+			timestampMs: index * 16
+		} )
+	);
+	const geometry = generateBrushGeometry( stroke, 'particle', {
+		generatorClass: 'GeniusParticlesBrush',
+		pressureSizeRange: [ 1, 1 ],
+		geometryParams: {
+			particleRate: 0.35,
+			particleRandomizeAlpha: true,
+			particleSizeVariance: 0,
+			particleSpeed: 0,
+			particleInitialRotationRange: 360,
+			brushSizeRange: [ 0.1, 0.1 ]
+		},
+		finalized: true
+	} );
+
+	assert.equal( geometry.uv1Size, 3 );
+	assert.equal( geometry.uv1.length, getGeneratedVertexCount( geometry ) * 3 );
+	assert.deepEqual( Array.from( geometry.indices.slice( 0, 6 ) ), [ 0, 3, 1, 0, 2, 3 ] );
+	assertClose( geometry.colors[ 3 ], 177 / 255 );
+	assertClose( geometry.colors[ 4 * 4 * 4 + 3 ], 116 / 255 );
+	assertClose( geometry.packedUvs[ 2 ], 2.9598518829000606 );
+
+} );
+
 test( 'keeps a Genius particle on the live pointer until finalization', () => {
 
 	const stroke = createStroke();
