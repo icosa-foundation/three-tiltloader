@@ -15,6 +15,9 @@ import {
 } from 'three';
 import * as fflate from 'three/examples/jsm/libs/fflate.module.js';
 import { TiltShaderLoader } from 'three-icosa';
+import { generateBrushGeometry as generateStrokeGeometry } from './brush-geometry.ts';
+import { getOpenBrushGeometryDefaults as getBrushDefaults } from './brush-defaults.js';
+import { readTiltStrokeData } from './tilt-strokes.js';
 
 export { createBufferGeometry } from './geometry-api.mjs';
 export {
@@ -26,6 +29,7 @@ export {
 	resolveBrushGeometryOptions
 } from './brush-geometry.ts';
 export { getOpenBrushGeometryDefaults } from './brush-defaults.js';
+export { readTiltStrokeData } from './tilt-strokes.js';
 
 export class TiltLoader extends Loader {
 	constructor(manager) {
@@ -89,86 +93,25 @@ export class TiltLoader extends Loader {
 		window.open( URL.createObjectURL( blob ) );
 		*/
 
-		const data = new DataView( zip[ 'data.sketch' ].buffer );
+		const strokes = readTiltStrokeData( zip[ 'data.sketch' ], metadata.BrushIndex );
+		const brushes = new Map();
+		for ( const stroke of strokes ) {
 
-		const num_strokes = data.getInt32( 16, true );
-
-		const brushes = {};
-
-		let offset = 20;
-
-		for ( let i = 0; i < num_strokes; i ++ ) {
-
-			const brush_index = data.getInt32( offset, true );
-
-			const brush_color = [
-				data.getFloat32( offset + 4, true ),
-				data.getFloat32( offset + 8, true ),
-				data.getFloat32( offset + 12, true ),
-				data.getFloat32( offset + 16, true )
-			];
-			const brush_size = data.getFloat32( offset + 20, true );
-			const stroke_mask = data.getUint32( offset + 24, true );
-			const controlpoint_mask = data.getUint32( offset + 28, true );
-
-			let offset_stroke_mask = 0;
-			let offset_controlpoint_mask = 0;
-
-			for ( let j = 0; j < 4; j ++ ) {
-
-				// TOFIX: I don't understand these masks yet
-
-				const byte = 1 << j;
-				if ( ( stroke_mask & byte ) > 0 ) offset_stroke_mask += 4;
-				if ( ( controlpoint_mask & byte ) > 0 ) offset_controlpoint_mask += 4;
-
-			}
-
-			// console.log( { brush_index, brush_color, brush_size, stroke_mask, controlpoint_mask } );
-			// console.log( offset_stroke_mask, offset_controlpoint_mask );
-
-			offset = offset + 28 + offset_stroke_mask + 4; // TOFIX: This is wrong
-
-			const num_control_points = data.getInt32( offset, true );
-
-			// console.log( { num_control_points } );
-
-			const positions = new Float32Array( num_control_points * 3 );
-			const quaternions = new Float32Array( num_control_points * 4 );
-
-			offset = offset + 4;
-
-			for ( let j = 0, k = 0; j < positions.length; j += 3, k += 4 ) {
-
-				positions[ j + 0 ] = data.getFloat32( offset + 0, true );
-				positions[ j + 1 ] = data.getFloat32( offset + 4, true );
-				positions[ j + 2 ] = data.getFloat32( offset + 8, true );
-
-				quaternions[ k + 0 ] = data.getFloat32( offset + 12, true );
-				quaternions[ k + 1 ] = data.getFloat32( offset + 16, true );
-				quaternions[ k + 2 ] = data.getFloat32( offset + 20, true );
-				quaternions[ k + 3 ] = data.getFloat32( offset + 24, true );
-
-				offset = offset + 28 + offset_controlpoint_mask; // TOFIX: This is wrong
-
-			}
-
-			if ( brush_index in brushes === false ) {
-
-				brushes[ brush_index ] = [];
-
-			}
-
-			brushes[ brush_index ].push( [ positions, quaternions, brush_size, brush_color ] );
+			const rendererStroke = toRendererStroke( stroke );
+			const brushStrokes = brushes.get( rendererStroke.brushGuid ) ?? [];
+			brushStrokes.push( rendererStroke );
+			brushes.set( rendererStroke.brushGuid, brushStrokes );
 
 		}
 
 		const clock = new Clock();
 
-		for ( const brush_index in brushes ) {
+		for ( const [ brushGuid, brushStrokes ] of brushes ) {
 
-			const geometry = new StrokeGeometry( brushes[ brush_index ] );
-			const materialName = this.tiltShaderLoader.lookupMaterialName(metadata.BrushIndex[ brush_index ]);
+			const family = getBrushDefaults( brushGuid )?.family ?? 'unsupported';
+			const geometry = new GeneratedStrokeGeometry( brushStrokes, family );
+			if ( geometry.getAttribute( 'position' ).count === 0 ) continue;
+			const materialName = this.tiltShaderLoader.lookupMaterialName( brushGuid );
 
 			const material = await this.tiltShaderLoader.loadAsync(materialName);
 			const mesh = new Mesh( geometry, material );
@@ -204,6 +147,130 @@ export class TiltLoader extends Loader {
 
 		this.tiltShaderLoader.setPath(path);
 	}
+
+}
+
+function toRendererStroke( stroke ) {
+
+	// Serialized Open Brush coordinates use ten units per meter. Reflect Z and
+	// the quaternion's X/Y components when converting Unity space to Three.js.
+	return {
+		...stroke,
+		brushSize: stroke.brushSize * 0.1,
+		controlPoints: stroke.controlPoints.map( ( point ) => ( {
+			...point,
+			position: [
+				point.position[ 0 ] * 0.1,
+				point.position[ 1 ] * 0.1,
+				- point.position[ 2 ] * 0.1
+			],
+			orientation: [
+				- point.orientation[ 0 ],
+				- point.orientation[ 1 ],
+				point.orientation[ 2 ],
+				point.orientation[ 3 ]
+			]
+		} ) )
+	};
+
+}
+
+class GeneratedStrokeGeometry extends BufferGeometry {
+
+	constructor( strokes, family ) {
+
+		super();
+		const positions = [];
+		const normals = [];
+		const tangents = [];
+		const colors = [];
+		const uv0 = [];
+		const uv1 = [];
+		const indices = [];
+		let uv0Size = 0;
+		let uv1Size = 0;
+		let vertexOffset = 0;
+
+		for ( const stroke of strokes ) {
+
+			const generated = generateStrokeGeometry( stroke, family, {
+				finalized: true,
+				lastControlPointIsKeeper: true
+			} );
+			const vertexCount = generated.positions.length / 3;
+			if ( vertexCount === 0 ) continue;
+			appendValues( positions, generated.positions );
+			appendValues( normals, generated.normals );
+			appendValues( tangents, generated.tangents );
+			appendValues( colors, generated.colors );
+
+			const generatedUv0 = generated.packedUvs ?? generated.uvs;
+			if ( uv0Size === 0 ) uv0Size = generated.uv0Size;
+			if ( generated.uv0Size !== uv0Size ) {
+
+				throw new Error( `Inconsistent UV0 layouts in brush ${stroke.brushGuid}.` );
+
+			}
+			appendValues( uv0, generatedUv0 );
+
+			if ( generated.uv1 !== undefined ) {
+
+				if ( uv1Size === 0 ) uv1Size = generated.uv1Size;
+				if ( generated.uv1Size !== uv1Size ) {
+
+					throw new Error( `Inconsistent UV1 layouts in brush ${stroke.brushGuid}.` );
+
+				}
+				appendValues( uv1, generated.uv1 );
+
+			} else if ( uv1Size !== 0 ) {
+
+				for ( let value = 0; value < vertexCount * uv1Size; value ++ ) uv1.push( 0 );
+
+			}
+
+			for ( const index of generated.indices ) indices.push( index + vertexOffset );
+			vertexOffset += vertexCount;
+
+		}
+
+		const position = new BufferAttribute( new Float32Array( positions ), 3 );
+		const normal = new BufferAttribute( new Float32Array( normals ), 3 );
+		const tangent = new BufferAttribute( new Float32Array( tangents ), 4 );
+		const color = new BufferAttribute( new Float32Array( colors ), 4 );
+		this.setAttribute( 'position', position );
+		this.setAttribute( 'normal', normal );
+		this.setAttribute( 'tangent', tangent );
+		this.setAttribute( 'color', color );
+		this.setAttribute( 'a_position', position );
+		this.setAttribute( 'a_normal', normal );
+		this.setAttribute( 'a_tangent', tangent );
+		this.setAttribute( 'a_color', color );
+		if ( uv0Size > 0 ) {
+
+			const uv = new BufferAttribute( new Float32Array( uv0 ), uv0Size );
+			this.setAttribute( 'uv', uv );
+			this.setAttribute( 'a_texcoord0', uv );
+
+		}
+		if ( uv1Size > 0 ) {
+
+			const secondaryUv = new BufferAttribute( new Float32Array( uv1 ), uv1Size );
+			this.setAttribute( 'uv1', secondaryUv );
+			this.setAttribute( 'a_texcoord1', secondaryUv );
+
+		}
+		this.setIndex( new BufferAttribute( new Uint32Array( indices ), 1 ) );
+		this.computeBoundingBox();
+		this.computeBoundingSphere();
+
+	}
+
+}
+
+function appendValues( target, source ) {
+
+	for ( const value of source ) target.push( value );
 
 }
 

@@ -48,6 +48,11 @@ export type {
 
 export type { StrokeData } from './stroke-types.js';
 
+export function readTiltStrokeData(
+    bytes: Uint8Array,
+    brushGuids: readonly string[],
+): import('./stroke-types.js').StrokeData[];
+
 export class TiltLoader extends Loader {
     constructor(manager?: LoadingManager);
 
