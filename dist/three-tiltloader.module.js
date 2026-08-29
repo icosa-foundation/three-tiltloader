@@ -229,7 +229,7 @@ function $6fafcf15f6b61d60$var$generateRibbonGeometry(stroke, family, options, o
     const tileRate = $6fafcf15f6b61d60$var$normalizeTileRate(options.geometryParams?.tileRate);
     const usesDistanceUvs = options.generatorClass === "QuadStripBrushDistanceUV" || options.geometryParams?.ribbonUvStyle === "distance";
     const atlasRows = $6fafcf15f6b61d60$var$normalizeAtlasRows(options.geometryParams?.textureAtlasV);
-    let sectionRandom = $6fafcf15f6b61d60$var$statelessRandom01(stroke.seed, 0);
+    let sectionRandom = $6fafcf15f6b61d60$var$statelessRandom01(stroke.seed, usesFlatGeometrySmoothing ? -1 : 0);
     let atlasRow = usesDistanceUvs ? Math.floor(sectionRandom * 3331) % atlasRows : Math.floor(sectionRandom * atlasRows);
     let v0 = atlasRow / atlasRows;
     let v1 = (atlasRow + 1) / atlasRows;
@@ -294,6 +294,9 @@ function $6fafcf15f6b61d60$var$generateRibbonGeometry(stroke, family, options, o
     ];
     let previousFlatSize = 0;
     const flatHalfRights = usesFlatGeometrySmoothing ? new Float32Array(pointCount * 3) : undefined;
+    let flatOpenBrushVertexCount = 0;
+    let flatPreviousHasGeometry = false;
+    let flatDistanceU = sectionRandom;
     for(let index = 0; index < renderPointCount; index += 1){
         if (usesFlatGeometrySmoothing && ribbonBreakBefore[index] === 2) continue;
         const point = stroke.controlPoints[index];
@@ -306,11 +309,31 @@ function $6fafcf15f6b61d60$var$generateRibbonGeometry(stroke, family, options, o
             previousPoint.position[1] * 0.3 + point.position[1] * 0.4 + nextPoint.position[1] * 0.3,
             previousPoint.position[2] * 0.3 + point.position[2] * 0.4 + nextPoint.position[2] * 0.3
         ] : point.position;
-        if (ribbonBreakBefore[index] === 1) {
+        if (ribbonBreakBefore[index] === 1 && !usesFlatGeometrySmoothing) {
             sectionRandom = $6fafcf15f6b61d60$var$statelessRandom01(stroke.seed, index);
             atlasRow = usesDistanceUvs ? Math.floor(sectionRandom * 3331) % atlasRows : Math.floor(sectionRandom * atlasRows);
             v0 = atlasRow / atlasRows;
             v1 = (atlasRow + 1) / atlasRows;
+        }
+        if (usesFlatGeometrySmoothing && index > 0 && ribbonBreakBefore[index] === 0 && !flatPreviousHasGeometry) {
+            // GeometryBrush seeds each FlatGeometry UV section from the index just
+            // before the first solid's Open Brush vertex range. Shared continuation
+            // edges add two vertices per side; a fresh double-sided solid adds four.
+            sectionRandom = $6fafcf15f6b61d60$var$statelessRandom01(stroke.seed, flatOpenBrushVertexCount === 0 || usesDistanceUvs ? flatOpenBrushVertexCount - 1 : flatOpenBrushVertexCount);
+            atlasRow = usesDistanceUvs ? Math.floor(sectionRandom * 3331) % atlasRows : Math.floor(sectionRandom * atlasRows);
+            v0 = atlasRow / atlasRows;
+            v1 = (atlasRow + 1) / atlasRows;
+            flatDistanceU = sectionRandom;
+            const sectionStartVertex = previousPointIndex * 2;
+            const sectionStartU = usesDistanceUvs ? sectionRandom : 0;
+            $6fafcf15f6b61d60$var$writeUv(uvs, sectionStartVertex, [
+                sectionStartU,
+                v1
+            ]);
+            $6fafcf15f6b61d60$var$writeUv(uvs, sectionStartVertex + 1, [
+                sectionStartU,
+                v0
+            ]);
         }
         let size = localBrushSize * $6fafcf15f6b61d60$var$getPressureSizeMultiplier(ribbonSmoothedPressures[index], pressureSizeMin);
         if (usesFlatGeometrySmoothing) {
@@ -387,15 +410,33 @@ function $6fafcf15f6b61d60$var$generateRibbonGeometry(stroke, family, options, o
         // stretch ribbons normalize accumulated physical length across the stroke.
         const runningLength = ribbonRunningLengths[index];
         const sectionLength = ribbonSectionLengths[index];
-        const u = usesDistanceUvs ? sectionRandom + runningLength / Math.max(localBrushSize, $6fafcf15f6b61d60$var$EPSILON) * tileRate : sectionLength > $6fafcf15f6b61d60$var$EPSILON ? runningLength / sectionLength : 0;
-        $6fafcf15f6b61d60$var$writeUv(uvs, leftVertex, [
-            u,
-            v0
-        ]);
-        $6fafcf15f6b61d60$var$writeUv(uvs, rightVertex, [
-            u,
-            v1
-        ]);
+        let u = usesDistanceUvs ? sectionRandom + runningLength / Math.max(localBrushSize, $6fafcf15f6b61d60$var$EPSILON) * tileRate : sectionLength > $6fafcf15f6b61d60$var$EPSILON ? runningLength / sectionLength : 0;
+        if (usesFlatGeometrySmoothing && usesDistanceUvs && index > 0 && ribbonBreakBefore[index] === 0) {
+            flatDistanceU += tileRate * $6fafcf15f6b61d60$var$distanceBetweenControlPoints(previousPoint, point) / Math.max(size, $6fafcf15f6b61d60$var$EPSILON);
+            u = flatDistanceU;
+        }
+        if (usesFlatGeometrySmoothing) {
+            // Reflection reverses FlatGeometry's semantic left/right ownership.
+            // Preserve Open Brush's BR/BL UV order while keeping the spatial vertex
+            // order used by the generated Three mesh.
+            $6fafcf15f6b61d60$var$writeUv(uvs, leftVertex, [
+                u,
+                v1
+            ]);
+            $6fafcf15f6b61d60$var$writeUv(uvs, rightVertex, [
+                u,
+                v0
+            ]);
+        } else {
+            $6fafcf15f6b61d60$var$writeUv(uvs, leftVertex, [
+                u,
+                v0
+            ]);
+            $6fafcf15f6b61d60$var$writeUv(uvs, rightVertex, [
+                u,
+                v1
+            ]);
+        }
         if (hasVectorOffset) {
             const leftOffset = leftVertex * 3;
             const rightOffset = rightVertex * 3;
@@ -425,10 +466,13 @@ function $6fafcf15f6b61d60$var$generateRibbonGeometry(stroke, family, options, o
                 flatHalfRights[offset + 1] = 0;
                 flatHalfRights[offset + 2] = 0;
             }
+            flatPreviousHasGeometry = false;
+        } else if (usesFlatGeometrySmoothing && index > 0) {
+            flatOpenBrushVertexCount += flatPreviousHasGeometry ? hasBackfaces ? 4 : 2 : hasBackfaces ? 8 : 4;
+            flatPreviousHasGeometry = true;
         }
     }
     if (flatHalfRights) {
-        for(let vertex = 0; vertex < frontVertexCount; vertex += 1)uvs[vertex * 2 + 1] = 1 - uvs[vertex * 2 + 1];
         if (options.geometryParams?.m11Compatibility !== true) $6fafcf15f6b61d60$var$smoothFlatGeometryEdges(stroke, positions, flatHalfRights, ribbonBreakBefore, ribbonSmoothedPressures, out.ribbonPreviousRetained, out.ribbonNextRetained, localBrushSize, pressureSizeMin, bounds, renderPointCount);
         $6fafcf15f6b61d60$var$updateFlatGeometryTangents(positions, normals, tangents, uvs, ribbonBreakBefore, renderPointCount);
     }
