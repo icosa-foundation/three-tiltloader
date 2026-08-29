@@ -4,7 +4,7 @@ import type {
   BrushPressureOpacityRange,
   BrushPressureSizeRange,
 } from "./brush-types.js";
-import type { Quat, Rgba, StrokeData, Vec3 } from "./stroke-types.js";
+import type { ControlPoint, Quat, Rgba, StrokeData, Vec3 } from "./stroke-types.js";
 
 export interface BrushGeometryBounds {
   min: Vec3;
@@ -70,6 +70,7 @@ export interface BrushGeometryArrays {
   tubeRingUs: Float32Array;
   tubeOpacities: Float32Array;
   tubeSmoothedPressures: Float32Array;
+  tubeRetainedControlPoints: ControlPoint[];
   ribbonBreakBefore: Uint8Array;
   ribbonRunningLengths: Float32Array;
   ribbonSectionLengths: Float32Array;
@@ -109,6 +110,7 @@ export function createBrushGeometryArrays(): BrushGeometryArrays {
     tubeRingUs: new Float32Array(INITIAL_VERTEX_CAPACITY),
     tubeOpacities: new Float32Array(INITIAL_VERTEX_CAPACITY),
     tubeSmoothedPressures: new Float32Array(INITIAL_VERTEX_CAPACITY),
+    tubeRetainedControlPoints: [],
     ribbonBreakBefore: new Uint8Array(INITIAL_VERTEX_CAPACITY),
     ribbonRunningLengths: new Float32Array(INITIAL_VERTEX_CAPACITY),
     ribbonSectionLengths: new Float32Array(INITIAL_VERTEX_CAPACITY),
@@ -323,8 +325,15 @@ function generateRibbonGeometry(
   if (options.generatorClass === "QuadStripUnitizedUVBrush") {
     return generateUnitizedRibbonGeometry(stroke, family, options, out);
   }
+  const usesQuadStripTriangleSoup =
+    options.generatorClass === "QuadStripBrushDistanceUV" ||
+    options.generatorClass === "QuadStripBrushStretchUV";
   const pointCount = stroke.controlPoints.length;
-  prepareRibbonSections(stroke, out);
+  if (usesQuadStripTriangleSoup) {
+    prepareQuadStripSections(stroke, out);
+  } else {
+    prepareRibbonSections(stroke, out);
+  }
   const renderPointCount = resolveRibbonRenderPointCount(
     pointCount,
     options,
@@ -335,13 +344,11 @@ function generateRibbonGeometry(
   const connectedSegmentCount = countConnectedRibbonSegments(
     out.ribbonBreakBefore,
     renderPointCount,
+    usesQuadStripTriangleSoup,
   );
   prepareRibbonSmoothedPressures(stroke, options, out);
   const frontIndexCount = connectedSegmentCount * 6;
   const hasBackfaces = options.geometryParams?.renderBackfaces === true;
-  const usesQuadStripTriangleSoup =
-    options.generatorClass === "QuadStripBrushDistanceUV" ||
-    options.generatorClass === "QuadStripBrushStretchUV";
   const sourceVertexCount = frontVertexCount * (hasBackfaces ? 2 : 1);
   const vertexCount = usesQuadStripTriangleSoup
     ? frontIndexCount * (hasBackfaces ? 2 : 1)
@@ -649,16 +656,9 @@ function generateRibbonGeometry(
       hasBackfaces,
       options.generatorClass,
       tileRate,
+      atlasRows,
+      stroke.seed,
     );
-    if (options.generatorClass === "QuadStripBrushDistanceUV") {
-      applyQuadStripDistanceOpacityFade(
-        out,
-        ribbonBreakBefore,
-        renderPointCount,
-        frontIndexCount / 6,
-        hasBackfaces,
-      );
-    }
   }
 
   const finalizedCounts = usesQuadStripTriangleSoup
@@ -671,10 +671,228 @@ function generateRibbonGeometry(
         options,
       )
     : undefined;
+  let finalVertexCount = finalizedCounts?.vertexCount ?? vertexCount;
+  let finalIndexCount = finalizedCounts?.indexCount ?? indexCount;
+  if (
+    usesQuadStripTriangleSoup &&
+    options.finalized === true &&
+    !hasBackfaces &&
+    finalVertexCount > 0
+  ) {
+    const weldedCounts = weldSingleSidedQuadStrip(
+      out,
+      ribbonBreakBefore,
+      renderPointCount,
+      finalVertexCount / 6,
+    );
+    finalVertexCount = weldedCounts.vertexCount;
+    finalIndexCount = weldedCounts.indexCount;
+  }
+  if (usesQuadStripTriangleSoup && hasBackfaces && finalVertexCount > 0) {
+    interleaveQuadStripBackfaces(out, finalVertexCount / 12);
+  }
   out.family = family;
-  out.vertexCount = finalizedCounts?.vertexCount ?? vertexCount;
-  out.indexCount = finalizedCounts?.indexCount ?? indexCount;
+  out.vertexCount = finalVertexCount;
+  out.indexCount = finalIndexCount;
   return reallocated;
+}
+
+/** Port of QuadStripBrush.WeldSingleSidedQuadStrip in canonical Three winding. */
+function weldSingleSidedQuadStrip(
+  out: BrushGeometryArrays,
+  breakBefore: Uint8Array,
+  pointCount: number,
+  solidCount: number,
+): { vertexCount: number; indexCount: number } {
+  weldSingleSidedQuadStripAttribute(
+    out.positions,
+    3,
+    out.uv1s,
+    breakBefore,
+    pointCount,
+    solidCount,
+  );
+  weldSingleSidedQuadStripAttribute(
+    out.normals,
+    3,
+    out.uv1s,
+    breakBefore,
+    pointCount,
+    solidCount,
+  );
+  weldSingleSidedQuadStripAttribute(
+    out.tangents,
+    4,
+    out.uv1s,
+    breakBefore,
+    pointCount,
+    solidCount,
+  );
+  weldSingleSidedQuadStripAttribute(
+    out.colors,
+    4,
+    out.uv1s,
+    breakBefore,
+    pointCount,
+    solidCount,
+  );
+  weldSingleSidedQuadStripAttribute(
+    out.uvs,
+    2,
+    out.uv1s,
+    breakBefore,
+    pointCount,
+    solidCount,
+  );
+  if (out.uv1Size === 3) {
+    weldSingleSidedQuadStripAttribute(
+      out.vectorUvs,
+      3,
+      out.uv1s,
+      breakBefore,
+      pointCount,
+      solidCount,
+    );
+  }
+
+  let solid = 0;
+  let vertexWrite = 0;
+  let indexWrite = 0;
+  let startsStrip = true;
+  for (let segment = 0; segment < pointCount - 1 && solid < solidCount; segment += 1) {
+    const sectionState = breakBefore[segment + 1];
+    if (sectionState === 2) {
+      continue;
+    }
+    startsStrip = startsStrip || sectionState === 1;
+    if (startsStrip) {
+      out.indices[indexWrite] = vertexWrite;
+      out.indices[indexWrite + 1] = vertexWrite + 3;
+      out.indices[indexWrite + 2] = vertexWrite + 1;
+      out.indices[indexWrite + 3] = vertexWrite;
+      out.indices[indexWrite + 4] = vertexWrite + 2;
+      out.indices[indexWrite + 5] = vertexWrite + 3;
+      vertexWrite += 4;
+      startsStrip = false;
+    } else {
+      const backRight = vertexWrite - 2;
+      const backLeft = vertexWrite - 1;
+      const frontRight = vertexWrite;
+      const frontLeft = vertexWrite + 1;
+      out.indices[indexWrite] = backRight;
+      out.indices[indexWrite + 1] = frontLeft;
+      out.indices[indexWrite + 2] = backLeft;
+      out.indices[indexWrite + 3] = backRight;
+      out.indices[indexWrite + 4] = frontRight;
+      out.indices[indexWrite + 5] = frontLeft;
+      vertexWrite += 2;
+    }
+    indexWrite += 6;
+    solid += 1;
+  }
+  return { vertexCount: vertexWrite, indexCount: indexWrite };
+}
+
+function weldSingleSidedQuadStripAttribute(
+  target: Float32Array,
+  itemSize: number,
+  scratch: Float32Array,
+  breakBefore: Uint8Array,
+  pointCount: number,
+  solidCount: number,
+): void {
+  scratch.set(target.subarray(0, solidCount * 6 * itemSize), 0);
+  let solid = 0;
+  let vertexWrite = 0;
+  let startsStrip = true;
+  for (let segment = 0; segment < pointCount - 1 && solid < solidCount; segment += 1) {
+    const sectionState = breakBefore[segment + 1];
+    if (sectionState === 2) {
+      continue;
+    }
+    startsStrip = startsStrip || sectionState === 1;
+    const sourceVertex = solid * 6;
+    if (startsStrip) {
+      copyAttributeItem(scratch, target, sourceVertex + 1, vertexWrite, itemSize);
+      copyAttributeItem(scratch, target, sourceVertex, vertexWrite + 1, itemSize);
+      copyAttributeItem(scratch, target, sourceVertex + 4, vertexWrite + 2, itemSize);
+      copyAttributeItem(scratch, target, sourceVertex + 2, vertexWrite + 3, itemSize);
+      vertexWrite += 4;
+      startsStrip = false;
+    } else {
+      copyAttributeItem(scratch, target, sourceVertex + 4, vertexWrite, itemSize);
+      copyAttributeItem(scratch, target, sourceVertex + 2, vertexWrite + 1, itemSize);
+      vertexWrite += 2;
+    }
+    solid += 1;
+  }
+}
+
+/** Matches Open Brush's per-solid front/back vertex ordering. */
+function interleaveQuadStripBackfaces(
+  out: BrushGeometryArrays,
+  solidCount: number,
+): void {
+  const frontVertexCount = solidCount * 6;
+  const totalVertexCount = frontVertexCount * 2;
+  interleaveVertexAttribute(out.positions, 3, solidCount, out.uv1s);
+  interleaveVertexAttribute(out.normals, 3, solidCount, out.uv1s);
+  interleaveVertexAttribute(out.tangents, 4, solidCount, out.uv1s);
+  interleaveVertexAttribute(out.colors, 4, solidCount, out.uv1s);
+  interleaveVertexAttribute(out.uvs, 2, solidCount, out.uv1s);
+  if (out.uv1Size === 3) {
+    interleaveVertexAttribute(out.vectorUvs, 3, solidCount, out.uv1s);
+  }
+  for (let index = 0; index < totalVertexCount; index += 1) {
+    out.indices[index] = index;
+  }
+}
+
+function interleaveVertexAttribute(
+  target: Float32Array,
+  itemSize: number,
+  solidCount: number,
+  scratch: Float32Array,
+): void {
+  const verticesPerSide = solidCount * 6;
+  const valueCount = verticesPerSide * 2 * itemSize;
+  scratch.set(target.subarray(0, valueCount), 0);
+  for (let solid = 0; solid < solidCount; solid += 1) {
+    const frontSource = solid * 6;
+    const backSource = verticesPerSide + frontSource;
+    const frontDestination = solid * 12;
+    const backDestination = frontDestination + 6;
+    for (let corner = 0; corner < 6; corner += 1) {
+      copyAttributeItem(
+        scratch,
+        target,
+        frontSource + corner,
+        frontDestination + corner,
+        itemSize,
+      );
+      copyAttributeItem(
+        scratch,
+        target,
+        backSource + corner,
+        backDestination + corner,
+        itemSize,
+      );
+    }
+  }
+}
+
+function copyAttributeItem(
+  source: Float32Array,
+  target: Float32Array,
+  sourceIndex: number,
+  targetIndex: number,
+  itemSize: number,
+): void {
+  const sourceOffset = sourceIndex * itemSize;
+  const targetOffset = targetIndex * itemSize;
+  for (let component = 0; component < itemSize; component += 1) {
+    target[targetOffset + component] = source[sourceOffset + component];
+  }
 }
 
 function finalizeQuadStripUsedGeometry(
@@ -757,7 +975,7 @@ function expandRibbonTriangleSoup(
   const backPattern = [0, 1, 2, 1, 3, 2] as const;
   let solid = 0;
   for (let segment = 0; segment < pointCount - 1; segment += 1) {
-    if (breakBefore[segment + 1] === 1) {
+    if (breakBefore[segment + 1] === 2) {
       continue;
     }
     const frontSource = sourceOffset + segment * 2;
@@ -835,17 +1053,17 @@ function applyQuadStripPositionQuads(
   let previousOpacity = 0;
   let lastSizeShrink = 0;
   let sectionSolidCount = 0;
+  let lastSpawnPointIndex = 0;
   let solid = 0;
   for (let pointIndex = 1; pointIndex < pointCount; pointIndex += 1) {
-    if (breakBefore[pointIndex] === 1) {
-      previousRight[0] = 0;
-      previousRight[1] = 0;
-      previousRight[2] = 0;
-      lastSizeShrink = 0;
-      sectionSolidCount = 0;
+    const sectionState = breakBefore[pointIndex];
+    if (sectionState === 2) {
       continue;
     }
-    const previousPoint = stroke.controlPoints[pointIndex - 1];
+    if (sectionState === 1) {
+      sectionSolidCount = 0;
+    }
+    const previousPoint = stroke.controlPoints[lastSpawnPointIndex];
     const point = stroke.controlPoints[pointIndex];
     tangent[0] = point.position[0] - previousPoint.position[0];
     tangent[1] = point.position[1] - previousPoint.position[1];
@@ -864,6 +1082,7 @@ function applyQuadStripPositionQuads(
       solid === 0,
       right,
       normal,
+      true,
     );
     const sourceSize =
       localBrushSize *
@@ -964,8 +1183,8 @@ function applyQuadStripPositionQuads(
       ) * descriptorOpacity;
     const trailingOpacity = solid === 0 ? opacity : previousOpacity;
     writeColor(out.colors, vertex, stroke.color, trailingOpacity);
-    writeColor(out.colors, vertex + 1, stroke.color, opacity);
-    writeColor(out.colors, vertex + 2, stroke.color, trailingOpacity);
+    writeColor(out.colors, vertex + 1, stroke.color, trailingOpacity);
+    writeColor(out.colors, vertex + 2, stroke.color, opacity);
     writeColor(out.colors, vertex + 3, stroke.color, trailingOpacity);
     writeColor(out.colors, vertex + 4, stroke.color, opacity);
     writeColor(out.colors, vertex + 5, stroke.color, opacity);
@@ -987,6 +1206,7 @@ function applyQuadStripPositionQuads(
     normalizeInPlace(previousRight);
     lastSizeShrink = sizeShrink;
     sectionSolidCount += 1;
+    lastSpawnPointIndex = pointIndex;
     solid += 1;
   }
 }
@@ -1008,26 +1228,26 @@ function writeQuadStripPositionQuad(
   writePositionComponents(
     target,
     vertex + 1,
-    center[0] + halfForward[0] - halfRight[0],
-    center[1] + halfForward[1] - halfRight[1],
-    center[2] + halfForward[2] - halfRight[2],
-  );
-  writePositionComponents(
-    target,
-    vertex + 2,
     center[0] - halfForward[0] + halfRight[0],
     center[1] - halfForward[1] + halfRight[1],
     center[2] - halfForward[2] + halfRight[2],
   );
-  copyPosition(target, vertex + 2, vertex + 3);
-  copyPosition(target, vertex + 1, vertex + 4);
   writePositionComponents(
     target,
-    vertex + 5,
+    vertex + 2,
+    center[0] + halfForward[0] - halfRight[0],
+    center[1] + halfForward[1] - halfRight[1],
+    center[2] + halfForward[2] - halfRight[2],
+  );
+  copyPosition(target, vertex + 1, vertex + 3);
+  writePositionComponents(
+    target,
+    vertex + 4,
     center[0] + halfForward[0] + halfRight[0],
     center[1] + halfForward[1] + halfRight[1],
     center[2] + halfForward[2] + halfRight[2],
   );
+  copyPosition(target, vertex + 2, vertex + 5);
 }
 
 function writePositionComponents(
@@ -1059,7 +1279,7 @@ function writeQuadStripVectorOffset(
   }
 }
 
-const QUAD_STRIP_CORNER_SIDES = [-1, -1, 1, 1, -1, 1] as const;
+const QUAD_STRIP_CORNER_SIDES = [-1, 1, -1, 1, 1, -1] as const;
 
 function applyQuadStripMidpointFusion(
   out: BrushGeometryArrays,
@@ -1069,13 +1289,40 @@ function applyQuadStripMidpointFusion(
   hasBackfaces: boolean,
   generatorClass: string | undefined,
   tileRate: number,
+  atlasRows: number,
+  seed: number,
 ): void {
+  // Open Brush mutates the newest three solids after every append. Preserve the
+  // unsmoothed front positions because starting a detached section restores the
+  // previous solid before touching up the end of the old section. uv1s is
+  // reusable geometry scratch for QuadStrip brushes and is overwritten later
+  // if backfaces need interleaving.
+  const rawPositions = out.uv1s;
+  rawPositions.set(out.positions.subarray(0, frontSolidCount * 18), 0);
   let solid = 0;
   let sectionStart = 0;
   for (let segment = 0; segment < pointCount - 1; segment += 1) {
-    if (breakBefore[segment + 1] === 1) {
-      sectionStart = solid;
+    const sectionState = breakBefore[segment + 1];
+    if (sectionState === 2) {
       continue;
+    }
+    if (sectionState === 1) {
+      if (generatorClass === "QuadStripBrushDistanceUV") {
+        // Open Brush finalizes the old section before AppendLeadingQuad restores
+        // and re-fuses its last solid. Its endpoint alpha therefore reflects the
+        // geometry immediately before the detached section begins.
+        applyQuadStripSectionOpacityFade(out, sectionStart, solid);
+      }
+      const previousSectionLength = solid - sectionStart;
+      if (solid > 0) {
+        restoreRawQuadStripSolidPositions(out.positions, rawPositions, solid - 1);
+        if (solid + 1 > 2 && previousSectionLength > 1) {
+          fuseQuadStripSolids(out, solid - 2, solid - 1);
+        } else if (previousSectionLength === 1) {
+          squashRawQuadStripSolid(out.positions, rawPositions, solid - 1);
+        }
+      }
+      sectionStart = solid;
     }
     const sectionLength = solid - sectionStart + 1;
     if (sectionLength === 2) {
@@ -1092,16 +1339,27 @@ function applyQuadStripMidpointFusion(
         solid + 1,
         out.ribbonSectionLengths[solid],
         tileRate,
+        atlasRows,
+        seed,
+        hasBackfaces,
       );
+      applyQuadStripSectionOpacityFade(out, sectionStart, solid + 1);
     }
     solid += 1;
   }
 
   if (generatorClass === "QuadStripBrushStretchUV") {
-    applyQuadStripStretchUvs(out, breakBefore, pointCount);
+    applyQuadStripStretchUvs(
+      out,
+      breakBefore,
+      pointCount,
+      atlasRows,
+      seed,
+      hasBackfaces,
+    );
   }
 
-  updateQuadStripTangents(out, frontSolidCount);
+  updateQuadStripTangents(out, breakBefore, pointCount, frontSolidCount);
 
   if (hasBackfaces) {
     const backVertexOffset = frontSolidCount * 6;
@@ -1151,22 +1409,75 @@ function applyQuadStripMidpointFusion(
   }
 }
 
+function restoreRawQuadStripSolidPositions(
+  positions: Float32Array,
+  rawPositions: Float32Array,
+  solid: number,
+): void {
+  const firstValue = solid * 18;
+  positions.set(rawPositions.subarray(firstValue, firstValue + 18), firstValue);
+}
+
+function squashRawQuadStripSolid(
+  positions: Float32Array,
+  rawPositions: Float32Array,
+  solid: number,
+): void {
+  const vertex = solid * 6;
+  const firstOffset = vertex * 3;
+  const oppositeOffset = (vertex + 4) * 3;
+  const centerX = (rawPositions[firstOffset] + rawPositions[oppositeOffset]) * 0.5;
+  const centerY =
+    (rawPositions[firstOffset + 1] + rawPositions[oppositeOffset + 1]) * 0.5;
+  const centerZ =
+    (rawPositions[firstOffset + 2] + rawPositions[oppositeOffset + 2]) * 0.5;
+  for (let corner = 0; corner < 6; corner += 1) {
+    writePositionComponents(
+      positions,
+      vertex + corner,
+      centerX,
+      centerY,
+      centerZ,
+    );
+  }
+}
+
 function applyQuadStripStretchUvs(
   out: BrushGeometryArrays,
   breakBefore: Uint8Array,
   pointCount: number,
+  atlasRows: number,
+  seed: number,
+  hasBackfaces: boolean,
 ): void {
   let sectionStart = 0;
   let solid = 0;
   for (let segment = 0; segment < pointCount - 1; segment += 1) {
-    if (breakBefore[segment + 1] === 1) {
-      applyQuadStripStretchUvSection(out, sectionStart, solid);
-      sectionStart = solid;
+    const sectionState = breakBefore[segment + 1];
+    if (sectionState === 2) {
       continue;
+    }
+    if (sectionState === 1) {
+      applyQuadStripStretchUvSection(
+        out,
+        sectionStart,
+        solid,
+        atlasRows,
+        seed,
+        hasBackfaces,
+      );
+      sectionStart = solid;
     }
     solid += 1;
   }
-  applyQuadStripStretchUvSection(out, sectionStart, solid);
+  applyQuadStripStretchUvSection(
+    out,
+    sectionStart,
+    solid,
+    atlasRows,
+    seed,
+    hasBackfaces,
+  );
 }
 
 function updateQuadStripDistanceUvsForAppend(
@@ -1175,23 +1486,40 @@ function updateQuadStripDistanceUvsForAppend(
   sectionEnd: number,
   pressuredSize: number,
   tileRate: number,
+  atlasRows: number,
+  seed: number,
+  hasBackfaces: boolean,
 ): void {
   const firstUpdatedSolid = Math.max(sectionStart, sectionEnd - 3);
   const size = Math.max(pressuredSize, EPSILON);
   for (let solid = firstUpdatedSolid; solid < sectionEnd; solid += 1) {
     const vertex = solid * 6;
-    const previousU =
-      solid === sectionStart
-        ? out.uvs[vertex * 2]
-        : out.uvs[((solid - 1) * 6 + 1) * 2];
+    let previousU: number;
+    let previousV0: number;
+    let previousV1: number;
+    if (solid === sectionStart) {
+      const stride = hasBackfaces ? 12 : 6;
+      const random = statelessRandom01(seed, sectionStart * stride);
+      const atlasRow = Math.floor(random * 3331) % atlasRows;
+      previousU = random;
+      previousV0 = atlasRow / atlasRows;
+      previousV1 = (atlasRow + 1) / atlasRows;
+    } else {
+      const previousVertex = (solid - 1) * 6;
+      previousU = out.uvs[(previousVertex + 2) * 2];
+      previousV0 = 1 - out.uvs[(previousVertex + 5) * 2 + 1];
+      previousV1 = 1 - out.uvs[(previousVertex + 4) * 2 + 1];
+    }
     const nextU =
       previousU + (tileRate * getQuadStripSolidLength(out.positions, solid)) / size;
-    out.uvs[vertex * 2] = previousU;
-    out.uvs[(vertex + 2) * 2] = previousU;
-    out.uvs[(vertex + 3) * 2] = previousU;
-    out.uvs[(vertex + 1) * 2] = nextU;
-    out.uvs[(vertex + 4) * 2] = nextU;
-    out.uvs[(vertex + 5) * 2] = nextU;
+    writeQuadStripUvQuad(
+      out.uvs,
+      vertex,
+      previousU,
+      nextU,
+      previousV0,
+      previousV1,
+    );
   }
 }
 
@@ -1199,6 +1527,9 @@ function applyQuadStripStretchUvSection(
   out: BrushGeometryArrays,
   firstSolid: number,
   endSolid: number,
+  atlasRows: number,
+  seed: number,
+  hasBackfaces: boolean,
 ): void {
   let sectionLength = 0;
   for (let solid = firstSolid; solid < endSolid; solid += 1) {
@@ -1208,92 +1539,153 @@ function applyQuadStripStretchUvSection(
     sectionLength = 1;
   }
   let runningLength = 0;
+  const quadsPerSolid = hasBackfaces ? 2 : 1;
+  const random = statelessRandom01(seed, firstSolid * quadsPerSolid * 6);
+  const atlasRow = Math.floor(random * atlasRows);
+  const v0 = atlasRow / atlasRows;
+  const v1 = (atlasRow + 1) / atlasRows;
   for (let solid = firstSolid; solid < endSolid; solid += 1) {
     const solidLength = getQuadStripSolidLength(out.positions, solid);
     const startU = runningLength / sectionLength;
     runningLength += solidLength;
     const endU = runningLength / sectionLength;
     const vertex = solid * 6;
-    out.uvs[vertex * 2] = startU;
-    out.uvs[(vertex + 2) * 2] = startU;
-    out.uvs[(vertex + 3) * 2] = startU;
-    out.uvs[(vertex + 1) * 2] = endU;
-    out.uvs[(vertex + 4) * 2] = endU;
-    out.uvs[(vertex + 5) * 2] = endU;
+    writeQuadStripUvQuad(out.uvs, vertex, startU, endU, v0, v1);
   }
+}
+
+function writeQuadStripUvQuad(
+  uvs: Float32Array,
+  vertex: number,
+  previousU: number,
+  nextU: number,
+  v0: number,
+  v1: number,
+): void {
+  let offset = vertex * 2;
+  uvs[offset] = previousU;
+  uvs[offset + 1] = 1 - v0;
+  offset += 2;
+  uvs[offset] = previousU;
+  uvs[offset + 1] = 1 - v1;
+  offset += 2;
+  uvs[offset] = nextU;
+  uvs[offset + 1] = 1 - v0;
+  offset += 2;
+  uvs[offset] = previousU;
+  uvs[offset + 1] = 1 - v1;
+  offset += 2;
+  uvs[offset] = nextU;
+  uvs[offset + 1] = 1 - v1;
+  offset += 2;
+  uvs[offset] = nextU;
+  uvs[offset + 1] = 1 - v0;
 }
 
 function updateQuadStripTangents(
   out: BrushGeometryArrays,
-  solidCount: number,
-): void {
-  const triangleTangent: Vec3 = [0, 0, 0];
-  for (let solid = 0; solid < solidCount; solid += 1) {
-    const vertex = solid * 6;
-    computeTriangleSurfaceTangent(
-      out.positions,
-      out.uvs,
-      vertex,
-      vertex + 1,
-      vertex + 2,
-      triangleTangent,
-    );
-    for (let corner = 0; corner < 3; corner += 1) {
-      writeOrthonormalTangent(
-        out.tangents,
-        out.normals,
-        vertex + corner,
-        triangleTangent,
-      );
-    }
-    computeTriangleSurfaceTangent(
-      out.positions,
-      out.uvs,
-      vertex + 3,
-      vertex + 4,
-      vertex + 5,
-      triangleTangent,
-    );
-    for (let corner = 3; corner < 6; corner += 1) {
-      writeOrthonormalTangent(
-        out.tangents,
-        out.normals,
-        vertex + corner,
-        triangleTangent,
-      );
-    }
-  }
-}
-
-function applyQuadStripDistanceOpacityFade(
-  out: BrushGeometryArrays,
   breakBefore: Uint8Array,
   pointCount: number,
-  frontSolidCount: number,
-  hasBackfaces: boolean,
+  solidCount: number,
 ): void {
   let sectionStart = 0;
   let solid = 0;
   for (let segment = 0; segment < pointCount - 1; segment += 1) {
-    if (breakBefore[segment + 1] === 1) {
-      applyQuadStripSectionOpacityFade(out, sectionStart, solid);
-      sectionStart = solid;
+    const sectionState = breakBefore[segment + 1];
+    if (sectionState === 2) {
       continue;
+    }
+    if (sectionState === 1) {
+      updateQuadStripSectionTangents(out, sectionStart, solid);
+      sectionStart = solid;
     }
     solid += 1;
   }
-  applyQuadStripSectionOpacityFade(out, sectionStart, solid);
+  updateQuadStripSectionTangents(out, sectionStart, Math.min(solid, solidCount));
+}
 
-  if (hasBackfaces) {
-    const backVertexOffset = frontSolidCount * 6;
-    const reverse = [0, 2, 1, 3, 5, 4] as const;
-    for (let frontSolid = 0; frontSolid < frontSolidCount; frontSolid += 1) {
-      const frontVertex = frontSolid * 6;
-      const backVertex = backVertexOffset + frontVertex;
-      for (let corner = 0; corner < 6; corner += 1) {
-        out.colors[(backVertex + corner) * 4 + 3] =
-          out.colors[(frontVertex + reverse[corner]) * 4 + 3];
-      }
+/** Port of BaseBrushScript.ComputeTangentSpaceForQuads for canonical Three winding. */
+function updateQuadStripSectionTangents(
+  out: BrushGeometryArrays,
+  firstSolid: number,
+  endSolid: number,
+): void {
+  const surfaceTangent: Vec3 = [0, 0, 0];
+  const surfaceBitangent: Vec3 = [0, 0, 0];
+  const normal: Vec3 = [0, 0, 0];
+  const normalCrossTangent: Vec3 = [0, 0, 0];
+  let handedness = 1;
+  for (let solid = firstSolid; solid < endSolid; solid += 1) {
+    const vertex = solid * 6;
+    // Open Brush computes S/T from source corners 0,1,2. After reflecting to
+    // Three and canonicalizing winding, those records are corners 0,2,1.
+    computeTriangleSurfaceTangent(
+      out.positions,
+      out.uvs,
+      vertex,
+      vertex + 2,
+      vertex + 1,
+      surfaceTangent,
+    );
+    if (solid === firstSolid) {
+      computeTriangleSurfaceBitangent(
+        out.positions,
+        out.uvs,
+        vertex,
+        vertex + 2,
+        vertex + 1,
+        surfaceBitangent,
+      );
+      const normalOffset = vertex * 3;
+      normal[0] = out.normals[normalOffset];
+      normal[1] = out.normals[normalOffset + 1];
+      normal[2] = out.normals[normalOffset + 2];
+      cross(normal, surfaceTangent, normalCrossTangent);
+      // Unity-to-Three reflection reverses tangent-space handedness.
+      handedness = dot(normalCrossTangent, surfaceBitangent) < 0 ? 1 : -1;
+    } else {
+      handedness = out.tangents[(vertex - 6) * 4 + 3];
+    }
+
+    writeOrthonormalTangent(
+      out.tangents,
+      out.normals,
+      vertex,
+      surfaceTangent,
+      handedness,
+    );
+    writeOrthonormalTangent(
+      out.tangents,
+      out.normals,
+      vertex + 1,
+      surfaceTangent,
+      handedness,
+    );
+    copyVec4At(out.tangents, vertex + 1, vertex + 3);
+
+    if (solid > firstSolid) {
+      const previousVertex = vertex - 6;
+      copyVec4At(out.tangents, vertex, previousVertex + 2);
+      copyVec4At(out.tangents, vertex, previousVertex + 5);
+      copyVec4At(out.tangents, vertex + 1, previousVertex + 4);
+    }
+
+    if (solid + 1 === endSolid) {
+      writeOrthonormalTangent(
+        out.tangents,
+        out.normals,
+        vertex + 2,
+        surfaceTangent,
+        handedness,
+      );
+      copyVec4At(out.tangents, vertex + 2, vertex + 5);
+      writeOrthonormalTangent(
+        out.tangents,
+        out.normals,
+        vertex + 4,
+        surfaceTangent,
+        handedness,
+      );
     }
   }
 }
@@ -1320,9 +1712,9 @@ function applyQuadStripSectionOpacityFade(
           );
     const vertex = solid * 6;
     out.colors[vertex * 4 + 3] = trailingAlpha;
-    out.colors[(vertex + 2) * 4 + 3] = trailingAlpha;
+    out.colors[(vertex + 1) * 4 + 3] = trailingAlpha;
     out.colors[(vertex + 3) * 4 + 3] = trailingAlpha;
-    out.colors[(vertex + 1) * 4 + 3] = leadingAlpha;
+    out.colors[(vertex + 2) * 4 + 3] = leadingAlpha;
     out.colors[(vertex + 4) * 4 + 3] = leadingAlpha;
     out.colors[(vertex + 5) * 4 + 3] = leadingAlpha;
   }
@@ -1334,8 +1726,8 @@ function getQuadStripSolidLength(
 ): number {
   const vertex = solid * 6;
   return (
-    distanceBetweenPositionVertices(positions, vertex, vertex + 1) +
-    distanceBetweenPositionVertices(positions, vertex + 3, vertex + 5)
+    distanceBetweenPositionVertices(positions, vertex, vertex + 2) +
+    distanceBetweenPositionVertices(positions, vertex + 3, vertex + 4)
   ) * 0.5;
 }
 
@@ -1388,12 +1780,27 @@ function fuseQuadStripSolids(
 ): void {
   const backVertex = backSolid * 6;
   const frontVertex = frontSolid * 6;
-  fuseQuadStripEdge(out, backVertex, frontVertex, 1, 0);
-  fuseQuadStripEdge(out, backVertex, frontVertex, 5, 2);
-  copyPosition(out.positions, backVertex + 1, backVertex + 4);
-  copyPosition(out.positions, frontVertex + 2, frontVertex + 3);
-  copyVec3At(out.normals, backVertex + 1, backVertex + 4);
-  copyVec3At(out.normals, backVertex + 5, frontVertex + 3);
+  const backNormalOffset = (backVertex + 2) * 3;
+  const frontNormalOffset = frontVertex * 3;
+  let nx = out.normals[backNormalOffset] + out.normals[frontNormalOffset];
+  let ny = out.normals[backNormalOffset + 1] + out.normals[frontNormalOffset + 1];
+  let nz = out.normals[backNormalOffset + 2] + out.normals[frontNormalOffset + 2];
+  const normalLength = Math.hypot(nx, ny, nz);
+  if (normalLength > EPSILON) {
+    nx /= normalLength;
+    ny /= normalLength;
+    nz /= normalLength;
+  } else {
+    nx = out.normals[backNormalOffset];
+    ny = out.normals[backNormalOffset + 1];
+    nz = out.normals[backNormalOffset + 2];
+  }
+  fuseQuadStripEdge(out, backVertex, frontVertex, 2, 0, nx, ny, nz);
+  fuseQuadStripEdge(out, backVertex, frontVertex, 4, 1, nx, ny, nz);
+  copyPosition(out.positions, backVertex + 2, backVertex + 5);
+  copyPosition(out.positions, frontVertex + 1, frontVertex + 3);
+  copyVec3At(out.normals, backVertex + 2, backVertex + 5);
+  copyVec3At(out.normals, frontVertex + 1, frontVertex + 3);
 }
 
 function fuseQuadStripEdge(
@@ -1402,6 +1809,9 @@ function fuseQuadStripEdge(
   frontVertex: number,
   backCorner: number,
   frontCorner: number,
+  nx: number,
+  ny: number,
+  nz: number,
 ): void {
   const backOffset = (backVertex + backCorner) * 3;
   const frontOffset = (frontVertex + frontCorner) * 3;
@@ -1410,19 +1820,6 @@ function fuseQuadStripEdge(
     (out.positions[backOffset + 1] + out.positions[frontOffset + 1]) * 0.5;
   const z =
     (out.positions[backOffset + 2] + out.positions[frontOffset + 2]) * 0.5;
-  let nx = out.normals[backOffset] + out.normals[frontOffset];
-  let ny = out.normals[backOffset + 1] + out.normals[frontOffset + 1];
-  let nz = out.normals[backOffset + 2] + out.normals[frontOffset + 2];
-  const normalLength = Math.hypot(nx, ny, nz);
-  if (normalLength > EPSILON) {
-    nx /= normalLength;
-    ny /= normalLength;
-    nz /= normalLength;
-  } else {
-    nx = out.normals[backOffset];
-    ny = out.normals[backOffset + 1];
-    nz = out.normals[backOffset + 2];
-  }
   writeQuadStripFusedCorner(
     out,
     backVertex + backCorner,
@@ -1631,11 +2028,49 @@ function computeTriangleSurfaceTangent(
   out[2] = reciprocal * (t2 * z1 - t1 * z2);
 }
 
+function computeTriangleSurfaceBitangent(
+  positions: Float32Array,
+  uvs: Float32Array,
+  first: number,
+  second: number,
+  third: number,
+  out: Vec3,
+): void {
+  const firstPosition = first * 3;
+  const secondPosition = second * 3;
+  const thirdPosition = third * 3;
+  const firstUv = first * 2;
+  const secondUv = second * 2;
+  const thirdUv = third * 2;
+  const x1 = positions[secondPosition] - positions[firstPosition];
+  const x2 = positions[thirdPosition] - positions[firstPosition];
+  const y1 = positions[secondPosition + 1] - positions[firstPosition + 1];
+  const y2 = positions[thirdPosition + 1] - positions[firstPosition + 1];
+  const z1 = positions[secondPosition + 2] - positions[firstPosition + 2];
+  const z2 = positions[thirdPosition + 2] - positions[firstPosition + 2];
+  const s1 = uvs[secondUv] - uvs[firstUv];
+  const s2 = uvs[thirdUv] - uvs[firstUv];
+  const t1 = uvs[secondUv + 1] - uvs[firstUv + 1];
+  const t2 = uvs[thirdUv + 1] - uvs[firstUv + 1];
+  const determinant = s1 * t2 - s2 * t1;
+  if (Math.abs(determinant) <= EPSILON) {
+    out[0] = x1;
+    out[1] = y1;
+    out[2] = z1;
+    return;
+  }
+  const reciprocal = 1 / determinant;
+  out[0] = reciprocal * (s1 * x2 - s2 * x1);
+  out[1] = reciprocal * (s1 * y2 - s2 * y1);
+  out[2] = reciprocal * (s1 * z2 - s2 * z1);
+}
+
 function writeOrthonormalTangent(
   tangents: Float32Array,
   normals: Float32Array,
   vertex: number,
   source: Vec3,
+  handedness = 1,
 ): void {
   const normalOffset = vertex * 3;
   const projection =
@@ -1659,7 +2094,7 @@ function writeOrthonormalTangent(
   tangents[tangentOffset] = x;
   tangents[tangentOffset + 1] = y;
   tangents[tangentOffset + 2] = z;
-  tangents[tangentOffset + 3] = 1;
+  tangents[tangentOffset + 3] = handedness;
 }
 
 function generateUnitizedRibbonGeometry(
@@ -1856,6 +2291,8 @@ function generateUnitizedRibbonGeometry(
     hasBackfaces,
     options.generatorClass,
     normalizeTileRate(options.geometryParams?.tileRate),
+    normalizeAtlasRows(options.geometryParams?.textureAtlasV),
+    stroke.seed,
   );
 
   const finalizedCounts = finalizeQuadStripUsedGeometry(
@@ -2755,12 +3192,13 @@ function generateTubeGeometry(
   options: BrushGeometryOptions,
   out: BrushGeometryArrays,
 ): boolean {
+  const isSquareBrush = options.generatorClass === "SquareBrush";
+  stroke = retainGeometryBrushControlPoints(stroke, options, out, isSquareBrush);
   const storesRadius =
     options.geometryParams?.tubeStoreRadiusInTexcoord0Z === true;
   out.uv0Size = storesRadius ? 3 : 2;
   const pointCount = stroke.controlPoints.length;
   const segmentCount = Math.max(0, pointCount - 1);
-  const isSquareBrush = options.generatorClass === "SquareBrush";
   const sideCount = isSquareBrush
     ? 4
     : normalizeTubeSideCount(options.geometryParams?.tubeSideCount);
@@ -2832,7 +3270,9 @@ function generateTubeGeometry(
   );
   const localBrushSize = getLocalBrushSize(stroke);
   const tileRate = normalizeTileRate(options.geometryParams?.tileRate);
-  const random01 = statelessRandom01(stroke.seed, 0);
+  // The first TubeBrush knot starts writing at vertex zero and salts its
+  // section UV offset with cur.iVert - 1.
+  const random01 = statelessRandom01(stroke.seed, -1);
   const atlasRows = normalizeAtlasRows(options.geometryParams?.textureAtlasV);
   let atlasRow = Math.floor(random01 * 3331) % atlasRows;
   let v0 = atlasRow / atlasRows;
@@ -2851,6 +3291,8 @@ function generateTubeGeometry(
   );
   let runningDistance = 0;
   let u = random01;
+  let sectionStartPoint = 0;
+  let completedOpenBrushVertexCount = 0;
 
   // Frame state: right/up transported along the stroke by the tangent-to-
   // tangent rotation (MathUtils.ComputeMinimalRotationFrame), bootstrapped
@@ -2934,16 +3376,6 @@ function generateTubeGeometry(
       copyVec3(frameUp, priorFrameUp);
       rotateBetweenTangents(previousTangent, tangent, frameRight);
       rotateBetweenTangents(previousTangent, tangent, frameUp);
-      // Re-orthonormalize against drift.
-      const drift = dot(frameRight, tangent);
-      frameRight[0] -= tangent[0] * drift;
-      frameRight[1] -= tangent[1] * drift;
-      frameRight[2] -= tangent[2] * drift;
-      if (!normalizeInPlace(frameRight)) {
-        anyPerpendicular(tangent, frameRight);
-      }
-      cross(tangent, frameRight, frameUp);
-      normalizeInPlace(frameUp);
 
       const previousSectionContinues = tubeBreakBefore[pointIndex - 1] === 0;
       if (!previousSectionContinues) {
@@ -2981,7 +3413,15 @@ function generateTubeGeometry(
           frameRight,
           frameUp,
         );
-        const sectionRandom01 = statelessRandom01(stroke.seed, pointIndex);
+        const completedSectionPointCount = pointIndex - sectionStartPoint;
+        completedOpenBrushVertexCount +=
+          completedSectionPointCount * ringVertexCount +
+          (hasCaps && completedSectionPointCount > 1 ? sideCount * 2 : 0);
+        sectionStartPoint = pointIndex;
+        const sectionRandom01 = statelessRandom01(
+          stroke.seed,
+          completedOpenBrushVertexCount - 1,
+        );
         u = sectionRandom01;
         atlasRow = Math.floor(sectionRandom01 * 3331) % atlasRows;
         v0 = atlasRow / atlasRows;
@@ -3014,6 +3454,11 @@ function generateTubeGeometry(
           isSquareBrush ? 0.375 : 1,
           radial,
         );
+        if (isSquareBrush) {
+          radial[0] *= Math.SQRT2;
+          radial[1] *= Math.SQRT2;
+          radial[2] *= Math.SQRT2;
+        }
         copyVec3(radial, displacement);
         for (let duplicate = 0; duplicate < 2; duplicate += 1) {
           const vertex = ringBase + side * 2 + duplicate;
@@ -3038,7 +3483,7 @@ function generateTubeGeometry(
           // TubeBrush.MakeClosedCircleHardEdges stores the undisplaced radial
           // direction as the tangent; the two duplicated vertices only differ
           // in their face normals.
-          writeTangent(tangents, vertex, displacement, 1);
+          writeTangent(tangents, vertex, displacement, -1);
           writeColor(colors, vertex, stroke.color, opacity);
           const vFraction = side === 0 && duplicate === 0 ? 1 : side / sideCount;
           const v = v0 + (v1 - v0) * vFraction;
@@ -3062,7 +3507,7 @@ function generateTubeGeometry(
           center[2] + radial[2] * (radius * shapeScale + petalOffset),
         ]);
         writeNormal(normals, vertex, radial);
-        writeTangent(tangents, vertex, tangent, 1);
+        writeTangent(tangents, vertex, tangent, -1);
         writeColor(colors, vertex, stroke.color, opacity);
         const v = v0 + (v1 - v0) * fraction;
         writeUv(uvs, vertex, [ringU, v]);
@@ -3220,10 +3665,10 @@ function generateTubeGeometry(
           const radius = tubeRadii[pointIndex];
           const ringU = tubeRingUs[pointIndex];
           const opacity = tubeOpacities[pointIndex];
-          const capV0 = uvs[
+          const capV0 = 1 - uvs[
             (ringBase + (hardEdges ? 1 : 0)) * 2 + 1
           ];
-          const capV1 = uvs[
+          const capV1 = 1 - uvs[
             (ringBase + (hardEdges ? 0 : ringVertexCount - 1)) * 2 + 1
           ];
           const direction = isStart ? -1 : 1;
@@ -3263,7 +3708,7 @@ function generateTubeGeometry(
                     capTangent[2] * direction,
                   ],
             );
-            writeTangent(tangents, vertex, capRadial, 1);
+            writeTangent(tangents, vertex, capRadial, -1);
             writeColor(colors, vertex, stroke.color, opacity);
             const v = capV0 + (capV1 - capV0) * fraction;
             writeUv(uvs, vertex, isSquareBrush ? [0.5, 0.5] : [capU, v]);
@@ -3287,10 +3732,323 @@ function generateTubeGeometry(
     }
   }
 
+  if (isSquareBrush) {
+    indexOffset = packSquareBrushLikeOpenBrush(out, pointCount);
+  } else {
+    indexOffset = packTubeLikeOpenBrush(
+      out,
+      pointCount,
+      ringVertexCount,
+      sideCount,
+      hardEdges,
+      hasCaps,
+      capVertexCount,
+      storesRadius,
+    );
+  }
+
   out.family = "tube";
   out.vertexCount = pointCount * ringVertexCount + capVertexCount;
   out.indexCount = indexOffset;
   return reallocated;
+}
+
+const SQUARE_BRUSH_VERTEX_REMAP = [0, 1, 4, 5, 3, 2, 7, 6] as const;
+const SQUARE_BRUSH_SIDE_TRIANGLES = [
+  4, 12, 2, 12, 10, 2,
+  5, 1, 13, 1, 9, 13,
+  7, 3, 15, 3, 11, 15,
+  6, 14, 0, 14, 8, 0,
+] as const;
+const SQUARE_BRUSH_START_CAP_TRIANGLES = [5, 3, 1, 3, 7, 1] as const;
+const SQUARE_BRUSH_END_CAP_TRIANGLES = [13, 9, 11, 9, 15, 11] as const;
+
+function packSquareBrushLikeOpenBrush(
+  out: BrushGeometryArrays,
+  pointCount: number,
+): number {
+  // SquareBrush names/order: bottom-right bottom/right, top-left top/left,
+  // top-right top/right, bottom-left bottom/left.
+  const vertexCount = pointCount * 8;
+  const channels: readonly [Float32Array, number][] = [
+    [out.positions, 3],
+    [out.normals, 3],
+    [out.tangents, 4],
+    [out.colors, 4],
+    [out.uvs, 2],
+  ];
+  for (const [channel, itemSize] of channels) {
+    for (let pointIndex = 0; pointIndex < pointCount; pointIndex += 1) {
+      const ringBase = pointIndex * 8;
+      for (let vertex = 0; vertex < 8; vertex += 1) {
+        out.indices[ringBase + vertex] =
+          ringBase + SQUARE_BRUSH_VERTEX_REMAP[vertex];
+      }
+    }
+    permuteVertexChannel(channel, itemSize, vertexCount, out.indices);
+  }
+
+  let indexOffset = 0;
+  for (let segment = 0; segment + 1 < pointCount; segment += 1) {
+    if (out.tubeBreakBefore[segment + 1] === 1) {
+      continue;
+    }
+    const back = segment * 8;
+    for (const offset of SQUARE_BRUSH_SIDE_TRIANGLES) {
+      out.indices[indexOffset++] = back + offset;
+    }
+
+    const startsSection =
+      segment === 0 || out.tubeBreakBefore[segment] === 1;
+    if (startsSection) {
+      for (const offset of SQUARE_BRUSH_START_CAP_TRIANGLES) {
+        out.indices[indexOffset++] = back + offset;
+      }
+    }
+    const endsSection =
+      segment + 2 === pointCount || out.tubeBreakBefore[segment + 2] === 1;
+    if (endsSection) {
+      for (const offset of SQUARE_BRUSH_END_CAP_TRIANGLES) {
+        out.indices[indexOffset++] = back + offset;
+      }
+    }
+  }
+  return indexOffset;
+}
+
+/**
+ * TubeBrush appends one complete section at a time: start cap, all closed
+ * circles, then end cap. The generator builds rings first because that keeps
+ * the live frame pass simple, so finalize into the source vertex and triangle
+ * order before publishing the buffers.
+ */
+function packTubeLikeOpenBrush(
+  out: BrushGeometryArrays,
+  pointCount: number,
+  ringVertexCount: number,
+  sideCount: number,
+  hardEdges: boolean,
+  hasCaps: boolean,
+  capVertexCount: number,
+  storesRadius: boolean,
+): number {
+  const vertexCount = pointCount * ringVertexCount + capVertexCount;
+  const channels: readonly [Float32Array, number][] = [
+    [out.positions, 3],
+    [out.normals, 3],
+    [out.tangents, 4],
+    [out.colors, 4],
+    [out.uvs, 2],
+    [out.packedUvs, 3],
+  ];
+  for (const [channel, itemSize] of channels) {
+    buildTubeOpenBrushVertexMap(
+      out,
+      pointCount,
+      ringVertexCount,
+      sideCount,
+      hasCaps,
+      capVertexCount,
+    );
+    permuteVertexChannel(channel, itemSize, vertexCount, out.indices);
+  }
+
+  // Keep the unused UV representation deterministic too. Only one is exposed,
+  // but both share the reusable geometry storage across brush changes.
+  if (!storesRadius) {
+    out.packedUvs.fill(0, 0, vertexCount * 3);
+  }
+
+  let indexOffset = 0;
+  let sectionStart = 0;
+  for (let boundary = 1; boundary <= pointCount; boundary += 1) {
+    const sectionEnds =
+      boundary === pointCount || out.tubeBreakBefore[boundary] === 1;
+    if (!sectionEnds) {
+      continue;
+    }
+    const sectionEnd = boundary - 1;
+    if (sectionEnd > sectionStart) {
+      const startRing = out.tubeRingUs[sectionStart];
+      if (hasCaps) {
+        const startCap = startRing - sideCount;
+        for (let side = 0; side < sideCount; side += 1) {
+          const first = hardEdges ? side * 2 + 1 : side;
+          const next = hardEdges
+            ? (first + 1) % ringVertexCount
+            : side + 1;
+          out.indices[indexOffset] = startCap + side;
+          out.indices[indexOffset + 1] = startRing + next;
+          out.indices[indexOffset + 2] = startRing + first;
+          indexOffset += 3;
+        }
+      }
+
+      for (let pointIndex = sectionStart; pointIndex < sectionEnd; pointIndex += 1) {
+        const backRing = out.tubeRingUs[pointIndex];
+        const frontRing = out.tubeRingUs[pointIndex + 1];
+        for (let side = 0; side < sideCount; side += 1) {
+          const first = hardEdges ? side * 2 + 1 : side;
+          const next = hardEdges
+            ? (first + 1) % ringVertexCount
+            : side + 1;
+          out.indices[indexOffset] = backRing + first;
+          out.indices[indexOffset + 1] = backRing + next;
+          out.indices[indexOffset + 2] = frontRing + first;
+          out.indices[indexOffset + 3] = backRing + next;
+          out.indices[indexOffset + 4] = frontRing + next;
+          out.indices[indexOffset + 5] = frontRing + first;
+          indexOffset += 6;
+        }
+      }
+
+      if (hasCaps) {
+        const endRing = out.tubeRingUs[sectionEnd];
+        const endCap = endRing + ringVertexCount;
+        for (let side = 0; side < sideCount; side += 1) {
+          const first = hardEdges ? side * 2 + 1 : side;
+          const next = hardEdges
+            ? (first + 1) % ringVertexCount
+            : side + 1;
+          out.indices[indexOffset] = endCap + side;
+          out.indices[indexOffset + 1] = endRing + first;
+          out.indices[indexOffset + 2] = endRing + next;
+          indexOffset += 3;
+        }
+      }
+    }
+    sectionStart = boundary;
+  }
+  return indexOffset;
+}
+
+function buildTubeOpenBrushVertexMap(
+  out: BrushGeometryArrays,
+  pointCount: number,
+  ringVertexCount: number,
+  sideCount: number,
+  hasCaps: boolean,
+  capVertexCount: number,
+): void {
+  const firstCapVertex = pointCount * ringVertexCount;
+  let newVertex = 0;
+  let oldCapVertex = firstCapVertex;
+  let sectionStart = 0;
+  for (let boundary = 1; boundary <= pointCount; boundary += 1) {
+    const sectionEnds =
+      boundary === pointCount || out.tubeBreakBefore[boundary] === 1;
+    if (!sectionEnds) {
+      continue;
+    }
+    const sectionEnd = boundary - 1;
+    const hasSectionGeometry = sectionEnd > sectionStart;
+    if (hasCaps && hasSectionGeometry) {
+      for (let side = 0; side < sideCount; side += 1) {
+        out.indices[newVertex++] = oldCapVertex++;
+      }
+    }
+    for (let pointIndex = sectionStart; pointIndex <= sectionEnd; pointIndex += 1) {
+      out.tubeRingUs[pointIndex] = newVertex;
+      const oldRing = pointIndex * ringVertexCount;
+      for (let ringVertex = 0; ringVertex < ringVertexCount; ringVertex += 1) {
+        out.indices[newVertex++] = oldRing + ringVertex;
+      }
+    }
+    if (hasCaps && hasSectionGeometry) {
+      for (let side = 0; side < sideCount; side += 1) {
+        out.indices[newVertex++] = oldCapVertex++;
+      }
+    }
+    sectionStart = boundary;
+  }
+  if (newVertex !== pointCount * ringVertexCount + capVertexCount) {
+    throw new Error("Tube vertex packing did not account for every generated vertex.");
+  }
+}
+
+function permuteVertexChannel(
+  channel: Float32Array,
+  itemSize: number,
+  vertexCount: number,
+  newToOld: Uint32Array,
+): void {
+  for (let start = 0; start < vertexCount; start += 1) {
+    if (newToOld[start] === start) {
+      continue;
+    }
+    const startOffset = start * itemSize;
+    const saved0 = channel[startOffset];
+    const saved1 = channel[startOffset + 1];
+    const saved2 = channel[startOffset + 2];
+    const saved3 = channel[startOffset + 3];
+    let destination = start;
+    while (newToOld[destination] !== start) {
+      const source = newToOld[destination];
+      const destinationOffset = destination * itemSize;
+      const sourceOffset = source * itemSize;
+      for (let component = 0; component < itemSize; component += 1) {
+        channel[destinationOffset + component] = channel[sourceOffset + component];
+      }
+      newToOld[destination] = destination;
+      destination = source;
+    }
+    const destinationOffset = destination * itemSize;
+    channel[destinationOffset] = saved0;
+    if (itemSize > 1) channel[destinationOffset + 1] = saved1;
+    if (itemSize > 2) channel[destinationOffset + 2] = saved2;
+    if (itemSize > 3) channel[destinationOffset + 3] = saved3;
+    newToOld[destination] = destination;
+  }
+}
+
+function retainGeometryBrushControlPoints(
+  stroke: StrokeData,
+  options: BrushGeometryOptions,
+  out: BrushGeometryArrays,
+  isSquareBrush: boolean,
+): StrokeData {
+  const source = stroke.controlPoints;
+  if (source.length < 2) {
+    return stroke;
+  }
+  const retained = out.tubeRetainedControlPoints;
+  retained.length = 0;
+  retained.push(source[0]);
+  let lastRetained = source[0];
+  const pressureSizeMin = normalizePressureSizeMin(options.pressureSizeRange?.[0]);
+  const localBrushSize = getLocalBrushSize(stroke);
+  const configuredSolidMinimum = options.geometryParams?.solidMinLengthMeters;
+  const solidMinimum =
+    typeof configuredSolidMinimum === "number" &&
+    Number.isFinite(configuredSolidMinimum)
+      ? Math.max(0, configuredSolidMinimum)
+      : isSquareBrush
+        ? 0.002
+        : OPEN_BRUSH_TUBE_MINIMUM_MOVE_METERS;
+  for (let pointIndex = 1; pointIndex < source.length; pointIndex += 1) {
+    const point = source[pointIndex];
+    const deltaX = point.position[0] - lastRetained.position[0];
+    const deltaY = point.position[1] - lastRetained.position[1];
+    const deltaZ = point.position[2] - lastRetained.position[2];
+    const spawnInterval =
+      solidMinimum +
+      localBrushSize *
+        getPressureSizeMultiplier(point.pressure, pressureSizeMin) *
+        TUBE_SOLID_ASPECT_RATIO;
+    // GeometryBrush always renders its current leading knot. A sub-interval
+    // interior update is later overwritten, while the final update remains as
+    // the trailing provisional knot even when it was not promoted to a keeper.
+    if (
+      pointIndex + 1 === source.length ||
+      Math.hypot(deltaX, deltaY, deltaZ) > spawnInterval
+    ) {
+      retained.push(point);
+      lastRetained = point;
+    }
+  }
+  return retained.length === source.length
+    ? stroke
+    : { ...stroke, controlPoints: retained };
 }
 
 function prepareSquareBrushBreaks(
@@ -3382,6 +4140,7 @@ function rewriteSquareBrushFrames(
       startsSection,
       right,
       surface,
+      true,
     );
     writeScratchVec3(out.tubeFrameRights, pointIndex, right);
     writeScratchVec3(out.tubeFrameUps, pointIndex, surface);
@@ -3442,6 +4201,11 @@ function rewriteTubeRingFrames(
           isSquareBrush ? 0.375 : 1,
           displacement,
         );
+        if (isSquareBrush) {
+          displacement[0] *= Math.SQRT2;
+          displacement[1] *= Math.SQRT2;
+          displacement[2] *= Math.SQRT2;
+        }
         for (let duplicate = 0; duplicate < 2; duplicate += 1) {
           const vertex = ringBase + side * 2 + duplicate;
           setTubeRadial(
@@ -3458,7 +4222,7 @@ function rewriteTubeRingFrames(
             center[2] + displacement[2] * radius,
           );
           writeNormal(out.normals, vertex, radial);
-          writeTangent(out.tangents, vertex, displacement, 1);
+          writeTangent(out.tangents, vertex, displacement, -1);
           includeBounds(out.bounds, out.positions, vertex);
         }
       }
@@ -3476,7 +4240,7 @@ function rewriteTubeRingFrames(
           center[2] + radial[2] * radius,
         );
         writeNormal(out.normals, vertex, radial);
-        writeTangent(out.tangents, vertex, tangent, 1);
+        writeTangent(out.tangents, vertex, tangent, -1);
         includeBounds(out.bounds, out.positions, vertex);
       }
     }
@@ -3578,15 +4342,33 @@ function applyTubeSectionShapeAndUvs(
       if (shapeModifier === 0) {
         continue;
       }
-      readScratchVec3(out.geometrySmoothedPositions, pointIndex, center);
+      // ModifySilhouetteOfSegment processes a geometry knot's shared back ring
+      // and its newly-created front ring together. A later knot therefore
+      // rewrites the preceding ring using the later knot's center, radius, and
+      // curve parameter; only the displacement direction remains attached to
+      // the original vertex.
+      const ownerPointIndex = Math.min(pointIndex + 1, sectionEnd);
+      const ownerLocalIndex = ownerPointIndex - sectionStart;
+      const ownerRunningLength =
+        ownerPointIndex === pointIndex
+          ? runningLength
+          : runningLength +
+            distanceBetweenScratchPoints(
+              out.geometrySmoothedPositions,
+              pointIndex,
+              ownerPointIndex,
+            );
+      const ownerProgress =
+        sectionLength > EPSILON ? ownerRunningLength / sectionLength : 0;
+      readScratchVec3(out.geometrySmoothedPositions, ownerPointIndex, center);
       readScratchVec3(out.tubeFrameRights, pointIndex, frameRight);
       readScratchVec3(out.tubeFrameUps, pointIndex, frameUp);
-      const radius = out.tubeRadii[pointIndex];
+      const radius = out.tubeRadii[ownerPointIndex];
       const shapeScale = getTubeShapeScale(
         shapeModifier,
-        progress,
-        localIndex,
-        sectionPointCount,
+        ownerProgress,
+        Math.max(0, ownerLocalIndex - 1),
+        Math.max(0, sectionPointCount - 1),
         taperScalar,
         loftedPartialProgress,
       );
@@ -3595,7 +4377,7 @@ function applyTubeSectionShapeAndUvs(
           ? Math.pow(progress, normalizeTubePetalExponent(petalExponent)) *
             normalizeTubePetalAmount(petalAmount) *
             localBrushSize *
-            out.tubeSmoothedPressures[pointIndex]
+            out.tubeSmoothedPressures[ownerPointIndex]
           : 0;
       if (hardEdges) {
         const halfStep = Math.PI / sideCount;
@@ -4586,6 +5368,77 @@ function prepareRibbonSections(
   return connectedSegmentCount;
 }
 
+/**
+ * QuadStrip distinguishes an input sample that is too close to the last spawn
+ * point from a sharp-turn strip break. The former produces no solid and leaves
+ * brush state untouched; the latter still emits the current solid as the first
+ * member of a new, unfused section. Values in ribbonBreakBefore therefore mean
+ * 0 = ordinary solid, 1 = generated section start, and 2 = skipped sample.
+ */
+function prepareQuadStripSections(
+  stroke: StrokeData,
+  out: BrushGeometryArrays,
+): void {
+  const pointCount = stroke.controlPoints.length;
+  ensureRibbonScratchCapacity(out, pointCount);
+  const {
+    ribbonBreakBefore,
+    ribbonRunningLengths,
+    ribbonSectionLengths,
+  } = out;
+  let sectionStart = 0;
+  let runningLength = 0;
+  let lastSpawnIndex = 0;
+  let previousDirectionX = 0;
+  let previousDirectionY = 0;
+  let previousDirectionZ = 0;
+  let hasPreviousDirection = false;
+
+  for (let index = 1; index < pointCount; index += 1) {
+    const previous = stroke.controlPoints[lastSpawnIndex].position;
+    const current = stroke.controlPoints[index].position;
+    const deltaX = current[0] - previous[0];
+    const deltaY = current[1] - previous[1];
+    const deltaZ = current[2] - previous[2];
+    const segmentLength = Math.hypot(deltaX, deltaY, deltaZ);
+    if (segmentLength < OPEN_BRUSH_RIBBON_MINIMUM_MOVE_METERS) {
+      ribbonBreakBefore[index] = 2;
+      ribbonRunningLengths[index] = runningLength;
+      continue;
+    }
+
+    const inverseLength = 1 / segmentLength;
+    const directionX = deltaX * inverseLength;
+    const directionY = deltaY * inverseLength;
+    const directionZ = deltaZ * inverseLength;
+    const startsSection =
+      hasPreviousDirection &&
+      previousDirectionX * directionX +
+        previousDirectionY * directionY +
+        previousDirectionZ * directionZ <=
+        0;
+    if (startsSection) {
+      for (let sectionIndex = sectionStart; sectionIndex < index; sectionIndex += 1) {
+        ribbonSectionLengths[sectionIndex] = runningLength;
+      }
+      ribbonBreakBefore[index] = 1;
+      sectionStart = index;
+      runningLength = segmentLength;
+    } else {
+      runningLength += segmentLength;
+    }
+    ribbonRunningLengths[index] = runningLength;
+    lastSpawnIndex = index;
+    previousDirectionX = directionX;
+    previousDirectionY = directionY;
+    previousDirectionZ = directionZ;
+    hasPreviousDirection = true;
+  }
+  for (let sectionIndex = sectionStart; sectionIndex < pointCount; sectionIndex += 1) {
+    ribbonSectionLengths[sectionIndex] = runningLength;
+  }
+}
+
 function resolveRibbonRenderPointCount(
   pointCount: number,
   options: BrushGeometryOptions,
@@ -4609,10 +5462,11 @@ function resolveRibbonRenderPointCount(
 function countConnectedRibbonSegments(
   breakBefore: Uint8Array,
   pointCount: number,
+  generatedSectionBreaks = false,
 ): number {
   let count = 0;
   for (let index = 1; index < pointCount; index += 1) {
-    if (breakBefore[index] === 0) {
+    if (generatedSectionBreaks ? breakBefore[index] !== 2 : breakBefore[index] === 0) {
       count += 1;
     }
   }
@@ -5149,7 +6003,9 @@ function setTubeRadial(
   angle: number,
   out: Vec3,
 ): void {
-  const rightScale = -Math.sin(angle);
+  // Reflection from Unity's left-handed coordinates reverses the direction
+  // around the ring while preserving its vertex numbering.
+  const rightScale = Math.sin(angle);
   const upScale = -Math.cos(angle);
   out[0] = right[0] * rightScale + up[0] * upScale;
   out[1] = right[1] * rightScale + up[1] * upScale;
@@ -5163,7 +6019,7 @@ function setTubeRadialScaled(
   upAspect: number,
   out: Vec3,
 ): void {
-  const rightScale = -Math.sin(angle);
+  const rightScale = Math.sin(angle);
   const upScale = -Math.cos(angle) * upAspect;
   out[0] = right[0] * rightScale + up[0] * upScale;
   out[1] = right[1] * rightScale + up[1] * upScale;
@@ -5303,9 +6159,18 @@ function computeSurfaceFrame(
   isFirst: boolean,
   outRight: Vec3,
   outNormal: Vec3,
+  mirrored = false,
 ): void {
   cross(pointerForward, tangent, surfaceFrameRight1);
   cross(pointerUp, tangent, surfaceFrameRight2);
+  if (mirrored) {
+    surfaceFrameRight1[0] = -surfaceFrameRight1[0];
+    surfaceFrameRight1[1] = -surfaceFrameRight1[1];
+    surfaceFrameRight1[2] = -surfaceFrameRight1[2];
+    surfaceFrameRight2[0] = -surfaceFrameRight2[0];
+    surfaceFrameRight2[1] = -surfaceFrameRight2[1];
+    surfaceFrameRight2[2] = -surfaceFrameRight2[2];
+  }
 
   let preferred = preferredRight;
   if (isFirst || Math.hypot(preferred[0], preferred[1], preferred[2]) < EPSILON) {
@@ -5335,6 +6200,11 @@ function computeSurfaceFrame(
     }
   }
   cross(tangent, outRight, outNormal);
+  if (mirrored) {
+    outNormal[0] = -outNormal[0];
+    outNormal[1] = -outNormal[1];
+    outNormal[2] = -outNormal[2];
+  }
   normalizeInPlace(outNormal);
 }
 

@@ -72,8 +72,8 @@ test( 'preserves distance and unitized ribbon UV modes', () => {
 	const initialU = distance.uvs[ 0 ];
 	assert.equal( getGeneratedVertexCount( distance ), 12 );
 	assert.deepEqual( Array.from( distance.indices ), Array.from( { length: 12 }, ( _, i ) => i ) );
-	assertClose( distance.uvs[ 2 ] - initialU, 2 );
-	assertClose( distance.uvs[ 14 ] - initialU, 6 );
+	assertClose( distance.uvs[ 4 ] - initialU, 2 );
+	assertClose( distance.uvs[ 16 ] - initialU, 6 );
 	const flatDistance = generateBrushGeometry( stroke, 'ribbon', {
 		generatorClass: 'FlatGeometryBrush',
 		geometryParams: { ribbonUvStyle: 'distance', tileRate: 2 }
@@ -123,19 +123,19 @@ test( 'replays DistanceUV updates over the newest three fused solids', () => {
 		( value, axis ) => position( second )[ axis ] - value ) );
 	const solidLength = ( solid ) => {
 		const vertex = solid * 6;
-		return ( distance( vertex, vertex + 1 ) + distance( vertex + 3, vertex + 5 ) ) * 0.5;
+		return ( distance( vertex, vertex + 2 ) + distance( vertex + 3, vertex + 4 ) ) * 0.5;
 	};
-	const finalSize = distance( 13, 17 );
+	const finalSize = distance( 14, 16 );
 	const initialU = geometry.uvs[ 0 ];
 	let expectedU = initialU;
 	for ( let solid = 0; solid < 3; solid += 1 ) {
 		expectedU += 2 * solidLength( solid ) / finalSize;
-		assertClose( geometry.uvs[ ( solid * 6 + 1 ) * 2 ], expectedU );
+		assertClose( geometry.uvs[ ( solid * 6 + 2 ) * 2 ], expectedU );
 	}
 
 } );
 
-test( 'preserves reversal breaks and explicit backfaces', () => {
+test( 'preserves reversal section breaks and explicit backfaces', () => {
 
 	const stroke = createStroke();
 	stroke.controlPoints.push( {
@@ -147,7 +147,9 @@ test( 'preserves reversal breaks and explicit backfaces', () => {
 	const reversed = generateBrushGeometry( stroke, 'ribbon', {
 		generatorClass: 'QuadStripBrushStretchUV'
 	} );
-	assert.equal( getGeneratedIndexCount( reversed ), 6 );
+	// Open Brush still emits the reversing solid; it starts a detached section
+	// rather than being discarded from the mesh.
+	assert.equal( getGeneratedIndexCount( reversed ), 12 );
 
 	const backfaces = generateBrushGeometry( createStroke(), 'ribbon', {
 		generatorClass: 'QuadStripBrushStretchUV',
@@ -156,6 +158,15 @@ test( 'preserves reversal breaks and explicit backfaces', () => {
 	assert.equal( getGeneratedVertexCount( backfaces ), 12 );
 	assert.equal( getGeneratedIndexCount( backfaces ), 12 );
 	assert.deepEqual( Array.from( backfaces.indices ), Array.from( { length: 12 }, ( _, i ) => i ) );
+	const backfaceOrder = [ 0, 2, 1, 3, 5, 4 ];
+	for ( let corner = 0; corner < 6; corner += 1 ) {
+		const front = backfaceOrder[ corner ] * 3;
+		const back = ( 6 + corner ) * 3;
+		assert.deepEqual(
+			Array.from( backfaces.positions.slice( back, back + 3 ) ),
+			Array.from( backfaces.positions.slice( front, front + 3 ) )
+		);
+	}
 
 } );
 
@@ -184,12 +195,19 @@ test( 'applies QuadStrip used-vertex cleanup only when finalized', () => {
 		{ position: [ 2, 0, 0 ], orientation: [ 0, 0, 0, 1 ], pressure: 1, timestampMs: 32 },
 		{ position: [ 3, 0, 0 ], orientation: [ 0, 0, 0, 1 ], pressure: 1, timestampMs: 48 }
 	);
-	assert.equal( getGeneratedVertexCount( generateBrushGeometry( threeSolids, 'ribbon', {
+	const welded = generateBrushGeometry( threeSolids, 'ribbon', {
 		...options, finalized: true
-	} ) ), 18 );
+	} );
+	assert.equal( getGeneratedVertexCount( welded ), 8 );
+	assert.equal( getGeneratedIndexCount( welded ), 18 );
+	assert.deepEqual( Array.from( welded.indices ), [
+		0, 3, 1, 0, 2, 3,
+		2, 5, 3, 2, 4, 5,
+		4, 7, 5, 4, 6, 7
+	] );
 	assert.equal( getGeneratedVertexCount( generateBrushGeometry( threeSolids, 'ribbon', {
 		...options, finalized: true, lastControlPointIsKeeper: true
-	} ) ), 18 );
+	} ) ), 8 );
 
 } );
 
@@ -198,13 +216,13 @@ test( 'smooths QuadStrip bends with the source midpoint and fuse pass', () => {
 	const stroke = createStroke();
 	stroke.controlPoints.push(
 		{
-			position: [ 1, 1, 0 ],
+			position: [ 2, 1, 0 ],
 			orientation: [ 0, 0, 0, 1 ],
 			pressure: 1,
 			timestampMs: 32
 		},
 		{
-			position: [ 0, 1, 0 ],
+			position: [ 2, 2, 0 ],
 			orientation: [ 0, 0, 0, 1 ],
 			pressure: 1,
 			timestampMs: 48
@@ -215,44 +233,46 @@ test( 'smooths QuadStrip bends with the source midpoint and fuse pass', () => {
 	} );
 	assert.equal( getGeneratedVertexCount( geometry ), 18 );
 	const position = ( vertex ) => Array.from( geometry.positions.slice( vertex * 3, vertex * 3 + 3 ) );
-	// Unity +Z forward is converted to Three.js -Z, so these are the converted
-	// ComputeSurfaceFrameNew half-right vectors for +X, +Y, -X movement.
-	const sourceRights = [ [ 0, -0.1, 0 ], [ 0.1, 0, 0 ], [ 0, 0.1, 0 ] ];
+	// These are the mirrored-coordinate ComputeSurfaceFrameNew half-right vectors
+	// for +X, diagonal, and +Y movement in Three.js space.
+	const diagonal = 0.1 / Math.sqrt( 2 );
+	const sourceRights = [ [ 0, 0.1, 0 ], [ -diagonal, diagonal, 0 ], [ -0.1, 0, 0 ] ];
 	const sourceSolid = ( segment ) => {
 		const previous = stroke.controlPoints[ segment ].position;
 		const current = stroke.controlPoints[ segment + 1 ].position;
 		const right = sourceRights[ segment ];
 		const offset = ( point, sign ) => point.map( ( value, axis ) => value + sign * right[ axis ] );
-		return [
+		const sourceOrder = [
 			offset( previous, -1 ), offset( current, -1 ), offset( previous, 1 ),
 			offset( previous, 1 ), offset( current, -1 ), offset( current, 1 )
 		];
+		return [ 0, 2, 1, 3, 5, 4 ].map( corner => sourceOrder[ corner ] );
 	};
 	const back = sourceSolid( 0 );
 	const firstMiddle = sourceSolid( 1 );
 	const front = sourceSolid( 2 );
 	const average = ( a, b ) => a.map( ( value, axis ) => ( value + b[ axis ] ) * 0.5 );
-	const firstTrailingTop = average( back[ 1 ], firstMiddle[ 0 ] );
-	const firstTrailingBottom = average( back[ 5 ], firstMiddle[ 2 ] );
-	back[ 1 ] = firstTrailingTop;
-	back[ 4 ] = firstTrailingTop;
-	back[ 5 ] = firstTrailingBottom;
+	const firstTrailingTop = average( back[ 2 ], firstMiddle[ 0 ] );
+	const firstTrailingBottom = average( back[ 4 ], firstMiddle[ 1 ] );
+	back[ 2 ] = firstTrailingTop;
+	back[ 5 ] = firstTrailingTop;
+	back[ 4 ] = firstTrailingBottom;
 	const middle = back.map( ( point, corner ) => point.map( ( value, axis ) =>
 		( value + front[ corner ][ axis ] ) * 0.5 ) );
-	const trailingTop = average( back[ 1 ], middle[ 0 ] );
-	const trailingBottom = average( back[ 5 ], middle[ 2 ] );
+	const trailingTop = average( back[ 2 ], middle[ 0 ] );
+	const trailingBottom = average( back[ 4 ], middle[ 1 ] );
 	middle[ 0 ] = trailingTop;
-	middle[ 2 ] = trailingBottom;
+	middle[ 1 ] = trailingBottom;
 	middle[ 3 ] = trailingBottom;
-	const leadingTop = average( middle[ 1 ], front[ 0 ] );
-	const leadingBottom = average( middle[ 5 ], front[ 2 ] );
-	middle[ 1 ] = leadingTop;
-	middle[ 4 ] = leadingTop;
-	middle[ 5 ] = leadingBottom;
-	assert.deepEqual( position( 1 ), position( 6 ) );
-	assert.deepEqual( position( 5 ), position( 8 ) );
-	assert.deepEqual( position( 7 ), position( 12 ) );
-	assert.deepEqual( position( 11 ), position( 14 ) );
+	const leadingTop = average( middle[ 2 ], front[ 0 ] );
+	const leadingBottom = average( middle[ 4 ], front[ 1 ] );
+	middle[ 2 ] = leadingTop;
+	middle[ 5 ] = leadingTop;
+	middle[ 4 ] = leadingBottom;
+	assert.deepEqual( position( 2 ), position( 6 ) );
+	assert.deepEqual( position( 4 ), position( 7 ) );
+	assert.deepEqual( position( 8 ), position( 12 ) );
+	assert.deepEqual( position( 10 ), position( 13 ) );
 	for ( let corner = 0; corner < 6; corner += 1 ) {
 		for ( let axis = 0; axis < 3; axis += 1 ) {
 			assertClose( position( 6 + corner )[ axis ], middle[ corner ][ axis ] );
@@ -262,13 +282,13 @@ test( 'smooths QuadStrip bends with the source midpoint and fuse pass', () => {
 		const distance = ( first, second ) => Math.hypot( ...position( first ).map(
 			( value, axis ) => position( second )[ axis ] - value ) );
 		const vertex = solid * 6;
-		return ( distance( vertex, vertex + 1 ) + distance( vertex + 3, vertex + 5 ) ) * 0.5;
+		return ( distance( vertex, vertex + 2 ) + distance( vertex + 3, vertex + 4 ) ) * 0.5;
 	};
 	const lengths = [ 0, 1, 2 ].map( solidLength );
 	const totalLength = lengths.reduce( ( total, length ) => total + length, 0 );
-	assertClose( geometry.uvs[ 2 ], lengths[ 0 ] / totalLength );
-	assertClose( geometry.uvs[ 14 ], ( lengths[ 0 ] + lengths[ 1 ] ) / totalLength );
-	assertClose( geometry.uvs[ 26 ], 1 );
+	assertClose( geometry.uvs[ 4 ], lengths[ 0 ] / totalLength );
+	assertClose( geometry.uvs[ 16 ], ( lengths[ 0 ] + lengths[ 1 ] ) / totalLength );
+	assertClose( geometry.uvs[ 28 ], 1 );
 
 } );
 
@@ -292,14 +312,14 @@ test( 'adjusts and recovers QuadStrip width with the source bend state', () => {
 		bendCenter[ 1 ] - 1,
 		0
 	);
-	assertClose( width( bend, 7, 11 ), expectedBentWidth );
+	assertClose( width( bend, 8, 10 ), expectedBentWidth );
 
 	stroke.controlPoints.push( {
 		position: [ turn[ 0 ] + direction[ 0 ] * 3, turn[ 1 ] + direction[ 1 ] * 3, 0 ],
 		orientation: [ 0, 0, 0, 1 ], pressure: 1, timestampMs: 48
 	} );
 	const firstRecovery = generateBrushGeometry( stroke, 'ribbon', options );
-	assertClose( width( firstRecovery, 13, 17 ), expectedBentWidth );
+	assertClose( width( firstRecovery, 14, 16 ), expectedBentWidth );
 
 	const previous = stroke.controlPoints[ 3 ].position;
 	stroke.controlPoints.push( {
@@ -307,7 +327,7 @@ test( 'adjusts and recovers QuadStrip width with the source bend state', () => {
 		orientation: [ 0, 0, 0, 1 ], pressure: 1, timestampMs: 64
 	} );
 	const recovered = generateBrushGeometry( stroke, 'ribbon', options );
-	assertClose( width( recovered, 19, 23 ), 2 );
+	assertClose( width( recovered, 20, 22 ), 2 );
 
 } );
 
@@ -413,8 +433,8 @@ test( 'smooths ribbon pressure over the Open Brush distance window', () => {
 		generatorClass: 'FlatGeometryBrush',
 		geometryParams: { m11Compatibility: true }
 	} );
-	const quadLeadingWidth = Math.abs( quad.positions[ 16 ] - quad.positions[ 4 ] );
-	const quadTrailingWidth = Math.abs( quad.positions[ 7 ] - quad.positions[ 1 ] );
+	const quadLeadingWidth = Math.abs( quad.positions[ 13 ] - quad.positions[ 7 ] );
+	const quadTrailingWidth = Math.abs( quad.positions[ 4 ] - quad.positions[ 1 ] );
 	const flatWidth = Math.abs( flatM11.positions[ 10 ] - flatM11.positions[ 7 ] );
 	assertClose( quadLeadingWidth, 1 - Math.pow( 0.1, 0.5 ) );
 	assertClose( quadTrailingWidth, quadLeadingWidth );
@@ -441,9 +461,9 @@ test( 'fades DistanceUV QuadStrip endpoints over the source distance', () => {
 	} );
 	const fadeAlpha = 203 / 255;
 	assertClose( geometry.colors[ 3 ], 0 );
-	assertClose( geometry.colors[ 7 ], fadeAlpha );
+	assertClose( geometry.colors[ 11 ], fadeAlpha );
 	assertClose( geometry.colors[ 6 * 4 + 3 ], fadeAlpha );
-	assertClose( geometry.colors[ 7 * 4 + 3 ], 0 );
+	assertClose( geometry.colors[ 8 * 4 + 3 ], 0 );
 
 } );
 
@@ -511,9 +531,35 @@ test( 'uses Open Brush radial tangents for hard-edged tube rings', () => {
 					geometry.positions[ positionOffset + axis ] * 2
 				);
 			}
-			assertClose( geometry.tangents[ tangentOffset + 3 ], 1 );
+			assertClose( geometry.tangents[ tangentOffset + 3 ], -1 );
 		}
 	}
+
+} );
+
+test( 'overwrites short GeometryBrush updates but retains the trailing knot', () => {
+
+	const stroke = createStroke();
+	stroke.brushSize = 1;
+	stroke.controlPoints = [ 0, 0.05, 0.1, 0.5, 0.55 ].map( ( x, index ) => ( {
+		position: [ x, 0, 0 ],
+		orientation: [ 0, 0, 0, 1 ],
+		pressure: 1,
+		timestampMs: index * 16
+	} ) );
+	const geometry = generateBrushGeometry( stroke, 'tube', {
+		pressureSizeRange: [ 1, 1 ],
+		generatorClass: 'TubeBrush',
+		geometryParams: {
+			tubeSideCount: 4,
+			tubeEndCaps: false
+		}
+	} );
+
+	// The two short interior updates are overwritten. The final 0.55 update is
+	// still the live trailing knot even though it is below the spawn interval.
+	assert.equal( getGeneratedVertexCount( geometry ), 15 );
+	assert.equal( getGeneratedIndexCount( geometry ), 48 );
 
 } );
 
@@ -530,7 +576,7 @@ test( 'uses flat SquareBrush caps without tube tip vertices', () => {
 	assert.equal( getGeneratedIndexCount( geometry ), 36 );
 	assert.deepEqual(
 		Array.from( geometry.indices.slice( -12 ) ),
-		[ 5, 6, 2, 2, 6, 1, 13, 10, 14, 14, 10, 9 ]
+		[ 5, 3, 1, 3, 7, 1, 13, 9, 11, 9, 15, 11 ]
 	);
 	assertClose( geometry.bounds.min[ 0 ], 0 );
 	assertClose( geometry.bounds.max[ 0 ], 1 );
@@ -596,8 +642,9 @@ test( 'does not break a straight SquareBrush stroke on pointer twist', () => {
 
 	const stroke = createStroke();
 	stroke.brushSize = 10;
+	stroke.controlPoints[ 1 ].position = [ 3, 0, 0 ];
 	stroke.controlPoints.push( {
-		position: [ 2, 0, 0 ],
+		position: [ 6, 0, 0 ],
 		orientation: [ 1, 0, 0, 0 ],
 		pressure: 1,
 		timestampMs: 32
@@ -624,25 +671,25 @@ test( 'restarts tube section frames and atlas rows after a break', () => {
 			timestampMs: 0
 		},
 		{
-			position: [ 1, 0, 0 ],
+			position: [ 3, 0, 0 ],
 			orientation: [ 0, 0, 0, 1 ],
 			pressure: 1,
 			timestampMs: 16
 		},
 		{
-			position: [ 2, 0, 0 ],
+			position: [ 6, 0, 0 ],
 			orientation: [ 0, 0, 0, 1 ],
 			pressure: 1,
 			timestampMs: 32
 		},
 		{
-			position: [ 2, 1, 0 ],
+			position: [ 6, 3, 0 ],
 			orientation: [ 0, 0, 0, 1 ],
 			pressure: 1,
 			timestampMs: 48
 		},
 		{
-			position: [ 2, 2, 0 ],
+			position: [ 6, 6, 0 ],
 			orientation: [ 0, 0, Math.SQRT1_2, Math.SQRT1_2 ],
 			pressure: 1,
 			timestampMs: 64
@@ -654,6 +701,7 @@ test( 'restarts tube section frames and atlas rows after a break', () => {
 		geometryParams: {
 			tubeSideCount: 4,
 			tubeEndCaps: false,
+			tubeBreakAngleMultiplier: 0.1,
 			textureAtlasV: 64
 		}
 	} );
@@ -701,11 +749,11 @@ test( 'restarts Tube modifiers and StretchUV for each broken section', () => {
 		return 0.5 * Math.hypot( ...[ 0, 1, 2 ].map( axis =>
 			geometry.positions[ opposite * 3 + axis ] - geometry.positions[ first * 3 + axis ] ) );
 	};
-	for ( const ring of [ 0, 2, 3, 5 ] ) {
+	for ( const ring of [ 1, 2, 4, 5 ] ) {
 		assertClose( radius( ring ), 0 );
 	}
-	assert.ok( radius( 1 ) > 0.4 );
-	assert.ok( radius( 4 ) > 0.4 );
+	assert.ok( radius( 0 ) > 0.4 );
+	assert.ok( radius( 3 ) > 0.4 );
 	for ( const [ ring, expectedU ] of [ [ 0, 0 ], [ 1, 0.5 ], [ 2, 0.5 ], [ 3, 0 ], [ 4, 0.5 ], [ 5, 0.5 ] ] ) {
 		assertClose( geometry.uvs[ ring * ringVertexCount * 2 ], expectedU );
 	}
@@ -738,9 +786,10 @@ test( 'interpolates LoftedProfile from trailing-knot partial progress', () => {
 	const radius = 0.5 * Math.hypot( ...[ 0, 1, 2 ].map( axis =>
 		geometry.positions[ opposite * 3 + axis ] - geometry.positions[ first * 3 + axis ] ) );
 	const partialProgress = 0.5;
-	const currentCurve = 1 + ( 0.5 - 1 ) * 0.185;
-	const interpolatedCurve = currentCurve + ( 0.5 - currentCurve ) * partialProgress;
-	const attenuation = ( 4 - 3 + partialProgress ) / 7;
+	// Ring one is the shared back ring owned and rewritten by knot two. With
+	// three geometry knots this is still on the head branch of LoftedProfile.
+	const interpolatedCurve = 1;
+	const attenuation = ( 3 - 3 + partialProgress ) / 7;
 	assertClose( radius, 0.5 * interpolatedCurve * attenuation );
 
 } );

@@ -55,6 +55,7 @@ function $6fafcf15f6b61d60$export$cbaccd875830d3d0() {
         tubeRingUs: new Float32Array($6fafcf15f6b61d60$var$INITIAL_VERTEX_CAPACITY),
         tubeOpacities: new Float32Array($6fafcf15f6b61d60$var$INITIAL_VERTEX_CAPACITY),
         tubeSmoothedPressures: new Float32Array($6fafcf15f6b61d60$var$INITIAL_VERTEX_CAPACITY),
+        tubeRetainedControlPoints: [],
         ribbonBreakBefore: new Uint8Array($6fafcf15f6b61d60$var$INITIAL_VERTEX_CAPACITY),
         ribbonRunningLengths: new Float32Array($6fafcf15f6b61d60$var$INITIAL_VERTEX_CAPACITY),
         ribbonSectionLengths: new Float32Array($6fafcf15f6b61d60$var$INITIAL_VERTEX_CAPACITY),
@@ -195,16 +196,17 @@ function $6fafcf15f6b61d60$var$generateRibbonGeometry(stroke, family, options, o
     const usesFlatGeometrySmoothing = options.generatorClass === "FlatGeometryBrush";
     out.uv1Size = hasVectorOffset ? 3 : 0;
     if (options.generatorClass === "QuadStripUnitizedUVBrush") return $6fafcf15f6b61d60$var$generateUnitizedRibbonGeometry(stroke, family, options, out);
+    const usesQuadStripTriangleSoup = options.generatorClass === "QuadStripBrushDistanceUV" || options.generatorClass === "QuadStripBrushStretchUV";
     const pointCount = stroke.controlPoints.length;
-    $6fafcf15f6b61d60$var$prepareRibbonSections(stroke, out);
+    if (usesQuadStripTriangleSoup) $6fafcf15f6b61d60$var$prepareQuadStripSections(stroke, out);
+    else $6fafcf15f6b61d60$var$prepareRibbonSections(stroke, out);
     const renderPointCount = $6fafcf15f6b61d60$var$resolveRibbonRenderPointCount(pointCount, options, out.ribbonBreakBefore);
     const frontVertexCount = renderPointCount * 2;
     const segmentCount = Math.max(0, renderPointCount - 1);
-    const connectedSegmentCount = $6fafcf15f6b61d60$var$countConnectedRibbonSegments(out.ribbonBreakBefore, renderPointCount);
+    const connectedSegmentCount = $6fafcf15f6b61d60$var$countConnectedRibbonSegments(out.ribbonBreakBefore, renderPointCount, usesQuadStripTriangleSoup);
     $6fafcf15f6b61d60$var$prepareRibbonSmoothedPressures(stroke, options, out);
     const frontIndexCount = connectedSegmentCount * 6;
     const hasBackfaces = options.geometryParams?.renderBackfaces === true;
-    const usesQuadStripTriangleSoup = options.generatorClass === "QuadStripBrushDistanceUV" || options.generatorClass === "QuadStripBrushStretchUV";
     const sourceVertexCount = frontVertexCount * (hasBackfaces ? 2 : 1);
     const vertexCount = usesQuadStripTriangleSoup ? frontIndexCount * (hasBackfaces ? 2 : 1) : sourceVertexCount;
     const indexCount = frontIndexCount * (hasBackfaces ? 2 : 1);
@@ -432,14 +434,122 @@ function $6fafcf15f6b61d60$var$generateRibbonGeometry(stroke, family, options, o
     if (usesQuadStripTriangleSoup) {
         $6fafcf15f6b61d60$var$expandRibbonTriangleSoup(out, ribbonBreakBefore, renderPointCount, frontVertexCount, frontIndexCount, hasBackfaces, vertexCount);
         $6fafcf15f6b61d60$var$applyQuadStripPositionQuads(out, stroke, options, ribbonBreakBefore, renderPointCount);
-        $6fafcf15f6b61d60$var$applyQuadStripMidpointFusion(out, ribbonBreakBefore, renderPointCount, frontIndexCount / 6, hasBackfaces, options.generatorClass, tileRate);
-        if (options.generatorClass === "QuadStripBrushDistanceUV") $6fafcf15f6b61d60$var$applyQuadStripDistanceOpacityFade(out, ribbonBreakBefore, renderPointCount, frontIndexCount / 6, hasBackfaces);
+        $6fafcf15f6b61d60$var$applyQuadStripMidpointFusion(out, ribbonBreakBefore, renderPointCount, frontIndexCount / 6, hasBackfaces, options.generatorClass, tileRate, atlasRows, stroke.seed);
     }
     const finalizedCounts = usesQuadStripTriangleSoup ? $6fafcf15f6b61d60$var$finalizeQuadStripUsedGeometry(out, ribbonBreakBefore, renderPointCount, frontIndexCount / 6, hasBackfaces, options) : undefined;
+    let finalVertexCount = finalizedCounts?.vertexCount ?? vertexCount;
+    let finalIndexCount = finalizedCounts?.indexCount ?? indexCount;
+    if (usesQuadStripTriangleSoup && options.finalized === true && !hasBackfaces && finalVertexCount > 0) {
+        const weldedCounts = $6fafcf15f6b61d60$var$weldSingleSidedQuadStrip(out, ribbonBreakBefore, renderPointCount, finalVertexCount / 6);
+        finalVertexCount = weldedCounts.vertexCount;
+        finalIndexCount = weldedCounts.indexCount;
+    }
+    if (usesQuadStripTriangleSoup && hasBackfaces && finalVertexCount > 0) $6fafcf15f6b61d60$var$interleaveQuadStripBackfaces(out, finalVertexCount / 12);
     out.family = family;
-    out.vertexCount = finalizedCounts?.vertexCount ?? vertexCount;
-    out.indexCount = finalizedCounts?.indexCount ?? indexCount;
+    out.vertexCount = finalVertexCount;
+    out.indexCount = finalIndexCount;
     return reallocated;
+}
+/** Port of QuadStripBrush.WeldSingleSidedQuadStrip in canonical Three winding. */ function $6fafcf15f6b61d60$var$weldSingleSidedQuadStrip(out, breakBefore, pointCount, solidCount) {
+    $6fafcf15f6b61d60$var$weldSingleSidedQuadStripAttribute(out.positions, 3, out.uv1s, breakBefore, pointCount, solidCount);
+    $6fafcf15f6b61d60$var$weldSingleSidedQuadStripAttribute(out.normals, 3, out.uv1s, breakBefore, pointCount, solidCount);
+    $6fafcf15f6b61d60$var$weldSingleSidedQuadStripAttribute(out.tangents, 4, out.uv1s, breakBefore, pointCount, solidCount);
+    $6fafcf15f6b61d60$var$weldSingleSidedQuadStripAttribute(out.colors, 4, out.uv1s, breakBefore, pointCount, solidCount);
+    $6fafcf15f6b61d60$var$weldSingleSidedQuadStripAttribute(out.uvs, 2, out.uv1s, breakBefore, pointCount, solidCount);
+    if (out.uv1Size === 3) $6fafcf15f6b61d60$var$weldSingleSidedQuadStripAttribute(out.vectorUvs, 3, out.uv1s, breakBefore, pointCount, solidCount);
+    let solid = 0;
+    let vertexWrite = 0;
+    let indexWrite = 0;
+    let startsStrip = true;
+    for(let segment = 0; segment < pointCount - 1 && solid < solidCount; segment += 1){
+        const sectionState = breakBefore[segment + 1];
+        if (sectionState === 2) continue;
+        startsStrip = startsStrip || sectionState === 1;
+        if (startsStrip) {
+            out.indices[indexWrite] = vertexWrite;
+            out.indices[indexWrite + 1] = vertexWrite + 3;
+            out.indices[indexWrite + 2] = vertexWrite + 1;
+            out.indices[indexWrite + 3] = vertexWrite;
+            out.indices[indexWrite + 4] = vertexWrite + 2;
+            out.indices[indexWrite + 5] = vertexWrite + 3;
+            vertexWrite += 4;
+            startsStrip = false;
+        } else {
+            const backRight = vertexWrite - 2;
+            const backLeft = vertexWrite - 1;
+            const frontRight = vertexWrite;
+            const frontLeft = vertexWrite + 1;
+            out.indices[indexWrite] = backRight;
+            out.indices[indexWrite + 1] = frontLeft;
+            out.indices[indexWrite + 2] = backLeft;
+            out.indices[indexWrite + 3] = backRight;
+            out.indices[indexWrite + 4] = frontRight;
+            out.indices[indexWrite + 5] = frontLeft;
+            vertexWrite += 2;
+        }
+        indexWrite += 6;
+        solid += 1;
+    }
+    return {
+        vertexCount: vertexWrite,
+        indexCount: indexWrite
+    };
+}
+function $6fafcf15f6b61d60$var$weldSingleSidedQuadStripAttribute(target, itemSize, scratch, breakBefore, pointCount, solidCount) {
+    scratch.set(target.subarray(0, solidCount * 6 * itemSize), 0);
+    let solid = 0;
+    let vertexWrite = 0;
+    let startsStrip = true;
+    for(let segment = 0; segment < pointCount - 1 && solid < solidCount; segment += 1){
+        const sectionState = breakBefore[segment + 1];
+        if (sectionState === 2) continue;
+        startsStrip = startsStrip || sectionState === 1;
+        const sourceVertex = solid * 6;
+        if (startsStrip) {
+            $6fafcf15f6b61d60$var$copyAttributeItem(scratch, target, sourceVertex + 1, vertexWrite, itemSize);
+            $6fafcf15f6b61d60$var$copyAttributeItem(scratch, target, sourceVertex, vertexWrite + 1, itemSize);
+            $6fafcf15f6b61d60$var$copyAttributeItem(scratch, target, sourceVertex + 4, vertexWrite + 2, itemSize);
+            $6fafcf15f6b61d60$var$copyAttributeItem(scratch, target, sourceVertex + 2, vertexWrite + 3, itemSize);
+            vertexWrite += 4;
+            startsStrip = false;
+        } else {
+            $6fafcf15f6b61d60$var$copyAttributeItem(scratch, target, sourceVertex + 4, vertexWrite, itemSize);
+            $6fafcf15f6b61d60$var$copyAttributeItem(scratch, target, sourceVertex + 2, vertexWrite + 1, itemSize);
+            vertexWrite += 2;
+        }
+        solid += 1;
+    }
+}
+/** Matches Open Brush's per-solid front/back vertex ordering. */ function $6fafcf15f6b61d60$var$interleaveQuadStripBackfaces(out, solidCount) {
+    const frontVertexCount = solidCount * 6;
+    const totalVertexCount = frontVertexCount * 2;
+    $6fafcf15f6b61d60$var$interleaveVertexAttribute(out.positions, 3, solidCount, out.uv1s);
+    $6fafcf15f6b61d60$var$interleaveVertexAttribute(out.normals, 3, solidCount, out.uv1s);
+    $6fafcf15f6b61d60$var$interleaveVertexAttribute(out.tangents, 4, solidCount, out.uv1s);
+    $6fafcf15f6b61d60$var$interleaveVertexAttribute(out.colors, 4, solidCount, out.uv1s);
+    $6fafcf15f6b61d60$var$interleaveVertexAttribute(out.uvs, 2, solidCount, out.uv1s);
+    if (out.uv1Size === 3) $6fafcf15f6b61d60$var$interleaveVertexAttribute(out.vectorUvs, 3, solidCount, out.uv1s);
+    for(let index = 0; index < totalVertexCount; index += 1)out.indices[index] = index;
+}
+function $6fafcf15f6b61d60$var$interleaveVertexAttribute(target, itemSize, solidCount, scratch) {
+    const verticesPerSide = solidCount * 6;
+    const valueCount = verticesPerSide * 2 * itemSize;
+    scratch.set(target.subarray(0, valueCount), 0);
+    for(let solid = 0; solid < solidCount; solid += 1){
+        const frontSource = solid * 6;
+        const backSource = verticesPerSide + frontSource;
+        const frontDestination = solid * 12;
+        const backDestination = frontDestination + 6;
+        for(let corner = 0; corner < 6; corner += 1){
+            $6fafcf15f6b61d60$var$copyAttributeItem(scratch, target, frontSource + corner, frontDestination + corner, itemSize);
+            $6fafcf15f6b61d60$var$copyAttributeItem(scratch, target, backSource + corner, backDestination + corner, itemSize);
+        }
+    }
+}
+function $6fafcf15f6b61d60$var$copyAttributeItem(source, target, sourceIndex, targetIndex, itemSize) {
+    const sourceOffset = sourceIndex * itemSize;
+    const targetOffset = targetIndex * itemSize;
+    for(let component = 0; component < itemSize; component += 1)target[targetOffset + component] = source[sourceOffset + component];
 }
 function $6fafcf15f6b61d60$var$finalizeQuadStripUsedGeometry(out, breakBefore, pointCount, frontSolidCount, hasBackfaces, options) {
     if (options.finalized !== true || options.lastControlPointIsKeeper !== false || pointCount < 2) return undefined;
@@ -490,7 +600,7 @@ function $6fafcf15f6b61d60$var$expandRibbonTriangleSoup(out, breakBefore, pointC
     ];
     let solid = 0;
     for(let segment = 0; segment < pointCount - 1; segment += 1){
-        if (breakBefore[segment + 1] === 1) continue;
+        if (breakBefore[segment + 1] === 2) continue;
         const frontSource = sourceOffset + segment * 2;
         const frontDestination = solid * 6;
         for(let corner = 0; corner < 6; corner += 1)$6fafcf15f6b61d60$var$copyRibbonVertex(out, frontSource + frontPattern[corner], frontDestination + corner);
@@ -580,17 +690,13 @@ function $6fafcf15f6b61d60$var$applyQuadStripPositionQuads(out, stroke, options,
     let previousOpacity = 0;
     let lastSizeShrink = 0;
     let sectionSolidCount = 0;
+    let lastSpawnPointIndex = 0;
     let solid = 0;
     for(let pointIndex = 1; pointIndex < pointCount; pointIndex += 1){
-        if (breakBefore[pointIndex] === 1) {
-            previousRight[0] = 0;
-            previousRight[1] = 0;
-            previousRight[2] = 0;
-            lastSizeShrink = 0;
-            sectionSolidCount = 0;
-            continue;
-        }
-        const previousPoint = stroke.controlPoints[pointIndex - 1];
+        const sectionState = breakBefore[pointIndex];
+        if (sectionState === 2) continue;
+        if (sectionState === 1) sectionSolidCount = 0;
+        const previousPoint = stroke.controlPoints[lastSpawnPointIndex];
         const point = stroke.controlPoints[pointIndex];
         tangent[0] = point.position[0] - previousPoint.position[0];
         tangent[1] = point.position[1] - previousPoint.position[1];
@@ -599,7 +705,7 @@ function $6fafcf15f6b61d60$var$applyQuadStripPositionQuads(out, stroke, options,
         if (!$6fafcf15f6b61d60$var$normalizeInPlace(tangent)) continue;
         $6fafcf15f6b61d60$var$rotateByQuaternion(point.orientation, $6fafcf15f6b61d60$var$VEC_FORWARD, pointerForward);
         $6fafcf15f6b61d60$var$rotateByQuaternion(point.orientation, $6fafcf15f6b61d60$var$VEC_UP, pointerUp);
-        $6fafcf15f6b61d60$var$computeSurfaceFrame(previousRight, tangent, pointerForward, pointerUp, solid === 0, right, normal);
+        $6fafcf15f6b61d60$var$computeSurfaceFrame(previousRight, tangent, pointerForward, pointerUp, solid === 0, right, normal, true);
         const sourceSize = localBrushSize * $6fafcf15f6b61d60$var$getPressureSizeMultiplier(out.ribbonSmoothedPressures[pointIndex], pressureSizeMin);
         let size = sourceSize - lastSizeShrink;
         center[0] = (previousPoint.position[0] + point.position[0]) * 0.5;
@@ -661,8 +767,8 @@ function $6fafcf15f6b61d60$var$applyQuadStripPositionQuads(out, stroke, options,
         const opacity = $6fafcf15f6b61d60$var$getPressureOpacityMultiplier(out.ribbonSmoothedPressures[pointIndex], pressureOpacityMin, pressureOpacityMax) * descriptorOpacity;
         const trailingOpacity = solid === 0 ? opacity : previousOpacity;
         $6fafcf15f6b61d60$var$writeColor(out.colors, vertex, stroke.color, trailingOpacity);
-        $6fafcf15f6b61d60$var$writeColor(out.colors, vertex + 1, stroke.color, opacity);
-        $6fafcf15f6b61d60$var$writeColor(out.colors, vertex + 2, stroke.color, trailingOpacity);
+        $6fafcf15f6b61d60$var$writeColor(out.colors, vertex + 1, stroke.color, trailingOpacity);
+        $6fafcf15f6b61d60$var$writeColor(out.colors, vertex + 2, stroke.color, opacity);
         $6fafcf15f6b61d60$var$writeColor(out.colors, vertex + 3, stroke.color, trailingOpacity);
         $6fafcf15f6b61d60$var$writeColor(out.colors, vertex + 4, stroke.color, opacity);
         $6fafcf15f6b61d60$var$writeColor(out.colors, vertex + 5, stroke.color, opacity);
@@ -676,16 +782,17 @@ function $6fafcf15f6b61d60$var$applyQuadStripPositionQuads(out, stroke, options,
         $6fafcf15f6b61d60$var$normalizeInPlace(previousRight);
         lastSizeShrink = sizeShrink;
         sectionSolidCount += 1;
+        lastSpawnPointIndex = pointIndex;
         solid += 1;
     }
 }
 function $6fafcf15f6b61d60$var$writeQuadStripPositionQuad(target, vertex, center, halfForward, halfRight) {
     $6fafcf15f6b61d60$var$writePositionComponents(target, vertex, center[0] - halfForward[0] - halfRight[0], center[1] - halfForward[1] - halfRight[1], center[2] - halfForward[2] - halfRight[2]);
-    $6fafcf15f6b61d60$var$writePositionComponents(target, vertex + 1, center[0] + halfForward[0] - halfRight[0], center[1] + halfForward[1] - halfRight[1], center[2] + halfForward[2] - halfRight[2]);
-    $6fafcf15f6b61d60$var$writePositionComponents(target, vertex + 2, center[0] - halfForward[0] + halfRight[0], center[1] - halfForward[1] + halfRight[1], center[2] - halfForward[2] + halfRight[2]);
-    $6fafcf15f6b61d60$var$copyPosition(target, vertex + 2, vertex + 3);
-    $6fafcf15f6b61d60$var$copyPosition(target, vertex + 1, vertex + 4);
-    $6fafcf15f6b61d60$var$writePositionComponents(target, vertex + 5, center[0] + halfForward[0] + halfRight[0], center[1] + halfForward[1] + halfRight[1], center[2] + halfForward[2] + halfRight[2]);
+    $6fafcf15f6b61d60$var$writePositionComponents(target, vertex + 1, center[0] - halfForward[0] + halfRight[0], center[1] - halfForward[1] + halfRight[1], center[2] - halfForward[2] + halfRight[2]);
+    $6fafcf15f6b61d60$var$writePositionComponents(target, vertex + 2, center[0] + halfForward[0] - halfRight[0], center[1] + halfForward[1] - halfRight[1], center[2] + halfForward[2] - halfRight[2]);
+    $6fafcf15f6b61d60$var$copyPosition(target, vertex + 1, vertex + 3);
+    $6fafcf15f6b61d60$var$writePositionComponents(target, vertex + 4, center[0] + halfForward[0] + halfRight[0], center[1] + halfForward[1] + halfRight[1], center[2] + halfForward[2] + halfRight[2]);
+    $6fafcf15f6b61d60$var$copyPosition(target, vertex + 2, vertex + 5);
 }
 function $6fafcf15f6b61d60$var$writePositionComponents(target, vertex, x, y, z) {
     const offset = vertex * 3;
@@ -704,19 +811,37 @@ function $6fafcf15f6b61d60$var$writeQuadStripVectorOffset(target, vertex, halfRi
 }
 const $6fafcf15f6b61d60$var$QUAD_STRIP_CORNER_SIDES = [
     -1,
+    1,
     -1,
     1,
     1,
-    -1,
-    1
+    -1
 ];
-function $6fafcf15f6b61d60$var$applyQuadStripMidpointFusion(out, breakBefore, pointCount, frontSolidCount, hasBackfaces, generatorClass, tileRate) {
+function $6fafcf15f6b61d60$var$applyQuadStripMidpointFusion(out, breakBefore, pointCount, frontSolidCount, hasBackfaces, generatorClass, tileRate, atlasRows, seed) {
+    // Open Brush mutates the newest three solids after every append. Preserve the
+    // unsmoothed front positions because starting a detached section restores the
+    // previous solid before touching up the end of the old section. uv1s is
+    // reusable geometry scratch for QuadStrip brushes and is overwritten later
+    // if backfaces need interleaving.
+    const rawPositions = out.uv1s;
+    rawPositions.set(out.positions.subarray(0, frontSolidCount * 18), 0);
     let solid = 0;
     let sectionStart = 0;
     for(let segment = 0; segment < pointCount - 1; segment += 1){
-        if (breakBefore[segment + 1] === 1) {
+        const sectionState = breakBefore[segment + 1];
+        if (sectionState === 2) continue;
+        if (sectionState === 1) {
+            if (generatorClass === "QuadStripBrushDistanceUV") // Open Brush finalizes the old section before AppendLeadingQuad restores
+            // and re-fuses its last solid. Its endpoint alpha therefore reflects the
+            // geometry immediately before the detached section begins.
+            $6fafcf15f6b61d60$var$applyQuadStripSectionOpacityFade(out, sectionStart, solid);
+            const previousSectionLength = solid - sectionStart;
+            if (solid > 0) {
+                $6fafcf15f6b61d60$var$restoreRawQuadStripSolidPositions(out.positions, rawPositions, solid - 1);
+                if (solid + 1 > 2 && previousSectionLength > 1) $6fafcf15f6b61d60$var$fuseQuadStripSolids(out, solid - 2, solid - 1);
+                else if (previousSectionLength === 1) $6fafcf15f6b61d60$var$squashRawQuadStripSolid(out.positions, rawPositions, solid - 1);
+            }
             sectionStart = solid;
-            continue;
         }
         const sectionLength = solid - sectionStart + 1;
         if (sectionLength === 2) $6fafcf15f6b61d60$var$fuseQuadStripSolids(out, solid - 1, solid);
@@ -725,11 +850,14 @@ function $6fafcf15f6b61d60$var$applyQuadStripMidpointFusion(out, breakBefore, po
             $6fafcf15f6b61d60$var$fuseQuadStripSolids(out, solid - 2, solid - 1);
             $6fafcf15f6b61d60$var$fuseQuadStripSolids(out, solid - 1, solid);
         }
-        if (generatorClass === "QuadStripBrushDistanceUV") $6fafcf15f6b61d60$var$updateQuadStripDistanceUvsForAppend(out, sectionStart, solid + 1, out.ribbonSectionLengths[solid], tileRate);
+        if (generatorClass === "QuadStripBrushDistanceUV") {
+            $6fafcf15f6b61d60$var$updateQuadStripDistanceUvsForAppend(out, sectionStart, solid + 1, out.ribbonSectionLengths[solid], tileRate, atlasRows, seed, hasBackfaces);
+            $6fafcf15f6b61d60$var$applyQuadStripSectionOpacityFade(out, sectionStart, solid + 1);
+        }
         solid += 1;
     }
-    if (generatorClass === "QuadStripBrushStretchUV") $6fafcf15f6b61d60$var$applyQuadStripStretchUvs(out, breakBefore, pointCount);
-    $6fafcf15f6b61d60$var$updateQuadStripTangents(out, frontSolidCount);
+    if (generatorClass === "QuadStripBrushStretchUV") $6fafcf15f6b61d60$var$applyQuadStripStretchUvs(out, breakBefore, pointCount, atlasRows, seed, hasBackfaces);
+    $6fafcf15f6b61d60$var$updateQuadStripTangents(out, breakBefore, pointCount, frontSolidCount);
     if (hasBackfaces) {
         const backVertexOffset = frontSolidCount * 6;
         const reverse = [
@@ -757,93 +885,161 @@ function $6fafcf15f6b61d60$var$applyQuadStripMidpointFusion(out, breakBefore, po
     const vertexCount = frontSolidCount * 6 * (hasBackfaces ? 2 : 1);
     for(let vertex = 0; vertex < vertexCount; vertex += 1)$6fafcf15f6b61d60$var$includeBounds(out.bounds, out.positions, vertex);
 }
-function $6fafcf15f6b61d60$var$applyQuadStripStretchUvs(out, breakBefore, pointCount) {
+function $6fafcf15f6b61d60$var$restoreRawQuadStripSolidPositions(positions, rawPositions, solid) {
+    const firstValue = solid * 18;
+    positions.set(rawPositions.subarray(firstValue, firstValue + 18), firstValue);
+}
+function $6fafcf15f6b61d60$var$squashRawQuadStripSolid(positions, rawPositions, solid) {
+    const vertex = solid * 6;
+    const firstOffset = vertex * 3;
+    const oppositeOffset = (vertex + 4) * 3;
+    const centerX = (rawPositions[firstOffset] + rawPositions[oppositeOffset]) * 0.5;
+    const centerY = (rawPositions[firstOffset + 1] + rawPositions[oppositeOffset + 1]) * 0.5;
+    const centerZ = (rawPositions[firstOffset + 2] + rawPositions[oppositeOffset + 2]) * 0.5;
+    for(let corner = 0; corner < 6; corner += 1)$6fafcf15f6b61d60$var$writePositionComponents(positions, vertex + corner, centerX, centerY, centerZ);
+}
+function $6fafcf15f6b61d60$var$applyQuadStripStretchUvs(out, breakBefore, pointCount, atlasRows, seed, hasBackfaces) {
     let sectionStart = 0;
     let solid = 0;
     for(let segment = 0; segment < pointCount - 1; segment += 1){
-        if (breakBefore[segment + 1] === 1) {
-            $6fafcf15f6b61d60$var$applyQuadStripStretchUvSection(out, sectionStart, solid);
+        const sectionState = breakBefore[segment + 1];
+        if (sectionState === 2) continue;
+        if (sectionState === 1) {
+            $6fafcf15f6b61d60$var$applyQuadStripStretchUvSection(out, sectionStart, solid, atlasRows, seed, hasBackfaces);
             sectionStart = solid;
-            continue;
         }
         solid += 1;
     }
-    $6fafcf15f6b61d60$var$applyQuadStripStretchUvSection(out, sectionStart, solid);
+    $6fafcf15f6b61d60$var$applyQuadStripStretchUvSection(out, sectionStart, solid, atlasRows, seed, hasBackfaces);
 }
-function $6fafcf15f6b61d60$var$updateQuadStripDistanceUvsForAppend(out, sectionStart, sectionEnd, pressuredSize, tileRate) {
+function $6fafcf15f6b61d60$var$updateQuadStripDistanceUvsForAppend(out, sectionStart, sectionEnd, pressuredSize, tileRate, atlasRows, seed, hasBackfaces) {
     const firstUpdatedSolid = Math.max(sectionStart, sectionEnd - 3);
     const size = Math.max(pressuredSize, $6fafcf15f6b61d60$var$EPSILON);
     for(let solid = firstUpdatedSolid; solid < sectionEnd; solid += 1){
         const vertex = solid * 6;
-        const previousU = solid === sectionStart ? out.uvs[vertex * 2] : out.uvs[((solid - 1) * 6 + 1) * 2];
+        let previousU;
+        let previousV0;
+        let previousV1;
+        if (solid === sectionStart) {
+            const stride = hasBackfaces ? 12 : 6;
+            const random = $6fafcf15f6b61d60$var$statelessRandom01(seed, sectionStart * stride);
+            const atlasRow = Math.floor(random * 3331) % atlasRows;
+            previousU = random;
+            previousV0 = atlasRow / atlasRows;
+            previousV1 = (atlasRow + 1) / atlasRows;
+        } else {
+            const previousVertex = (solid - 1) * 6;
+            previousU = out.uvs[(previousVertex + 2) * 2];
+            previousV0 = 1 - out.uvs[(previousVertex + 5) * 2 + 1];
+            previousV1 = 1 - out.uvs[(previousVertex + 4) * 2 + 1];
+        }
         const nextU = previousU + tileRate * $6fafcf15f6b61d60$var$getQuadStripSolidLength(out.positions, solid) / size;
-        out.uvs[vertex * 2] = previousU;
-        out.uvs[(vertex + 2) * 2] = previousU;
-        out.uvs[(vertex + 3) * 2] = previousU;
-        out.uvs[(vertex + 1) * 2] = nextU;
-        out.uvs[(vertex + 4) * 2] = nextU;
-        out.uvs[(vertex + 5) * 2] = nextU;
+        $6fafcf15f6b61d60$var$writeQuadStripUvQuad(out.uvs, vertex, previousU, nextU, previousV0, previousV1);
     }
 }
-function $6fafcf15f6b61d60$var$applyQuadStripStretchUvSection(out, firstSolid, endSolid) {
+function $6fafcf15f6b61d60$var$applyQuadStripStretchUvSection(out, firstSolid, endSolid, atlasRows, seed, hasBackfaces) {
     let sectionLength = 0;
     for(let solid = firstSolid; solid < endSolid; solid += 1)sectionLength += $6fafcf15f6b61d60$var$getQuadStripSolidLength(out.positions, solid);
     if (sectionLength <= $6fafcf15f6b61d60$var$EPSILON) sectionLength = 1;
     let runningLength = 0;
+    const quadsPerSolid = hasBackfaces ? 2 : 1;
+    const random = $6fafcf15f6b61d60$var$statelessRandom01(seed, firstSolid * quadsPerSolid * 6);
+    const atlasRow = Math.floor(random * atlasRows);
+    const v0 = atlasRow / atlasRows;
+    const v1 = (atlasRow + 1) / atlasRows;
     for(let solid = firstSolid; solid < endSolid; solid += 1){
         const solidLength = $6fafcf15f6b61d60$var$getQuadStripSolidLength(out.positions, solid);
         const startU = runningLength / sectionLength;
         runningLength += solidLength;
         const endU = runningLength / sectionLength;
         const vertex = solid * 6;
-        out.uvs[vertex * 2] = startU;
-        out.uvs[(vertex + 2) * 2] = startU;
-        out.uvs[(vertex + 3) * 2] = startU;
-        out.uvs[(vertex + 1) * 2] = endU;
-        out.uvs[(vertex + 4) * 2] = endU;
-        out.uvs[(vertex + 5) * 2] = endU;
+        $6fafcf15f6b61d60$var$writeQuadStripUvQuad(out.uvs, vertex, startU, endU, v0, v1);
     }
 }
-function $6fafcf15f6b61d60$var$updateQuadStripTangents(out, solidCount) {
-    const triangleTangent = [
+function $6fafcf15f6b61d60$var$writeQuadStripUvQuad(uvs, vertex, previousU, nextU, v0, v1) {
+    let offset = vertex * 2;
+    uvs[offset] = previousU;
+    uvs[offset + 1] = 1 - v0;
+    offset += 2;
+    uvs[offset] = previousU;
+    uvs[offset + 1] = 1 - v1;
+    offset += 2;
+    uvs[offset] = nextU;
+    uvs[offset + 1] = 1 - v0;
+    offset += 2;
+    uvs[offset] = previousU;
+    uvs[offset + 1] = 1 - v1;
+    offset += 2;
+    uvs[offset] = nextU;
+    uvs[offset + 1] = 1 - v1;
+    offset += 2;
+    uvs[offset] = nextU;
+    uvs[offset + 1] = 1 - v0;
+}
+function $6fafcf15f6b61d60$var$updateQuadStripTangents(out, breakBefore, pointCount, solidCount) {
+    let sectionStart = 0;
+    let solid = 0;
+    for(let segment = 0; segment < pointCount - 1; segment += 1){
+        const sectionState = breakBefore[segment + 1];
+        if (sectionState === 2) continue;
+        if (sectionState === 1) {
+            $6fafcf15f6b61d60$var$updateQuadStripSectionTangents(out, sectionStart, solid);
+            sectionStart = solid;
+        }
+        solid += 1;
+    }
+    $6fafcf15f6b61d60$var$updateQuadStripSectionTangents(out, sectionStart, Math.min(solid, solidCount));
+}
+/** Port of BaseBrushScript.ComputeTangentSpaceForQuads for canonical Three winding. */ function $6fafcf15f6b61d60$var$updateQuadStripSectionTangents(out, firstSolid, endSolid) {
+    const surfaceTangent = [
         0,
         0,
         0
     ];
-    for(let solid = 0; solid < solidCount; solid += 1){
+    const surfaceBitangent = [
+        0,
+        0,
+        0
+    ];
+    const normal = [
+        0,
+        0,
+        0
+    ];
+    const normalCrossTangent = [
+        0,
+        0,
+        0
+    ];
+    let handedness = 1;
+    for(let solid = firstSolid; solid < endSolid; solid += 1){
         const vertex = solid * 6;
-        $6fafcf15f6b61d60$var$computeTriangleSurfaceTangent(out.positions, out.uvs, vertex, vertex + 1, vertex + 2, triangleTangent);
-        for(let corner = 0; corner < 3; corner += 1)$6fafcf15f6b61d60$var$writeOrthonormalTangent(out.tangents, out.normals, vertex + corner, triangleTangent);
-        $6fafcf15f6b61d60$var$computeTriangleSurfaceTangent(out.positions, out.uvs, vertex + 3, vertex + 4, vertex + 5, triangleTangent);
-        for(let corner = 3; corner < 6; corner += 1)$6fafcf15f6b61d60$var$writeOrthonormalTangent(out.tangents, out.normals, vertex + corner, triangleTangent);
-    }
-}
-function $6fafcf15f6b61d60$var$applyQuadStripDistanceOpacityFade(out, breakBefore, pointCount, frontSolidCount, hasBackfaces) {
-    let sectionStart = 0;
-    let solid = 0;
-    for(let segment = 0; segment < pointCount - 1; segment += 1){
-        if (breakBefore[segment + 1] === 1) {
-            $6fafcf15f6b61d60$var$applyQuadStripSectionOpacityFade(out, sectionStart, solid);
-            sectionStart = solid;
-            continue;
+        // Open Brush computes S/T from source corners 0,1,2. After reflecting to
+        // Three and canonicalizing winding, those records are corners 0,2,1.
+        $6fafcf15f6b61d60$var$computeTriangleSurfaceTangent(out.positions, out.uvs, vertex, vertex + 2, vertex + 1, surfaceTangent);
+        if (solid === firstSolid) {
+            $6fafcf15f6b61d60$var$computeTriangleSurfaceBitangent(out.positions, out.uvs, vertex, vertex + 2, vertex + 1, surfaceBitangent);
+            const normalOffset = vertex * 3;
+            normal[0] = out.normals[normalOffset];
+            normal[1] = out.normals[normalOffset + 1];
+            normal[2] = out.normals[normalOffset + 2];
+            $6fafcf15f6b61d60$var$cross(normal, surfaceTangent, normalCrossTangent);
+            // Unity-to-Three reflection reverses tangent-space handedness.
+            handedness = $6fafcf15f6b61d60$var$dot(normalCrossTangent, surfaceBitangent) < 0 ? 1 : -1;
+        } else handedness = out.tangents[(vertex - 6) * 4 + 3];
+        $6fafcf15f6b61d60$var$writeOrthonormalTangent(out.tangents, out.normals, vertex, surfaceTangent, handedness);
+        $6fafcf15f6b61d60$var$writeOrthonormalTangent(out.tangents, out.normals, vertex + 1, surfaceTangent, handedness);
+        $6fafcf15f6b61d60$var$copyVec4At(out.tangents, vertex + 1, vertex + 3);
+        if (solid > firstSolid) {
+            const previousVertex = vertex - 6;
+            $6fafcf15f6b61d60$var$copyVec4At(out.tangents, vertex, previousVertex + 2);
+            $6fafcf15f6b61d60$var$copyVec4At(out.tangents, vertex, previousVertex + 5);
+            $6fafcf15f6b61d60$var$copyVec4At(out.tangents, vertex + 1, previousVertex + 4);
         }
-        solid += 1;
-    }
-    $6fafcf15f6b61d60$var$applyQuadStripSectionOpacityFade(out, sectionStart, solid);
-    if (hasBackfaces) {
-        const backVertexOffset = frontSolidCount * 6;
-        const reverse = [
-            0,
-            2,
-            1,
-            3,
-            5,
-            4
-        ];
-        for(let frontSolid = 0; frontSolid < frontSolidCount; frontSolid += 1){
-            const frontVertex = frontSolid * 6;
-            const backVertex = backVertexOffset + frontVertex;
-            for(let corner = 0; corner < 6; corner += 1)out.colors[(backVertex + corner) * 4 + 3] = out.colors[(frontVertex + reverse[corner]) * 4 + 3];
+        if (solid + 1 === endSolid) {
+            $6fafcf15f6b61d60$var$writeOrthonormalTangent(out.tangents, out.normals, vertex + 2, surfaceTangent, handedness);
+            $6fafcf15f6b61d60$var$copyVec4At(out.tangents, vertex + 2, vertex + 5);
+            $6fafcf15f6b61d60$var$writeOrthonormalTangent(out.tangents, out.normals, vertex + 4, surfaceTangent, handedness);
         }
     }
 }
@@ -855,16 +1051,16 @@ function $6fafcf15f6b61d60$var$applyQuadStripSectionOpacityFade(out, firstSolid,
         const trailingAlpha = solid === firstSolid ? 0 : $6fafcf15f6b61d60$var$quantizeColorByte(Math.min(1, distanceFromLeadingEdge / $6fafcf15f6b61d60$var$QUAD_STRIP_OPACITY_FADE_METERS));
         const vertex = solid * 6;
         out.colors[vertex * 4 + 3] = trailingAlpha;
-        out.colors[(vertex + 2) * 4 + 3] = trailingAlpha;
+        out.colors[(vertex + 1) * 4 + 3] = trailingAlpha;
         out.colors[(vertex + 3) * 4 + 3] = trailingAlpha;
-        out.colors[(vertex + 1) * 4 + 3] = leadingAlpha;
+        out.colors[(vertex + 2) * 4 + 3] = leadingAlpha;
         out.colors[(vertex + 4) * 4 + 3] = leadingAlpha;
         out.colors[(vertex + 5) * 4 + 3] = leadingAlpha;
     }
 }
 function $6fafcf15f6b61d60$var$getQuadStripSolidLength(positions, solid) {
     const vertex = solid * 6;
-    return ($6fafcf15f6b61d60$var$distanceBetweenPositionVertices(positions, vertex, vertex + 1) + $6fafcf15f6b61d60$var$distanceBetweenPositionVertices(positions, vertex + 3, vertex + 5)) * 0.5;
+    return ($6fafcf15f6b61d60$var$distanceBetweenPositionVertices(positions, vertex, vertex + 2) + $6fafcf15f6b61d60$var$distanceBetweenPositionVertices(positions, vertex + 3, vertex + 4)) * 0.5;
 }
 function $6fafcf15f6b61d60$var$distanceBetweenPositionVertices(positions, firstVertex, secondVertex) {
     const first = firstVertex * 3;
@@ -891,32 +1087,34 @@ function $6fafcf15f6b61d60$var$averageQuadStripSolid(out, backSolid, middleSolid
 function $6fafcf15f6b61d60$var$fuseQuadStripSolids(out, backSolid, frontSolid) {
     const backVertex = backSolid * 6;
     const frontVertex = frontSolid * 6;
-    $6fafcf15f6b61d60$var$fuseQuadStripEdge(out, backVertex, frontVertex, 1, 0);
-    $6fafcf15f6b61d60$var$fuseQuadStripEdge(out, backVertex, frontVertex, 5, 2);
-    $6fafcf15f6b61d60$var$copyPosition(out.positions, backVertex + 1, backVertex + 4);
-    $6fafcf15f6b61d60$var$copyPosition(out.positions, frontVertex + 2, frontVertex + 3);
-    $6fafcf15f6b61d60$var$copyVec3At(out.normals, backVertex + 1, backVertex + 4);
-    $6fafcf15f6b61d60$var$copyVec3At(out.normals, backVertex + 5, frontVertex + 3);
-}
-function $6fafcf15f6b61d60$var$fuseQuadStripEdge(out, backVertex, frontVertex, backCorner, frontCorner) {
-    const backOffset = (backVertex + backCorner) * 3;
-    const frontOffset = (frontVertex + frontCorner) * 3;
-    const x = (out.positions[backOffset] + out.positions[frontOffset]) * 0.5;
-    const y = (out.positions[backOffset + 1] + out.positions[frontOffset + 1]) * 0.5;
-    const z = (out.positions[backOffset + 2] + out.positions[frontOffset + 2]) * 0.5;
-    let nx = out.normals[backOffset] + out.normals[frontOffset];
-    let ny = out.normals[backOffset + 1] + out.normals[frontOffset + 1];
-    let nz = out.normals[backOffset + 2] + out.normals[frontOffset + 2];
+    const backNormalOffset = (backVertex + 2) * 3;
+    const frontNormalOffset = frontVertex * 3;
+    let nx = out.normals[backNormalOffset] + out.normals[frontNormalOffset];
+    let ny = out.normals[backNormalOffset + 1] + out.normals[frontNormalOffset + 1];
+    let nz = out.normals[backNormalOffset + 2] + out.normals[frontNormalOffset + 2];
     const normalLength = Math.hypot(nx, ny, nz);
     if (normalLength > $6fafcf15f6b61d60$var$EPSILON) {
         nx /= normalLength;
         ny /= normalLength;
         nz /= normalLength;
     } else {
-        nx = out.normals[backOffset];
-        ny = out.normals[backOffset + 1];
-        nz = out.normals[backOffset + 2];
+        nx = out.normals[backNormalOffset];
+        ny = out.normals[backNormalOffset + 1];
+        nz = out.normals[backNormalOffset + 2];
     }
+    $6fafcf15f6b61d60$var$fuseQuadStripEdge(out, backVertex, frontVertex, 2, 0, nx, ny, nz);
+    $6fafcf15f6b61d60$var$fuseQuadStripEdge(out, backVertex, frontVertex, 4, 1, nx, ny, nz);
+    $6fafcf15f6b61d60$var$copyPosition(out.positions, backVertex + 2, backVertex + 5);
+    $6fafcf15f6b61d60$var$copyPosition(out.positions, frontVertex + 1, frontVertex + 3);
+    $6fafcf15f6b61d60$var$copyVec3At(out.normals, backVertex + 2, backVertex + 5);
+    $6fafcf15f6b61d60$var$copyVec3At(out.normals, frontVertex + 1, frontVertex + 3);
+}
+function $6fafcf15f6b61d60$var$fuseQuadStripEdge(out, backVertex, frontVertex, backCorner, frontCorner, nx, ny, nz) {
+    const backOffset = (backVertex + backCorner) * 3;
+    const frontOffset = (frontVertex + frontCorner) * 3;
+    const x = (out.positions[backOffset] + out.positions[frontOffset]) * 0.5;
+    const y = (out.positions[backOffset + 1] + out.positions[frontOffset + 1]) * 0.5;
+    const z = (out.positions[backOffset + 2] + out.positions[frontOffset + 2]) * 0.5;
     $6fafcf15f6b61d60$var$writeQuadStripFusedCorner(out, backVertex + backCorner, x, y, z, nx, ny, nz);
     $6fafcf15f6b61d60$var$writeQuadStripFusedCorner(out, frontVertex + frontCorner, x, y, z, nx, ny, nz);
 }
@@ -1041,7 +1239,36 @@ function $6fafcf15f6b61d60$var$computeTriangleSurfaceTangent(positions, uvs, fir
     out[1] = reciprocal * (t2 * y1 - t1 * y2);
     out[2] = reciprocal * (t2 * z1 - t1 * z2);
 }
-function $6fafcf15f6b61d60$var$writeOrthonormalTangent(tangents, normals, vertex, source) {
+function $6fafcf15f6b61d60$var$computeTriangleSurfaceBitangent(positions, uvs, first, second, third, out) {
+    const firstPosition = first * 3;
+    const secondPosition = second * 3;
+    const thirdPosition = third * 3;
+    const firstUv = first * 2;
+    const secondUv = second * 2;
+    const thirdUv = third * 2;
+    const x1 = positions[secondPosition] - positions[firstPosition];
+    const x2 = positions[thirdPosition] - positions[firstPosition];
+    const y1 = positions[secondPosition + 1] - positions[firstPosition + 1];
+    const y2 = positions[thirdPosition + 1] - positions[firstPosition + 1];
+    const z1 = positions[secondPosition + 2] - positions[firstPosition + 2];
+    const z2 = positions[thirdPosition + 2] - positions[firstPosition + 2];
+    const s1 = uvs[secondUv] - uvs[firstUv];
+    const s2 = uvs[thirdUv] - uvs[firstUv];
+    const t1 = uvs[secondUv + 1] - uvs[firstUv + 1];
+    const t2 = uvs[thirdUv + 1] - uvs[firstUv + 1];
+    const determinant = s1 * t2 - s2 * t1;
+    if (Math.abs(determinant) <= $6fafcf15f6b61d60$var$EPSILON) {
+        out[0] = x1;
+        out[1] = y1;
+        out[2] = z1;
+        return;
+    }
+    const reciprocal = 1 / determinant;
+    out[0] = reciprocal * (s1 * x2 - s2 * x1);
+    out[1] = reciprocal * (s1 * y2 - s2 * y1);
+    out[2] = reciprocal * (s1 * z2 - s2 * z1);
+}
+function $6fafcf15f6b61d60$var$writeOrthonormalTangent(tangents, normals, vertex, source, handedness = 1) {
     const normalOffset = vertex * 3;
     const projection = source[0] * normals[normalOffset] + source[1] * normals[normalOffset + 1] + source[2] * normals[normalOffset + 2];
     let x = source[0] - projection * normals[normalOffset];
@@ -1061,7 +1288,7 @@ function $6fafcf15f6b61d60$var$writeOrthonormalTangent(tangents, normals, vertex
     tangents[tangentOffset] = x;
     tangents[tangentOffset + 1] = y;
     tangents[tangentOffset + 2] = z;
-    tangents[tangentOffset + 3] = 1;
+    tangents[tangentOffset + 3] = handedness;
 }
 function $6fafcf15f6b61d60$var$generateUnitizedRibbonGeometry(stroke, family, options, out) {
     out.uv0Size = 2;
@@ -1238,7 +1465,7 @@ function $6fafcf15f6b61d60$var$generateUnitizedRibbonGeometry(stroke, family, op
     }
     $6fafcf15f6b61d60$var$expandUnitizedRibbonTriangleSoup(out, segmentCount, sourceFrontVertexCount, frontIndexCount, hasBackfaces, vertexCount);
     $6fafcf15f6b61d60$var$applyQuadStripPositionQuads(out, stroke, options, out.ribbonBreakBefore, pointCount);
-    $6fafcf15f6b61d60$var$applyQuadStripMidpointFusion(out, out.ribbonBreakBefore, pointCount, segmentCount, hasBackfaces, options.generatorClass, $6fafcf15f6b61d60$var$normalizeTileRate(options.geometryParams?.tileRate));
+    $6fafcf15f6b61d60$var$applyQuadStripMidpointFusion(out, out.ribbonBreakBefore, pointCount, segmentCount, hasBackfaces, options.generatorClass, $6fafcf15f6b61d60$var$normalizeTileRate(options.geometryParams?.tileRate), $6fafcf15f6b61d60$var$normalizeAtlasRows(options.geometryParams?.textureAtlasV), stroke.seed);
     const finalizedCounts = $6fafcf15f6b61d60$var$finalizeQuadStripUsedGeometry(out, out.ribbonBreakBefore, pointCount, segmentCount, hasBackfaces, options);
     out.family = family;
     out.vertexCount = finalizedCounts?.vertexCount ?? vertexCount;
@@ -2052,11 +2279,12 @@ function $6fafcf15f6b61d60$var$writeThickStripVertex(out, vertex, center, right,
     ]);
 }
 function $6fafcf15f6b61d60$var$generateTubeGeometry(stroke, options, out) {
+    const isSquareBrush = options.generatorClass === "SquareBrush";
+    stroke = $6fafcf15f6b61d60$var$retainGeometryBrushControlPoints(stroke, options, out, isSquareBrush);
     const storesRadius = options.geometryParams?.tubeStoreRadiusInTexcoord0Z === true;
     out.uv0Size = storesRadius ? 3 : 2;
     const pointCount = stroke.controlPoints.length;
     const segmentCount = Math.max(0, pointCount - 1);
-    const isSquareBrush = options.generatorClass === "SquareBrush";
     const sideCount = isSquareBrush ? 4 : $6fafcf15f6b61d60$var$normalizeTubeSideCount(options.geometryParams?.tubeSideCount);
     const hardEdges = isSquareBrush || options.geometryParams?.tubeHardEdges === true;
     const ringVertexCount = hardEdges ? sideCount * 2 : sideCount + 1;
@@ -2082,7 +2310,9 @@ function $6fafcf15f6b61d60$var$generateTubeGeometry(stroke, options, out) {
     const descriptorOpacity = $6fafcf15f6b61d60$var$normalizeDescriptorOpacity(options.geometryParams?.opacity);
     const localBrushSize = $6fafcf15f6b61d60$var$getLocalBrushSize(stroke);
     const tileRate = $6fafcf15f6b61d60$var$normalizeTileRate(options.geometryParams?.tileRate);
-    const random01 = $6fafcf15f6b61d60$var$statelessRandom01(stroke.seed, 0);
+    // The first TubeBrush knot starts writing at vertex zero and salts its
+    // section UV offset with cur.iVert - 1.
+    const random01 = $6fafcf15f6b61d60$var$statelessRandom01(stroke.seed, -1);
     const atlasRows = $6fafcf15f6b61d60$var$normalizeAtlasRows(options.geometryParams?.textureAtlasV);
     let atlasRow = Math.floor(random01 * 3331) % atlasRows;
     let v0 = atlasRow / atlasRows;
@@ -2094,6 +2324,8 @@ function $6fafcf15f6b61d60$var$generateTubeGeometry(stroke, options, out) {
     const totalStrokeLength = $6fafcf15f6b61d60$var$measureScratchPathLength(geometrySmoothedPositions, pointCount);
     let runningDistance = 0;
     let u = random01;
+    let sectionStartPoint = 0;
+    let completedOpenBrushVertexCount = 0;
     // Frame state: right/up transported along the stroke by the tangent-to-
     // tangent rotation (MathUtils.ComputeMinimalRotationFrame), bootstrapped
     // from the pointer orientation on the first knot.
@@ -2169,14 +2401,6 @@ function $6fafcf15f6b61d60$var$generateTubeGeometry(stroke, options, out) {
             $6fafcf15f6b61d60$var$copyVec3(frameUp, priorFrameUp);
             $6fafcf15f6b61d60$var$rotateBetweenTangents(previousTangent, tangent, frameRight);
             $6fafcf15f6b61d60$var$rotateBetweenTangents(previousTangent, tangent, frameUp);
-            // Re-orthonormalize against drift.
-            const drift = $6fafcf15f6b61d60$var$dot(frameRight, tangent);
-            frameRight[0] -= tangent[0] * drift;
-            frameRight[1] -= tangent[1] * drift;
-            frameRight[2] -= tangent[2] * drift;
-            if (!$6fafcf15f6b61d60$var$normalizeInPlace(frameRight)) $6fafcf15f6b61d60$var$anyPerpendicular(tangent, frameRight);
-            $6fafcf15f6b61d60$var$cross(tangent, frameRight, frameUp);
-            $6fafcf15f6b61d60$var$normalizeInPlace(frameUp);
             const previousSectionContinues = tubeBreakBefore[pointIndex - 1] === 0;
             if (!previousSectionContinues) // The previous knot has no frame in TubeBrush. Seed the next valid
             // section from the current pointer orientation instead of transporting
@@ -2188,7 +2412,10 @@ function $6fafcf15f6b61d60$var$generateTubeGeometry(stroke, options, out) {
             if (segmentLength < $6fafcf15f6b61d60$var$OPEN_BRUSH_TUBE_MINIMUM_MOVE_METERS || pointIndex > 1 && previousSectionContinues && frameAngle > breakAngle) {
                 tubeBreakBefore[pointIndex] = 1;
                 $6fafcf15f6b61d60$var$initializeTubeFrame(point.orientation, tangent, bootstrapUp, frameRight, frameUp);
-                const sectionRandom01 = $6fafcf15f6b61d60$var$statelessRandom01(stroke.seed, pointIndex);
+                const completedSectionPointCount = pointIndex - sectionStartPoint;
+                completedOpenBrushVertexCount += completedSectionPointCount * ringVertexCount + (hasCaps && completedSectionPointCount > 1 ? sideCount * 2 : 0);
+                sectionStartPoint = pointIndex;
+                const sectionRandom01 = $6fafcf15f6b61d60$var$statelessRandom01(stroke.seed, completedOpenBrushVertexCount - 1);
                 u = sectionRandom01;
                 atlasRow = Math.floor(sectionRandom01 * 3331) % atlasRows;
                 v0 = atlasRow / atlasRows;
@@ -2211,6 +2438,11 @@ function $6fafcf15f6b61d60$var$generateTubeGeometry(stroke, options, out) {
             for(let side = 0; side < sideCount; side += 1){
                 const angle = side / sideCount * Math.PI * 2 + (isSquareBrush ? Math.PI / 4 : 0);
                 $6fafcf15f6b61d60$var$setTubeRadialScaled(frameRight, frameUp, angle, isSquareBrush ? 0.375 : 1, radial);
+                if (isSquareBrush) {
+                    radial[0] *= Math.SQRT2;
+                    radial[1] *= Math.SQRT2;
+                    radial[2] *= Math.SQRT2;
+                }
                 $6fafcf15f6b61d60$var$copyVec3(radial, displacement);
                 for(let duplicate = 0; duplicate < 2; duplicate += 1){
                     const vertex = ringBase + side * 2 + duplicate;
@@ -2224,7 +2456,7 @@ function $6fafcf15f6b61d60$var$generateTubeGeometry(stroke, options, out) {
                     // TubeBrush.MakeClosedCircleHardEdges stores the undisplaced radial
                     // direction as the tangent; the two duplicated vertices only differ
                     // in their face normals.
-                    $6fafcf15f6b61d60$var$writeTangent(tangents, vertex, displacement, 1);
+                    $6fafcf15f6b61d60$var$writeTangent(tangents, vertex, displacement, -1);
                     $6fafcf15f6b61d60$var$writeColor(colors, vertex, stroke.color, opacity);
                     const vFraction = side === 0 && duplicate === 0 ? 1 : side / sideCount;
                     const v = v0 + (v1 - v0) * vFraction;
@@ -2251,7 +2483,7 @@ function $6fafcf15f6b61d60$var$generateTubeGeometry(stroke, options, out) {
                 center[2] + radial[2] * (radius * shapeScale + petalOffset)
             ]);
             $6fafcf15f6b61d60$var$writeNormal(normals, vertex, radial);
-            $6fafcf15f6b61d60$var$writeTangent(tangents, vertex, tangent, 1);
+            $6fafcf15f6b61d60$var$writeTangent(tangents, vertex, tangent, -1);
             $6fafcf15f6b61d60$var$writeColor(colors, vertex, stroke.color, opacity);
             const v = v0 + (v1 - v0) * fraction;
             $6fafcf15f6b61d60$var$writeUv(uvs, vertex, [
@@ -2368,8 +2600,8 @@ function $6fafcf15f6b61d60$var$generateTubeGeometry(stroke, options, out) {
                 const radius = tubeRadii[pointIndex];
                 const ringU = tubeRingUs[pointIndex];
                 const opacity = tubeOpacities[pointIndex];
-                const capV0 = uvs[(ringBase + (hardEdges ? 1 : 0)) * 2 + 1];
-                const capV1 = uvs[(ringBase + (hardEdges ? 0 : ringVertexCount - 1)) * 2 + 1];
+                const capV0 = 1 - uvs[(ringBase + (hardEdges ? 1 : 0)) * 2 + 1];
+                const capV1 = 1 - uvs[(ringBase + (hardEdges ? 0 : ringVertexCount - 1)) * 2 + 1];
                 const direction = isStart ? -1 : 1;
                 capTip[0] = center[0] + capTangent[0] * radius * capAspect * direction;
                 capTip[1] = center[1] + capTangent[1] * radius * capAspect * direction;
@@ -2387,7 +2619,7 @@ function $6fafcf15f6b61d60$var$generateTubeGeometry(stroke, options, out) {
                         capTangent[1] * direction,
                         capTangent[2] * direction
                     ]);
-                    $6fafcf15f6b61d60$var$writeTangent(tangents, vertex, capRadial, 1);
+                    $6fafcf15f6b61d60$var$writeTangent(tangents, vertex, capRadial, -1);
                     $6fafcf15f6b61d60$var$writeColor(colors, vertex, stroke.color, opacity);
                     const v = capV0 + (capV1 - capV0) * fraction;
                     $6fafcf15f6b61d60$var$writeUv(uvs, vertex, isSquareBrush ? [
@@ -2410,10 +2642,276 @@ function $6fafcf15f6b61d60$var$generateTubeGeometry(stroke, options, out) {
             sectionStart = boundary;
         }
     }
+    if (isSquareBrush) indexOffset = $6fafcf15f6b61d60$var$packSquareBrushLikeOpenBrush(out, pointCount);
+    else indexOffset = $6fafcf15f6b61d60$var$packTubeLikeOpenBrush(out, pointCount, ringVertexCount, sideCount, hardEdges, hasCaps, capVertexCount, storesRadius);
     out.family = "tube";
     out.vertexCount = pointCount * ringVertexCount + capVertexCount;
     out.indexCount = indexOffset;
     return reallocated;
+}
+const $6fafcf15f6b61d60$var$SQUARE_BRUSH_VERTEX_REMAP = [
+    0,
+    1,
+    4,
+    5,
+    3,
+    2,
+    7,
+    6
+];
+const $6fafcf15f6b61d60$var$SQUARE_BRUSH_SIDE_TRIANGLES = [
+    4,
+    12,
+    2,
+    12,
+    10,
+    2,
+    5,
+    1,
+    13,
+    1,
+    9,
+    13,
+    7,
+    3,
+    15,
+    3,
+    11,
+    15,
+    6,
+    14,
+    0,
+    14,
+    8,
+    0
+];
+const $6fafcf15f6b61d60$var$SQUARE_BRUSH_START_CAP_TRIANGLES = [
+    5,
+    3,
+    1,
+    3,
+    7,
+    1
+];
+const $6fafcf15f6b61d60$var$SQUARE_BRUSH_END_CAP_TRIANGLES = [
+    13,
+    9,
+    11,
+    9,
+    15,
+    11
+];
+function $6fafcf15f6b61d60$var$packSquareBrushLikeOpenBrush(out, pointCount) {
+    // SquareBrush names/order: bottom-right bottom/right, top-left top/left,
+    // top-right top/right, bottom-left bottom/left.
+    const vertexCount = pointCount * 8;
+    const channels = [
+        [
+            out.positions,
+            3
+        ],
+        [
+            out.normals,
+            3
+        ],
+        [
+            out.tangents,
+            4
+        ],
+        [
+            out.colors,
+            4
+        ],
+        [
+            out.uvs,
+            2
+        ]
+    ];
+    for (const [channel, itemSize] of channels){
+        for(let pointIndex = 0; pointIndex < pointCount; pointIndex += 1){
+            const ringBase = pointIndex * 8;
+            for(let vertex = 0; vertex < 8; vertex += 1)out.indices[ringBase + vertex] = ringBase + $6fafcf15f6b61d60$var$SQUARE_BRUSH_VERTEX_REMAP[vertex];
+        }
+        $6fafcf15f6b61d60$var$permuteVertexChannel(channel, itemSize, vertexCount, out.indices);
+    }
+    let indexOffset = 0;
+    for(let segment = 0; segment + 1 < pointCount; segment += 1){
+        if (out.tubeBreakBefore[segment + 1] === 1) continue;
+        const back = segment * 8;
+        for (const offset of $6fafcf15f6b61d60$var$SQUARE_BRUSH_SIDE_TRIANGLES)out.indices[indexOffset++] = back + offset;
+        const startsSection = segment === 0 || out.tubeBreakBefore[segment] === 1;
+        if (startsSection) for (const offset of $6fafcf15f6b61d60$var$SQUARE_BRUSH_START_CAP_TRIANGLES)out.indices[indexOffset++] = back + offset;
+        const endsSection = segment + 2 === pointCount || out.tubeBreakBefore[segment + 2] === 1;
+        if (endsSection) for (const offset of $6fafcf15f6b61d60$var$SQUARE_BRUSH_END_CAP_TRIANGLES)out.indices[indexOffset++] = back + offset;
+    }
+    return indexOffset;
+}
+/**
+ * TubeBrush appends one complete section at a time: start cap, all closed
+ * circles, then end cap. The generator builds rings first because that keeps
+ * the live frame pass simple, so finalize into the source vertex and triangle
+ * order before publishing the buffers.
+ */ function $6fafcf15f6b61d60$var$packTubeLikeOpenBrush(out, pointCount, ringVertexCount, sideCount, hardEdges, hasCaps, capVertexCount, storesRadius) {
+    const vertexCount = pointCount * ringVertexCount + capVertexCount;
+    const channels = [
+        [
+            out.positions,
+            3
+        ],
+        [
+            out.normals,
+            3
+        ],
+        [
+            out.tangents,
+            4
+        ],
+        [
+            out.colors,
+            4
+        ],
+        [
+            out.uvs,
+            2
+        ],
+        [
+            out.packedUvs,
+            3
+        ]
+    ];
+    for (const [channel, itemSize] of channels){
+        $6fafcf15f6b61d60$var$buildTubeOpenBrushVertexMap(out, pointCount, ringVertexCount, sideCount, hasCaps, capVertexCount);
+        $6fafcf15f6b61d60$var$permuteVertexChannel(channel, itemSize, vertexCount, out.indices);
+    }
+    // Keep the unused UV representation deterministic too. Only one is exposed,
+    // but both share the reusable geometry storage across brush changes.
+    if (!storesRadius) out.packedUvs.fill(0, 0, vertexCount * 3);
+    let indexOffset = 0;
+    let sectionStart = 0;
+    for(let boundary = 1; boundary <= pointCount; boundary += 1){
+        const sectionEnds = boundary === pointCount || out.tubeBreakBefore[boundary] === 1;
+        if (!sectionEnds) continue;
+        const sectionEnd = boundary - 1;
+        if (sectionEnd > sectionStart) {
+            const startRing = out.tubeRingUs[sectionStart];
+            if (hasCaps) {
+                const startCap = startRing - sideCount;
+                for(let side = 0; side < sideCount; side += 1){
+                    const first = hardEdges ? side * 2 + 1 : side;
+                    const next = hardEdges ? (first + 1) % ringVertexCount : side + 1;
+                    out.indices[indexOffset] = startCap + side;
+                    out.indices[indexOffset + 1] = startRing + next;
+                    out.indices[indexOffset + 2] = startRing + first;
+                    indexOffset += 3;
+                }
+            }
+            for(let pointIndex = sectionStart; pointIndex < sectionEnd; pointIndex += 1){
+                const backRing = out.tubeRingUs[pointIndex];
+                const frontRing = out.tubeRingUs[pointIndex + 1];
+                for(let side = 0; side < sideCount; side += 1){
+                    const first = hardEdges ? side * 2 + 1 : side;
+                    const next = hardEdges ? (first + 1) % ringVertexCount : side + 1;
+                    out.indices[indexOffset] = backRing + first;
+                    out.indices[indexOffset + 1] = backRing + next;
+                    out.indices[indexOffset + 2] = frontRing + first;
+                    out.indices[indexOffset + 3] = backRing + next;
+                    out.indices[indexOffset + 4] = frontRing + next;
+                    out.indices[indexOffset + 5] = frontRing + first;
+                    indexOffset += 6;
+                }
+            }
+            if (hasCaps) {
+                const endRing = out.tubeRingUs[sectionEnd];
+                const endCap = endRing + ringVertexCount;
+                for(let side = 0; side < sideCount; side += 1){
+                    const first = hardEdges ? side * 2 + 1 : side;
+                    const next = hardEdges ? (first + 1) % ringVertexCount : side + 1;
+                    out.indices[indexOffset] = endCap + side;
+                    out.indices[indexOffset + 1] = endRing + first;
+                    out.indices[indexOffset + 2] = endRing + next;
+                    indexOffset += 3;
+                }
+            }
+        }
+        sectionStart = boundary;
+    }
+    return indexOffset;
+}
+function $6fafcf15f6b61d60$var$buildTubeOpenBrushVertexMap(out, pointCount, ringVertexCount, sideCount, hasCaps, capVertexCount) {
+    const firstCapVertex = pointCount * ringVertexCount;
+    let newVertex = 0;
+    let oldCapVertex = firstCapVertex;
+    let sectionStart = 0;
+    for(let boundary = 1; boundary <= pointCount; boundary += 1){
+        const sectionEnds = boundary === pointCount || out.tubeBreakBefore[boundary] === 1;
+        if (!sectionEnds) continue;
+        const sectionEnd = boundary - 1;
+        const hasSectionGeometry = sectionEnd > sectionStart;
+        if (hasCaps && hasSectionGeometry) for(let side = 0; side < sideCount; side += 1)out.indices[newVertex++] = oldCapVertex++;
+        for(let pointIndex = sectionStart; pointIndex <= sectionEnd; pointIndex += 1){
+            out.tubeRingUs[pointIndex] = newVertex;
+            const oldRing = pointIndex * ringVertexCount;
+            for(let ringVertex = 0; ringVertex < ringVertexCount; ringVertex += 1)out.indices[newVertex++] = oldRing + ringVertex;
+        }
+        if (hasCaps && hasSectionGeometry) for(let side = 0; side < sideCount; side += 1)out.indices[newVertex++] = oldCapVertex++;
+        sectionStart = boundary;
+    }
+    if (newVertex !== pointCount * ringVertexCount + capVertexCount) throw new Error("Tube vertex packing did not account for every generated vertex.");
+}
+function $6fafcf15f6b61d60$var$permuteVertexChannel(channel, itemSize, vertexCount, newToOld) {
+    for(let start = 0; start < vertexCount; start += 1){
+        if (newToOld[start] === start) continue;
+        const startOffset = start * itemSize;
+        const saved0 = channel[startOffset];
+        const saved1 = channel[startOffset + 1];
+        const saved2 = channel[startOffset + 2];
+        const saved3 = channel[startOffset + 3];
+        let destination = start;
+        while(newToOld[destination] !== start){
+            const source = newToOld[destination];
+            const destinationOffset = destination * itemSize;
+            const sourceOffset = source * itemSize;
+            for(let component = 0; component < itemSize; component += 1)channel[destinationOffset + component] = channel[sourceOffset + component];
+            newToOld[destination] = destination;
+            destination = source;
+        }
+        const destinationOffset = destination * itemSize;
+        channel[destinationOffset] = saved0;
+        if (itemSize > 1) channel[destinationOffset + 1] = saved1;
+        if (itemSize > 2) channel[destinationOffset + 2] = saved2;
+        if (itemSize > 3) channel[destinationOffset + 3] = saved3;
+        newToOld[destination] = destination;
+    }
+}
+function $6fafcf15f6b61d60$var$retainGeometryBrushControlPoints(stroke, options, out, isSquareBrush) {
+    const source = stroke.controlPoints;
+    if (source.length < 2) return stroke;
+    const retained = out.tubeRetainedControlPoints;
+    retained.length = 0;
+    retained.push(source[0]);
+    let lastRetained = source[0];
+    const pressureSizeMin = $6fafcf15f6b61d60$var$normalizePressureSizeMin(options.pressureSizeRange?.[0]);
+    const localBrushSize = $6fafcf15f6b61d60$var$getLocalBrushSize(stroke);
+    const configuredSolidMinimum = options.geometryParams?.solidMinLengthMeters;
+    const solidMinimum = typeof configuredSolidMinimum === "number" && Number.isFinite(configuredSolidMinimum) ? Math.max(0, configuredSolidMinimum) : isSquareBrush ? 0.002 : $6fafcf15f6b61d60$var$OPEN_BRUSH_TUBE_MINIMUM_MOVE_METERS;
+    for(let pointIndex = 1; pointIndex < source.length; pointIndex += 1){
+        const point = source[pointIndex];
+        const deltaX = point.position[0] - lastRetained.position[0];
+        const deltaY = point.position[1] - lastRetained.position[1];
+        const deltaZ = point.position[2] - lastRetained.position[2];
+        const spawnInterval = solidMinimum + localBrushSize * $6fafcf15f6b61d60$var$getPressureSizeMultiplier(point.pressure, pressureSizeMin) * $6fafcf15f6b61d60$var$TUBE_SOLID_ASPECT_RATIO;
+        // GeometryBrush always renders its current leading knot. A sub-interval
+        // interior update is later overwritten, while the final update remains as
+        // the trailing provisional knot even when it was not promoted to a keeper.
+        if (pointIndex + 1 === source.length || Math.hypot(deltaX, deltaY, deltaZ) > spawnInterval) {
+            retained.push(point);
+            lastRetained = point;
+        }
+    }
+    return retained.length === source.length ? stroke : {
+        ...stroke,
+        controlPoints: retained
+    };
 }
 function $6fafcf15f6b61d60$var$prepareSquareBrushBreaks(out, stroke, pointCount, localBrushSize, pressureSizeMin) {
     out.tubeBreakBefore.fill(0, 0, pointCount);
@@ -2501,7 +2999,7 @@ function $6fafcf15f6b61d60$var$rewriteSquareBrushFrames(out, stroke, pointCount,
         $6fafcf15f6b61d60$var$rotateByQuaternion(point.orientation, $6fafcf15f6b61d60$var$VEC_FORWARD, pointerForward);
         $6fafcf15f6b61d60$var$rotateByQuaternion(point.orientation, $6fafcf15f6b61d60$var$VEC_UP, pointerUp);
         const startsSection = pointIndex === 1 || out.tubeBreakBefore[pointIndex - 1] === 1;
-        $6fafcf15f6b61d60$var$computeSurfaceFrame(preferredRight, tangent, pointerForward, pointerUp, startsSection, right, surface);
+        $6fafcf15f6b61d60$var$computeSurfaceFrame(preferredRight, tangent, pointerForward, pointerUp, startsSection, right, surface, true);
         $6fafcf15f6b61d60$var$writeScratchVec3(out.tubeFrameRights, pointIndex, right);
         $6fafcf15f6b61d60$var$writeScratchVec3(out.tubeFrameUps, pointIndex, surface);
         $6fafcf15f6b61d60$var$writeScratchVec3(out.tubeTangents, pointIndex, tangent);
@@ -2560,12 +3058,17 @@ function $6fafcf15f6b61d60$var$rewriteTubeRingFrames(out, stroke, pointCount, ri
             for(let side = 0; side < sideCount; side += 1){
                 const angle = side / sideCount * Math.PI * 2 + (isSquareBrush ? Math.PI / 4 : 0);
                 $6fafcf15f6b61d60$var$setTubeRadialScaled(frameRight, frameUp, angle, isSquareBrush ? 0.375 : 1, displacement);
+                if (isSquareBrush) {
+                    displacement[0] *= Math.SQRT2;
+                    displacement[1] *= Math.SQRT2;
+                    displacement[2] *= Math.SQRT2;
+                }
                 for(let duplicate = 0; duplicate < 2; duplicate += 1){
                     const vertex = ringBase + side * 2 + duplicate;
                     $6fafcf15f6b61d60$var$setTubeRadial(frameRight, frameUp, angle + (duplicate === 0 ? -halfStep : halfStep), radial);
                     $6fafcf15f6b61d60$var$writePositionComponents(out.positions, vertex, center[0] + displacement[0] * radius, center[1] + displacement[1] * radius, center[2] + displacement[2] * radius);
                     $6fafcf15f6b61d60$var$writeNormal(out.normals, vertex, radial);
-                    $6fafcf15f6b61d60$var$writeTangent(out.tangents, vertex, displacement, 1);
+                    $6fafcf15f6b61d60$var$writeTangent(out.tangents, vertex, displacement, -1);
                     $6fafcf15f6b61d60$var$includeBounds(out.bounds, out.positions, vertex);
                 }
             }
@@ -2576,7 +3079,7 @@ function $6fafcf15f6b61d60$var$rewriteTubeRingFrames(out, stroke, pointCount, ri
             $6fafcf15f6b61d60$var$setTubeRadial(frameRight, frameUp, angle, radial);
             $6fafcf15f6b61d60$var$writePositionComponents(out.positions, vertex, center[0] + radial[0] * radius, center[1] + radial[1] * radius, center[2] + radial[2] * radius);
             $6fafcf15f6b61d60$var$writeNormal(out.normals, vertex, radial);
-            $6fafcf15f6b61d60$var$writeTangent(out.tangents, vertex, tangent, 1);
+            $6fafcf15f6b61d60$var$writeTangent(out.tangents, vertex, tangent, -1);
             $6fafcf15f6b61d60$var$includeBounds(out.bounds, out.positions, vertex);
         }
     }
@@ -2636,12 +3139,21 @@ function $6fafcf15f6b61d60$var$applyTubeSectionShapeAndUvs(out, stroke, pointCou
                 }
             }
             if (shapeModifier === 0) continue;
-            $6fafcf15f6b61d60$var$readScratchVec3(out.geometrySmoothedPositions, pointIndex, center);
+            // ModifySilhouetteOfSegment processes a geometry knot's shared back ring
+            // and its newly-created front ring together. A later knot therefore
+            // rewrites the preceding ring using the later knot's center, radius, and
+            // curve parameter; only the displacement direction remains attached to
+            // the original vertex.
+            const ownerPointIndex = Math.min(pointIndex + 1, sectionEnd);
+            const ownerLocalIndex = ownerPointIndex - sectionStart;
+            const ownerRunningLength = ownerPointIndex === pointIndex ? runningLength : runningLength + $6fafcf15f6b61d60$var$distanceBetweenScratchPoints(out.geometrySmoothedPositions, pointIndex, ownerPointIndex);
+            const ownerProgress = sectionLength > $6fafcf15f6b61d60$var$EPSILON ? ownerRunningLength / sectionLength : 0;
+            $6fafcf15f6b61d60$var$readScratchVec3(out.geometrySmoothedPositions, ownerPointIndex, center);
             $6fafcf15f6b61d60$var$readScratchVec3(out.tubeFrameRights, pointIndex, frameRight);
             $6fafcf15f6b61d60$var$readScratchVec3(out.tubeFrameUps, pointIndex, frameUp);
-            const radius = out.tubeRadii[pointIndex];
-            const shapeScale = $6fafcf15f6b61d60$var$getTubeShapeScale(shapeModifier, progress, localIndex, sectionPointCount, taperScalar, loftedPartialProgress);
-            const petalOffset = shapeModifier === 5 ? Math.pow(progress, $6fafcf15f6b61d60$var$normalizeTubePetalExponent(petalExponent)) * $6fafcf15f6b61d60$var$normalizeTubePetalAmount(petalAmount) * localBrushSize * out.tubeSmoothedPressures[pointIndex] : 0;
+            const radius = out.tubeRadii[ownerPointIndex];
+            const shapeScale = $6fafcf15f6b61d60$var$getTubeShapeScale(shapeModifier, ownerProgress, Math.max(0, ownerLocalIndex - 1), Math.max(0, sectionPointCount - 1), taperScalar, loftedPartialProgress);
+            const petalOffset = shapeModifier === 5 ? Math.pow(progress, $6fafcf15f6b61d60$var$normalizeTubePetalExponent(petalExponent)) * $6fafcf15f6b61d60$var$normalizeTubePetalAmount(petalAmount) * localBrushSize * out.tubeSmoothedPressures[ownerPointIndex] : 0;
             if (hardEdges) {
                 const halfStep = Math.PI / sideCount;
                 for(let side = 0; side < sideCount; side += 1){
@@ -3194,6 +3706,55 @@ function $6fafcf15f6b61d60$var$prepareRibbonSections(stroke, out) {
     for(let sectionIndex = sectionStart; sectionIndex < pointCount; sectionIndex += 1)ribbonSectionLengths[sectionIndex] = runningLength;
     return connectedSegmentCount;
 }
+/**
+ * QuadStrip distinguishes an input sample that is too close to the last spawn
+ * point from a sharp-turn strip break. The former produces no solid and leaves
+ * brush state untouched; the latter still emits the current solid as the first
+ * member of a new, unfused section. Values in ribbonBreakBefore therefore mean
+ * 0 = ordinary solid, 1 = generated section start, and 2 = skipped sample.
+ */ function $6fafcf15f6b61d60$var$prepareQuadStripSections(stroke, out) {
+    const pointCount = stroke.controlPoints.length;
+    $6fafcf15f6b61d60$var$ensureRibbonScratchCapacity(out, pointCount);
+    const { ribbonBreakBefore: ribbonBreakBefore, ribbonRunningLengths: ribbonRunningLengths, ribbonSectionLengths: ribbonSectionLengths } = out;
+    let sectionStart = 0;
+    let runningLength = 0;
+    let lastSpawnIndex = 0;
+    let previousDirectionX = 0;
+    let previousDirectionY = 0;
+    let previousDirectionZ = 0;
+    let hasPreviousDirection = false;
+    for(let index = 1; index < pointCount; index += 1){
+        const previous = stroke.controlPoints[lastSpawnIndex].position;
+        const current = stroke.controlPoints[index].position;
+        const deltaX = current[0] - previous[0];
+        const deltaY = current[1] - previous[1];
+        const deltaZ = current[2] - previous[2];
+        const segmentLength = Math.hypot(deltaX, deltaY, deltaZ);
+        if (segmentLength < $6fafcf15f6b61d60$var$OPEN_BRUSH_RIBBON_MINIMUM_MOVE_METERS) {
+            ribbonBreakBefore[index] = 2;
+            ribbonRunningLengths[index] = runningLength;
+            continue;
+        }
+        const inverseLength = 1 / segmentLength;
+        const directionX = deltaX * inverseLength;
+        const directionY = deltaY * inverseLength;
+        const directionZ = deltaZ * inverseLength;
+        const startsSection = hasPreviousDirection && previousDirectionX * directionX + previousDirectionY * directionY + previousDirectionZ * directionZ <= 0;
+        if (startsSection) {
+            for(let sectionIndex = sectionStart; sectionIndex < index; sectionIndex += 1)ribbonSectionLengths[sectionIndex] = runningLength;
+            ribbonBreakBefore[index] = 1;
+            sectionStart = index;
+            runningLength = segmentLength;
+        } else runningLength += segmentLength;
+        ribbonRunningLengths[index] = runningLength;
+        lastSpawnIndex = index;
+        previousDirectionX = directionX;
+        previousDirectionY = directionY;
+        previousDirectionZ = directionZ;
+        hasPreviousDirection = true;
+    }
+    for(let sectionIndex = sectionStart; sectionIndex < pointCount; sectionIndex += 1)ribbonSectionLengths[sectionIndex] = runningLength;
+}
 function $6fafcf15f6b61d60$var$resolveRibbonRenderPointCount(pointCount, options, breakBefore) {
     if (options.generatorClass !== "FlatGeometryBrush" || options.geometryParams?.m11Compatibility === true) return pointCount;
     for(let index = pointCount - 1; index > 1; index -= 1){
@@ -3202,9 +3763,9 @@ function $6fafcf15f6b61d60$var$resolveRibbonRenderPointCount(pointCount, options
     }
     return pointCount;
 }
-function $6fafcf15f6b61d60$var$countConnectedRibbonSegments(breakBefore, pointCount) {
+function $6fafcf15f6b61d60$var$countConnectedRibbonSegments(breakBefore, pointCount, generatedSectionBreaks = false) {
     let count = 0;
-    for(let index = 1; index < pointCount; index += 1)if (breakBefore[index] === 0) count += 1;
+    for(let index = 1; index < pointCount; index += 1)if (generatedSectionBreaks ? breakBefore[index] !== 2 : breakBefore[index] === 0) count += 1;
     return count;
 }
 function $6fafcf15f6b61d60$var$prepareRibbonSmoothedPressures(stroke, options, out) {
@@ -3462,14 +4023,16 @@ function $6fafcf15f6b61d60$var$cross(a, b, out) {
     out[2] = z;
 }
 function $6fafcf15f6b61d60$var$setTubeRadial(right, up, angle, out) {
-    const rightScale = -Math.sin(angle);
+    // Reflection from Unity's left-handed coordinates reverses the direction
+    // around the ring while preserving its vertex numbering.
+    const rightScale = Math.sin(angle);
     const upScale = -Math.cos(angle);
     out[0] = right[0] * rightScale + up[0] * upScale;
     out[1] = right[1] * rightScale + up[1] * upScale;
     out[2] = right[2] * rightScale + up[2] * upScale;
 }
 function $6fafcf15f6b61d60$var$setTubeRadialScaled(right, up, angle, upAspect, out) {
-    const rightScale = -Math.sin(angle);
+    const rightScale = Math.sin(angle);
     const upScale = -Math.cos(angle) * upAspect;
     out[0] = right[0] * rightScale + up[0] * upScale;
     out[1] = right[1] * rightScale + up[1] * upScale;
@@ -3577,9 +4140,17 @@ const $6fafcf15f6b61d60$var$surfaceFrameRight2 = [
  * pointer-up cross term takes over as pointer-forward approaches the movement
  * direction (pulling the brush), and both terms are flipped toward the
  * previous right vector so the strip never flips mid-stroke.
- */ function $6fafcf15f6b61d60$var$computeSurfaceFrame(preferredRight, tangent, pointerForward, pointerUp, isFirst, outRight, outNormal) {
+ */ function $6fafcf15f6b61d60$var$computeSurfaceFrame(preferredRight, tangent, pointerForward, pointerUp, isFirst, outRight, outNormal, mirrored = false) {
     $6fafcf15f6b61d60$var$cross(pointerForward, tangent, $6fafcf15f6b61d60$var$surfaceFrameRight1);
     $6fafcf15f6b61d60$var$cross(pointerUp, tangent, $6fafcf15f6b61d60$var$surfaceFrameRight2);
+    if (mirrored) {
+        $6fafcf15f6b61d60$var$surfaceFrameRight1[0] = -$6fafcf15f6b61d60$var$surfaceFrameRight1[0];
+        $6fafcf15f6b61d60$var$surfaceFrameRight1[1] = -$6fafcf15f6b61d60$var$surfaceFrameRight1[1];
+        $6fafcf15f6b61d60$var$surfaceFrameRight1[2] = -$6fafcf15f6b61d60$var$surfaceFrameRight1[2];
+        $6fafcf15f6b61d60$var$surfaceFrameRight2[0] = -$6fafcf15f6b61d60$var$surfaceFrameRight2[0];
+        $6fafcf15f6b61d60$var$surfaceFrameRight2[1] = -$6fafcf15f6b61d60$var$surfaceFrameRight2[1];
+        $6fafcf15f6b61d60$var$surfaceFrameRight2[2] = -$6fafcf15f6b61d60$var$surfaceFrameRight2[2];
+    }
     let preferred = preferredRight;
     if (isFirst || Math.hypot(preferred[0], preferred[1], preferred[2]) < $6fafcf15f6b61d60$var$EPSILON) preferred = Math.hypot($6fafcf15f6b61d60$var$surfaceFrameRight1[0], $6fafcf15f6b61d60$var$surfaceFrameRight1[1], $6fafcf15f6b61d60$var$surfaceFrameRight1[2]) >= $6fafcf15f6b61d60$var$EPSILON ? $6fafcf15f6b61d60$var$surfaceFrameRight1 : $6fafcf15f6b61d60$var$surfaceFrameRight2;
     const flip1 = $6fafcf15f6b61d60$var$dot($6fafcf15f6b61d60$var$surfaceFrameRight1, preferred) < 0 ? -1 : 1;
@@ -3594,6 +4165,11 @@ const $6fafcf15f6b61d60$var$surfaceFrameRight2 = [
         if (!$6fafcf15f6b61d60$var$normalizeInPlace(outRight)) $6fafcf15f6b61d60$var$anyPerpendicular(tangent, outRight);
     }
     $6fafcf15f6b61d60$var$cross(tangent, outRight, outNormal);
+    if (mirrored) {
+        outNormal[0] = -outNormal[0];
+        outNormal[1] = -outNormal[1];
+        outNormal[2] = -outNormal[2];
+    }
     $6fafcf15f6b61d60$var$normalizeInPlace(outNormal);
 }
 /**
