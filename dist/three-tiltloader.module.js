@@ -60,6 +60,8 @@ function $6fafcf15f6b61d60$export$cbaccd875830d3d0() {
         ribbonRunningLengths: new Float32Array($6fafcf15f6b61d60$var$INITIAL_VERTEX_CAPACITY),
         ribbonSectionLengths: new Float32Array($6fafcf15f6b61d60$var$INITIAL_VERTEX_CAPACITY),
         ribbonSmoothedPressures: new Float32Array($6fafcf15f6b61d60$var$INITIAL_VERTEX_CAPACITY),
+        ribbonPreviousRetained: new Int32Array($6fafcf15f6b61d60$var$INITIAL_VERTEX_CAPACITY),
+        ribbonNextRetained: new Int32Array($6fafcf15f6b61d60$var$INITIAL_VERTEX_CAPACITY),
         geometrySmoothedPressures: new Float32Array($6fafcf15f6b61d60$var$INITIAL_VERTEX_CAPACITY),
         geometrySmoothedPositions: new Float32Array($6fafcf15f6b61d60$var$INITIAL_VERTEX_CAPACITY * 3),
         uv0Size: 2,
@@ -114,11 +116,15 @@ function $6fafcf15f6b61d60$var$ensureRibbonScratchCapacity(out, pointCount) {
         out.ribbonRunningLengths = new Float32Array(capacity);
         out.ribbonSectionLengths = new Float32Array(capacity);
         out.ribbonSmoothedPressures = new Float32Array(capacity);
+        out.ribbonPreviousRetained = new Int32Array(capacity);
+        out.ribbonNextRetained = new Int32Array(capacity);
     } else {
         out.ribbonBreakBefore.fill(0, 0, pointCount);
         out.ribbonRunningLengths.fill(0, 0, pointCount);
         out.ribbonSectionLengths.fill(0, 0, pointCount);
         out.ribbonSmoothedPressures.fill(0, 0, pointCount);
+        out.ribbonPreviousRetained.fill(0, 0, pointCount);
+        out.ribbonNextRetained.fill(0, 0, pointCount);
     }
 }
 function $6fafcf15f6b61d60$var$ensureGeometryPressureCapacity(out, pointCount) {
@@ -289,9 +295,12 @@ function $6fafcf15f6b61d60$var$generateRibbonGeometry(stroke, family, options, o
     let previousFlatSize = 0;
     const flatHalfRights = usesFlatGeometrySmoothing ? new Float32Array(pointCount * 3) : undefined;
     for(let index = 0; index < renderPointCount; index += 1){
+        if (usesFlatGeometrySmoothing && ribbonBreakBefore[index] === 2) continue;
         const point = stroke.controlPoints[index];
-        const previousPoint = stroke.controlPoints[Math.max(0, index - 1)];
-        const nextPoint = stroke.controlPoints[Math.min(pointCount - 1, index + 1)];
+        const previousPointIndex = usesFlatGeometrySmoothing ? out.ribbonPreviousRetained[index] : Math.max(0, index - 1);
+        const nextPointIndex = usesFlatGeometrySmoothing ? out.ribbonNextRetained[index] : Math.min(pointCount - 1, index + 1);
+        const previousPoint = stroke.controlPoints[previousPointIndex];
+        const nextPoint = stroke.controlPoints[nextPointIndex];
         const center = usesFlatGeometrySmoothing && index > 0 ? [
             previousPoint.position[0] * 0.3 + point.position[0] * 0.4 + nextPoint.position[0] * 0.3,
             previousPoint.position[1] * 0.3 + point.position[1] * 0.4 + nextPoint.position[1] * 0.3,
@@ -304,7 +313,14 @@ function $6fafcf15f6b61d60$var$generateRibbonGeometry(stroke, family, options, o
             v1 = (atlasRow + 1) / atlasRows;
         }
         let size = localBrushSize * $6fafcf15f6b61d60$var$getPressureSizeMultiplier(ribbonSmoothedPressures[index], pressureSizeMin);
-        $6fafcf15f6b61d60$var$writeCentralDifferenceTangent(stroke, index, previousTangent, tangent);
+        if (usesFlatGeometrySmoothing) {
+            const tangentStart = index === 0 ? point.position : previousPoint.position;
+            const tangentEnd = (index === 0 || options.geometryParams?.m11Compatibility !== true) && nextPointIndex !== index ? nextPoint.position : point.position;
+            tangent[0] = tangentEnd[0] - tangentStart[0];
+            tangent[1] = tangentEnd[1] - tangentStart[1];
+            tangent[2] = tangentEnd[2] - tangentStart[2];
+            if (!$6fafcf15f6b61d60$var$normalizeInPlace(tangent)) $6fafcf15f6b61d60$var$copyVec3(previousTangent, tangent);
+        } else $6fafcf15f6b61d60$var$writeCentralDifferenceTangent(stroke, index, previousTangent, tangent);
         $6fafcf15f6b61d60$var$rotateByQuaternion(point.orientation, $6fafcf15f6b61d60$var$VEC_FORWARD, pointerForward);
         $6fafcf15f6b61d60$var$rotateByQuaternion(point.orientation, $6fafcf15f6b61d60$var$VEC_UP, pointerUp);
         $6fafcf15f6b61d60$var$computeSurfaceFrame(previousRight, tangent, pointerForward, pointerUp, index === 0, right, normal);
@@ -394,7 +410,8 @@ function $6fafcf15f6b61d60$var$generateRibbonGeometry(stroke, family, options, o
         $6fafcf15f6b61d60$var$includeBounds(bounds, positions, rightVertex);
     }
     if (flatHalfRights) {
-        $6fafcf15f6b61d60$var$smoothFlatGeometryEdges(stroke, positions, flatHalfRights, ribbonBreakBefore, bounds, renderPointCount);
+        for(let vertex = 0; vertex < frontVertexCount; vertex += 1)uvs[vertex * 2 + 1] = 1 - uvs[vertex * 2 + 1];
+        if (options.geometryParams?.m11Compatibility !== true) $6fafcf15f6b61d60$var$smoothFlatGeometryEdges(stroke, positions, flatHalfRights, ribbonBreakBefore, bounds, renderPointCount);
         $6fafcf15f6b61d60$var$updateFlatGeometryTangents(positions, normals, tangents, uvs, ribbonBreakBefore, renderPointCount);
     }
     let indexOffset = 0;
@@ -3821,7 +3838,6 @@ function $6fafcf15f6b61d60$var$prepareRibbonSections(stroke, out) {
 /** Frame the retained GeometryBrush knots before FlatGeometry emits strips. */ function $6fafcf15f6b61d60$var$prepareFlatGeometrySections(stroke, options, out) {
     const pointCount = stroke.controlPoints.length;
     $6fafcf15f6b61d60$var$ensureRibbonScratchCapacity(out, pointCount);
-    $6fafcf15f6b61d60$var$prepareRibbonSmoothedPressures(stroke, options, out);
     const { ribbonBreakBefore: ribbonBreakBefore, ribbonRunningLengths: ribbonRunningLengths, ribbonSectionLengths: ribbonSectionLengths } = out;
     let lastRetainedPoint = 0;
     for(let pointIndex = 1; pointIndex < pointCount; pointIndex += 1){
@@ -3831,6 +3847,31 @@ function $6fafcf15f6b61d60$var$prepareRibbonSections(stroke, out) {
             continue;
         }
         lastRetainedPoint = pointIndex;
+    }
+    const smoothedPressures = out.ribbonSmoothedPressures;
+    const isM11 = options.geometryParams?.m11Compatibility === true;
+    const pressureWindow = isM11 ? 0.1 : 0.2;
+    smoothedPressures[0] = isM11 ? 0 : $6fafcf15f6b61d60$var$clamp01(stroke.controlPoints[0].pressure);
+    lastRetainedPoint = 0;
+    for(let pointIndex = 1; pointIndex < pointCount; pointIndex += 1){
+        if (ribbonBreakBefore[pointIndex] === 2) {
+            smoothedPressures[pointIndex] = smoothedPressures[lastRetainedPoint];
+            continue;
+        }
+        const distance = $6fafcf15f6b61d60$var$distanceBetweenControlPoints(stroke.controlPoints[lastRetainedPoint], stroke.controlPoints[pointIndex]);
+        const retained = Math.pow(0.1, distance / pressureWindow);
+        smoothedPressures[pointIndex] = retained * smoothedPressures[lastRetainedPoint] + (1 - retained) * $6fafcf15f6b61d60$var$clamp01(stroke.controlPoints[pointIndex].pressure);
+        lastRetainedPoint = pointIndex;
+    }
+    lastRetainedPoint = 0;
+    for(let pointIndex = 0; pointIndex < pointCount; pointIndex += 1){
+        out.ribbonPreviousRetained[pointIndex] = lastRetainedPoint;
+        if (pointIndex > 0 && ribbonBreakBefore[pointIndex] !== 2) lastRetainedPoint = pointIndex;
+    }
+    let nextRetainedPoint = lastRetainedPoint;
+    for(let pointIndex = pointCount - 1; pointIndex >= 0; pointIndex -= 1){
+        out.ribbonNextRetained[pointIndex] = nextRetainedPoint;
+        if (ribbonBreakBefore[pointIndex] !== 2) nextRetainedPoint = pointIndex;
     }
     if (options.geometryParams?.m11Compatibility !== true) {
         let previousRetainedPoint = 0;
