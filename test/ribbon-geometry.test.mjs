@@ -1159,9 +1159,9 @@ test( 'preserves Spray particle salts after preview knots decay', () => {
 	const generatorClass = 'SprayBrush';
 	const stroke = createStroke();
 	stroke.brushSize = 1;
-	stroke.controlPoints[ 1 ].position = [ 1, 0, 0 ];
+	stroke.controlPoints[ 1 ].position = [ 1.1, 0, 0 ];
 	stroke.controlPoints.push( {
-		position: [ 2, 0, 0 ],
+		position: [ 2.2, 0, 0 ],
 		orientation: [ 0, 0, 0, 1 ],
 		pressure: 1,
 		timestampMs: 32
@@ -1186,6 +1186,48 @@ test( 'preserves Spray particle salts after preview knots decay', () => {
 	assert.deepEqual(
 		Array.from( tail.positions.slice( 0, 12 ) ),
 		Array.from( full.positions.slice( 12, 24 ) )
+	);
+
+} );
+
+test( 'accumulates Spray updates and interleaves reflected backfaces', () => {
+
+	const stroke = createStroke();
+	stroke.brushSize = 1;
+	stroke.controlPoints = [ 0, 0.6, 1.2, 1.8 ].map( ( x, index ) => ( {
+		position: [ x, 0, 0 ],
+		orientation: [ 0, 0, 0, 1 ],
+		pressure: 1,
+		timestampMs: index * 16
+	} ) );
+	const geometry = generateBrushGeometry( stroke, 'particle', {
+		generatorClass: 'SprayBrush',
+		pressureSizeRange: [ 1, 1 ],
+		geometryParams: {
+			renderBackfaces: true,
+			sprayRateMultiplier: 1,
+			particleSizeVariance: 0,
+			particlePositionVariance: 0,
+			particleRotationVariance: 0
+		}
+	} );
+
+	assert.equal( getGeneratedVertexCount( geometry ), 8 );
+	assert.equal( getGeneratedIndexCount( geometry ), 12 );
+	assert.deepEqual( Array.from( geometry.indices ), [
+		0, 6, 2, 7, 1, 3,
+		0, 4, 6, 5, 1, 7
+	] );
+	assert.deepEqual(
+		Array.from( geometry.positions.slice( 0, 3 ) ),
+		Array.from( geometry.positions.slice( 3, 6 ) )
+	);
+	assertClose( geometry.normals[ 2 ], -geometry.normals[ 5 ] );
+	assert.equal( geometry.tangents[ 3 ], -1 );
+	assert.equal( geometry.tangents[ 7 ], 1 );
+	assert.deepEqual(
+		Array.from( geometry.uvs.slice( 0, 2 ) ),
+		Array.from( geometry.uvs.slice( 2, 4 ) )
 	);
 
 } );
