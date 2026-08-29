@@ -6562,11 +6562,11 @@ function prepareQuadStripSections(
 ): void {
   const pointCount = stroke.controlPoints.length;
   ensureRibbonScratchCapacity(out, pointCount);
-  prepareRibbonSmoothedPressures(stroke, options, out);
   const {
     ribbonBreakBefore,
     ribbonRunningLengths,
     ribbonSectionLengths,
+    ribbonSmoothedPressures,
   } = out;
   let sectionStart = 0;
   let runningLength = 0;
@@ -6575,6 +6575,8 @@ function prepareQuadStripSections(
   let previousDirectionY = 0;
   let previousDirectionZ = 0;
   let hasPreviousDirection = false;
+  let lastSpawnPressure = clamp01(stroke.controlPoints[0]?.pressure ?? 0);
+  ribbonSmoothedPressures[0] = lastSpawnPressure;
   const localBrushSize = getLocalBrushSize(stroke);
   const pressureSizeMin = normalizePressureSizeMin(options.pressureSizeRange?.[0]);
 
@@ -6587,9 +6589,19 @@ function prepareQuadStripSections(
     const segmentLength = Math.hypot(deltaX, deltaY, deltaZ);
     if (segmentLength < OPEN_BRUSH_RIBBON_MINIMUM_MOVE_METERS) {
       ribbonBreakBefore[index] = 2;
+      ribbonSmoothedPressures[index] = lastSpawnPressure;
       ribbonRunningLengths[index] = runningLength;
       continue;
     }
+
+    // QuadStripBrush smooths pressure from the last committed spawn. Rejected
+    // and provisional samples do not advance either pressure or position
+    // state, so every preview replacement must start from the same values.
+    const retainedPressure = Math.pow(0.1, segmentLength / 0.2);
+    const smoothedPressure =
+      retainedPressure * lastSpawnPressure +
+      (1 - retainedPressure) * clamp01(stroke.controlPoints[index].pressure);
+    ribbonSmoothedPressures[index] = smoothedPressure;
 
     // QuadStripBrush keeps one mutable leading quad for samples that have moved
     // far enough to update the brush but not far enough to commit a new solid.
@@ -6600,7 +6612,7 @@ function prepareQuadStripSections(
       0.0015 +
       localBrushSize *
         getPressureSizeMultiplier(
-          out.ribbonSmoothedPressures[index],
+          smoothedPressure,
           pressureSizeMin,
         ) *
         0.2;
@@ -6635,6 +6647,7 @@ function prepareQuadStripSections(
     ribbonRunningLengths[index] = runningLength;
     if (segmentLength >= spawnInterval) {
       lastSpawnIndex = index;
+      lastSpawnPressure = smoothedPressure;
       previousDirectionX = directionX;
       previousDirectionY = directionY;
       previousDirectionZ = directionZ;

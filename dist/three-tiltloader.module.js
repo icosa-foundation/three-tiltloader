@@ -9746,8 +9746,7 @@ function $6fafcf15f6b61d60$var$prepareRibbonSections(stroke, out) {
  */ function $6fafcf15f6b61d60$var$prepareQuadStripSections(stroke, options, out) {
     const pointCount = stroke.controlPoints.length;
     $6fafcf15f6b61d60$var$ensureRibbonScratchCapacity(out, pointCount);
-    $6fafcf15f6b61d60$var$prepareRibbonSmoothedPressures(stroke, options, out);
-    const { ribbonBreakBefore: ribbonBreakBefore, ribbonRunningLengths: ribbonRunningLengths, ribbonSectionLengths: ribbonSectionLengths } = out;
+    const { ribbonBreakBefore: ribbonBreakBefore, ribbonRunningLengths: ribbonRunningLengths, ribbonSectionLengths: ribbonSectionLengths, ribbonSmoothedPressures: ribbonSmoothedPressures } = out;
     let sectionStart = 0;
     let runningLength = 0;
     let lastSpawnIndex = 0;
@@ -9755,6 +9754,8 @@ function $6fafcf15f6b61d60$var$prepareRibbonSections(stroke, out) {
     let previousDirectionY = 0;
     let previousDirectionZ = 0;
     let hasPreviousDirection = false;
+    let lastSpawnPressure = $6fafcf15f6b61d60$var$clamp01(stroke.controlPoints[0]?.pressure ?? 0);
+    ribbonSmoothedPressures[0] = lastSpawnPressure;
     const localBrushSize = $6fafcf15f6b61d60$var$getLocalBrushSize(stroke);
     const pressureSizeMin = $6fafcf15f6b61d60$var$normalizePressureSizeMin(options.pressureSizeRange?.[0]);
     for(let index = 1; index < pointCount; index += 1){
@@ -9766,15 +9767,22 @@ function $6fafcf15f6b61d60$var$prepareRibbonSections(stroke, out) {
         const segmentLength = Math.hypot(deltaX, deltaY, deltaZ);
         if (segmentLength < $6fafcf15f6b61d60$var$OPEN_BRUSH_RIBBON_MINIMUM_MOVE_METERS) {
             ribbonBreakBefore[index] = 2;
+            ribbonSmoothedPressures[index] = lastSpawnPressure;
             ribbonRunningLengths[index] = runningLength;
             continue;
         }
+        // QuadStripBrush smooths pressure from the last committed spawn. Rejected
+        // and provisional samples do not advance either pressure or position
+        // state, so every preview replacement must start from the same values.
+        const retainedPressure = Math.pow(0.1, segmentLength / 0.2);
+        const smoothedPressure = retainedPressure * lastSpawnPressure + (1 - retainedPressure) * $6fafcf15f6b61d60$var$clamp01(stroke.controlPoints[index].pressure);
+        ribbonSmoothedPressures[index] = smoothedPressure;
         // QuadStripBrush keeps one mutable leading quad for samples that have moved
         // far enough to update the brush but not far enough to commit a new solid.
         // A later sample overwrites that quad; only the final provisional sample is
         // visible in a live/finalized mesh. GetSpawnInterval is the fixed 1.5 mm
         // floor plus 20% of the pressure-adjusted brush size.
-        const spawnInterval = 0.0015 + localBrushSize * $6fafcf15f6b61d60$var$getPressureSizeMultiplier(out.ribbonSmoothedPressures[index], pressureSizeMin) * 0.2;
+        const spawnInterval = 0.0015 + localBrushSize * $6fafcf15f6b61d60$var$getPressureSizeMultiplier(smoothedPressure, pressureSizeMin) * 0.2;
         const isFinalProvisional = index === pointCount - 1;
         if (segmentLength < spawnInterval && !isFinalProvisional) {
             ribbonBreakBefore[index] = 2;
@@ -9796,6 +9804,7 @@ function $6fafcf15f6b61d60$var$prepareRibbonSections(stroke, out) {
         ribbonRunningLengths[index] = runningLength;
         if (segmentLength >= spawnInterval) {
             lastSpawnIndex = index;
+            lastSpawnPressure = smoothedPressure;
             previousDirectionX = directionX;
             previousDirectionY = directionY;
             previousDirectionZ = directionZ;

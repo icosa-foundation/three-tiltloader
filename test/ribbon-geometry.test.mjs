@@ -93,6 +93,42 @@ test( 'keeps the initial QuadStrip surface frame unbiased', () => {
 
 } );
 
+test( 'does not advance QuadStrip pressure state for provisional samples', () => {
+
+	const direct = createStroke();
+	direct.brushSize = 1;
+	direct.controlPoints[ 0 ].pressure = 0;
+	direct.controlPoints[ 1 ].pressure = 0;
+
+	const withProvisional = createStroke();
+	withProvisional.brushSize = 1;
+	withProvisional.controlPoints[ 0 ].pressure = 0;
+	withProvisional.controlPoints.splice( 1, 0, {
+		position: [ 0.01, 0, 0 ],
+		orientation: [ 0, 0, 0, 1 ],
+		pressure: 1,
+		timestampMs: 8
+	} );
+	withProvisional.controlPoints[ 2 ].pressure = 0;
+
+	const options = {
+		generatorClass: 'QuadStripBrushStretchUV',
+		pressureSizeRange: [ 0.5, 1 ]
+	};
+	const directGeometry = generateBrushGeometry( direct, 'ribbon', options );
+	const provisionalGeometry = generateBrushGeometry(
+		withProvisional,
+		'ribbon',
+		options
+	);
+
+	assert.deepEqual(
+		Array.from( provisionalGeometry.positions ),
+		Array.from( directGeometry.positions )
+	);
+
+} );
+
 test( 'preserves distance and unitized ribbon UV modes', () => {
 
 	const stroke = createStroke();
