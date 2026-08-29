@@ -352,8 +352,8 @@ test( 'smooths FlatGeometryBrush centers like Open Brush', () => {
 	assertClose( ( left[ 1 ] + right[ 1 ] ) * 0.5, 0.3 );
 	// FlatGeometry derives its tangent basis from the two UV-mapped triangles,
 	// not directly from the central-difference stroke direction.
-	assertClose( geometry.tangents[ 16 ], 0.6 );
-	assertClose( geometry.tangents[ 17 ], 0.8 );
+	assertClose( geometry.tangents[ 20 ], 0.6 );
+	assertClose( geometry.tangents[ 21 ], 0.8 );
 	assert.notEqual( geometry.tangents[ 16 ], geometry.tangents[ 20 ] );
 
 } );
