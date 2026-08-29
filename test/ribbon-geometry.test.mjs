@@ -93,6 +93,27 @@ test( 'preserves distance and unitized ribbon UV modes', () => {
 
 } );
 
+test( 'turns each single-sided quad toward the pointer', () => {
+
+	const stroke = createStroke();
+	stroke.controlPoints[ 1 ].position = [ 0, 1, 0 ];
+	stroke.controlPoints.push( {
+		position: [ 0, 2, 0 ],
+		orientation: [ 0, 1, 0, 0 ],
+		pressure: 1,
+		timestampMs: 32
+	} );
+	const geometry = generateBrushGeometry( stroke, 'ribbon', {
+		generatorClass: 'QuadStripBrushStretchUV',
+		geometryParams: { renderBackfaces: false }
+	} );
+
+	const firstFacing = geometry.normals[ 2 ];
+	const finalFacing = geometry.normals[ geometry.normals.length - 1 ];
+	assert.ok( firstFacing * finalFacing < -0.9 );
+
+} );
+
 test( 'replays DistanceUV updates over the newest three fused solids', () => {
 
 	const stroke = createStroke();
