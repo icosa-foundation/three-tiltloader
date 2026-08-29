@@ -352,8 +352,8 @@ test( 'smooths FlatGeometryBrush centers like Open Brush', () => {
 	assertClose( ( left[ 1 ] + right[ 1 ] ) * 0.5, 0.3 );
 	// FlatGeometry derives its tangent basis from the two UV-mapped triangles,
 	// not directly from the central-difference stroke direction.
-	assertClose( geometry.tangents[ 16 ], 0.6 );
-	assertClose( geometry.tangents[ 17 ], 0.8 );
+	assertClose( geometry.tangents[ 20 ], 0.6 );
+	assertClose( geometry.tangents[ 21 ], 0.8 );
 	assert.notEqual( geometry.tangents[ 16 ], geometry.tangents[ 20 ] );
 
 } );
@@ -379,15 +379,16 @@ test( 'smooths a FlatGeometry section end toward its break knot', () => {
 		generatorClass: 'FlatGeometryBrush',
 		geometryParams: { m11Compatibility: false }
 	} );
-	const leftVertex = 4;
-	const rightVertex = 5;
+	const leftVertex = 2;
+	const rightVertex = 3;
 	const centerX =
 		( geometry.positions[ leftVertex * 3 ] + geometry.positions[ rightVertex * 3 ] ) * 0.5;
 	const centerY =
 		( geometry.positions[ leftVertex * 3 + 1 ] + geometry.positions[ rightVertex * 3 + 1 ] ) * 0.5;
-	// 0.3 * previous + 0.4 * current + 0.3 * following break knot.
-	assertClose( centerX, 1.4 );
-	assertClose( centerY, 0.3 );
+	// The turn makes point 2 the non-geometry break knot, so point 1 remains
+	// the section end and is smoothed toward that following knot.
+	assertClose( centerX, 1 );
+	assertClose( centerY, 0 );
 
 } );
 
@@ -1165,9 +1166,9 @@ test( 'trims a short non-M11 FlatGeometry tail after a late break', () => {
 		generatorClass: 'FlatGeometryBrush',
 		geometryParams: { m11Compatibility: true }
 	} );
-	assert.equal( getGeneratedVertexCount( trimmed ), 8 );
-	assert.equal( getGeneratedIndexCount( trimmed ), 12 );
+	assert.equal( getGeneratedVertexCount( trimmed ), 4 );
+	assert.equal( getGeneratedIndexCount( trimmed ), 6 );
 	assert.equal( getGeneratedVertexCount( retained ), 12 );
-	assert.equal( getGeneratedIndexCount( retained ), 24 );
+	assert.equal( getGeneratedIndexCount( retained ), 30 );
 
 } );
