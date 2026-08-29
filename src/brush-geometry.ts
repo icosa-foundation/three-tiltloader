@@ -1476,7 +1476,7 @@ function applyQuadStripPositionQuads(
   let lastSpawnPointIndex = 0;
   let solid = 0;
   for (let pointIndex = 1; pointIndex < pointCount; pointIndex += 1) {
-    const sectionState = breakBefore[pointIndex];
+    let sectionState = breakBefore[pointIndex];
     const isTransientProvisional =
       sectionState === 2 && provisionalSamples[pointIndex] === 1;
     if (sectionState === 2 && !isTransientProvisional) {
@@ -1536,6 +1536,21 @@ function applyQuadStripPositionQuads(
     halfRight[1] = right[1] * size * 0.5;
     halfRight[2] = right[2] * size * 0.5;
     let sizeShrink = lastSizeShrink;
+    if (
+      sectionState !== 1 &&
+      sectionSolidCount >= 1 &&
+      previousHalfForward[0] * (center[0] - previousPoint.position[0]) +
+        previousHalfForward[1] * (center[1] - previousPoint.position[1]) +
+        previousHalfForward[2] * (center[2] - previousPoint.position[2]) <=
+        0
+    ) {
+      // Open Brush tests reversal against the last committed quad forward,
+      // which may have been redirected by width clipping. Consecutive control
+      // point directions alone miss this break after a tight turn.
+      sectionState = 1;
+      breakBefore[pointIndex] = 1;
+      sectionSolidCount = 0;
+    }
     if (sectionSolidCount >= 1) {
       const rightEdgeX = center[0] + halfRight[0] - previousCenter[0];
       const rightEdgeY = center[1] + halfRight[1] - previousCenter[1];

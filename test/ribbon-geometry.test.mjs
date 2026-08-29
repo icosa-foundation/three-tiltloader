@@ -530,6 +530,42 @@ test( 'adjusts and recovers QuadStrip width with the source bend state', () => {
 
 } );
 
+test( 'breaks a QuadStrip against its clipped forward direction', () => {
+
+	const radians = ( degrees ) => degrees * Math.PI / 180;
+	const firstTurn = [
+		1 + 0.5 * Math.cos( radians( 60 ) ),
+		0.5 * Math.sin( radians( 60 ) ),
+		0
+	];
+	const secondTurn = [
+		firstTurn[ 0 ] + 0.5 * Math.cos( radians( 130 ) ),
+		firstTurn[ 1 ] + 0.5 * Math.sin( radians( 130 ) ),
+		0
+	];
+	const stroke = createStroke();
+	stroke.brushSize = 2;
+	stroke.controlPoints.push(
+		{
+			position: firstTurn, orientation: [ 0, 0, 0, 1 ], pressure: 1,
+			timestampMs: 32
+		},
+		{
+			position: secondTurn, orientation: [ 0, 0, 0, 1 ], pressure: 1,
+			timestampMs: 48
+		}
+	);
+	const geometry = generateBrushGeometry( stroke, 'ribbon', {
+		generatorClass: 'QuadStripBrushDistanceUV'
+	} );
+
+	// The raw movement directions still have a positive dot product, but the
+	// previous self-intersection clip redirected the committed quad forward.
+	// Open Brush therefore starts a new faded section at the third solid.
+	assert.equal( geometry.colors[ 2 * 6 * 4 + 3 ], 0 );
+
+} );
+
 test( 'smooths FlatGeometryBrush centers like Open Brush', () => {
 
 	const stroke = createStroke();
