@@ -289,6 +289,211 @@ function actualChannels( geometry ) {
 	};
 }
 
+function hullPointKey( point, tolerance ) {
+	return point.map( ( value ) => Math.round( value / tolerance ) ).join( ':' );
+}
+
+function hullEdgeKey( first, second ) {
+	return first <= second ? `${first}|${second}` : `${second}|${first}`;
+}
+
+function buildPolygonFaces( geometry, fixturePolygonFaces, unitScale ) {
+	const pointTolerance = fixturePolygonFaces.pointTolerance * unitScale;
+	const planeTolerance = fixturePolygonFaces.planeTolerance * unitScale;
+	const normalDotTolerance = fixturePolygonFaces.normalDotTolerance;
+	const positions = geometry.positions;
+	const center = [
+		( geometry.bounds.min[ 0 ] + geometry.bounds.max[ 0 ] ) * 0.5,
+		( geometry.bounds.min[ 1 ] + geometry.bounds.max[ 1 ] ) * 0.5,
+		( geometry.bounds.min[ 2 ] + geometry.bounds.max[ 2 ] ) * 0.5
+	];
+	const triangles = [];
+	const edgeTriangles = new Map();
+	for ( let offset = 0; offset + 2 < geometry.indices.length; offset += 3 ) {
+		const vertices = [ 0, 1, 2 ].map( ( corner ) => {
+			const vertex = geometry.indices[ offset + corner ] * 3;
+			return [ positions[ vertex ], positions[ vertex + 1 ], positions[ vertex + 2 ] ];
+		} );
+		const first = vertices[ 0 ];
+		const ab = vertices[ 1 ].map( ( value, index ) => value - first[ index ] );
+		const ac = vertices[ 2 ].map( ( value, index ) => value - first[ index ] );
+		let normal = [
+			ab[ 1 ] * ac[ 2 ] - ab[ 2 ] * ac[ 1 ],
+			ab[ 2 ] * ac[ 0 ] - ab[ 0 ] * ac[ 2 ],
+			ab[ 0 ] * ac[ 1 ] - ab[ 1 ] * ac[ 0 ]
+		];
+		const normalLength = Math.hypot( ...normal );
+		if ( normalLength <= 1e-6 ) continue;
+		normal = normal.map( ( value ) => value / normalLength );
+		const centerDirection = center.map( ( value, index ) => value - first[ index ] );
+		if ( dot3( normal, centerDirection ) > 0 ) {
+			normal = normal.map( ( value ) => -value );
+		}
+		const vertexKeys = vertices.map( ( point ) => hullPointKey( point, pointTolerance ) );
+		const triangleIndex = triangles.length;
+		triangles.push( {
+			normal,
+			planeDistance: dot3( normal, first ),
+			vertices,
+			vertexKeys
+		} );
+		for ( const [ a, b ] of [ [ 0, 1 ], [ 1, 2 ], [ 2, 0 ] ] ) {
+			const key = hullEdgeKey( vertexKeys[ a ], vertexKeys[ b ] );
+			const members = edgeTriangles.get( key ) ?? [];
+			members.push( triangleIndex );
+			edgeTriangles.set( key, members );
+		}
+	}
+
+	const adjacency = triangles.map( () => new Set() );
+	for ( const members of edgeTriangles.values() ) {
+		for ( let first = 0; first < members.length; first += 1 ) {
+			for ( let second = first + 1; second < members.length; second += 1 ) {
+				const a = triangles[ members[ first ] ];
+				const b = triangles[ members[ second ] ];
+				if ( dot3( a.normal, b.normal ) < normalDotTolerance ||
+					Math.abs( a.planeDistance - b.planeDistance ) > planeTolerance ) continue;
+				adjacency[ members[ first ] ].add( members[ second ] );
+				adjacency[ members[ second ] ].add( members[ first ] );
+			}
+		}
+	}
+
+	const visited = new Uint8Array( triangles.length );
+	const faces = [];
+	for ( let start = 0; start < triangles.length; start += 1 ) {
+		if ( visited[ start ] ) continue;
+		const pending = [ start ];
+		const component = [];
+		visited[ start ] = 1;
+		while ( pending.length > 0 ) {
+			const current = pending.pop();
+			component.push( current );
+			for ( const neighbor of adjacency[ current ] ) {
+				if ( visited[ neighbor ] ) continue;
+				visited[ neighbor ] = 1;
+				pending.push( neighbor );
+			}
+		}
+		const uniqueVertices = new Map();
+		for ( const triangleIndex of component ) {
+			const triangle = triangles[ triangleIndex ];
+			for ( let vertex = 0; vertex < 3; vertex += 1 ) {
+				uniqueVertices.set( triangle.vertexKeys[ vertex ], triangle.vertices[ vertex ] );
+			}
+		}
+		faces.push( {
+			normal: triangles[ component[ 0 ] ].normal,
+			planeDistance: triangles[ component[ 0 ] ].planeDistance,
+			vertices: [ ...uniqueVertices.values() ]
+		} );
+	}
+	return { faces, pointTolerance, planeTolerance, normalDotTolerance };
+}
+
+function dot3( first, second ) {
+	return first[ 0 ] * second[ 0 ] + first[ 1 ] * second[ 1 ] + first[ 2 ] * second[ 2 ];
+}
+
+function normalizeReferencePolygonFaces( polygonFaces, unitScale, handedness ) {
+	const reflect = handedness === 'unity-to-three';
+	return {
+		faces: polygonFaces.faces.map( ( face ) => ( {
+			normal: [ face.normal[ 0 ], face.normal[ 1 ], face.normal[ 2 ] * ( reflect ? -1 : 1 ) ],
+			planeDistance: face.planeDistance * unitScale,
+			vertices: face.vertices.map( ( point ) => [
+				point[ 0 ] * unitScale,
+				point[ 1 ] * unitScale,
+				point[ 2 ] * unitScale * ( reflect ? -1 : 1 )
+			] )
+		} ) )
+	};
+}
+
+function comparePolygonFaces( geometry, fixturePolygonFaces, unitScale, handedness ) {
+	const actual = buildPolygonFaces( geometry, fixturePolygonFaces, unitScale );
+	const expected = normalizeReferencePolygonFaces(
+		fixturePolygonFaces,
+		unitScale,
+		handedness
+	);
+	const unmatchedExpected = new Set( expected.faces.map( ( _, index ) => index ) );
+	let maximumPointError = 0;
+	let maximumPlaneError = 0;
+	let minimumNormalDot = 1;
+	let matchedFaceCount = 0;
+	for ( const actualFace of actual.faces ) {
+		let matchedIndex = -1;
+		let matchedMetrics;
+		for ( const expectedIndex of unmatchedExpected ) {
+			const expectedFace = expected.faces[ expectedIndex ];
+			if ( actualFace.vertices.length !== expectedFace.vertices.length ) continue;
+			const normalDot = dot3( actualFace.normal, expectedFace.normal );
+			const planeError = Math.abs(
+				actualFace.planeDistance - expectedFace.planeDistance
+			);
+			if ( normalDot < actual.normalDotTolerance || planeError > actual.planeTolerance ) continue;
+			const remainingVertices = new Set(
+				expectedFace.vertices.map( ( _, index ) => index )
+			);
+			let facePointError = 0;
+			let verticesMatch = true;
+			for ( const actualPoint of actualFace.vertices ) {
+				let closestIndex = -1;
+				let closestError = Number.POSITIVE_INFINITY;
+				for ( const expectedVertexIndex of remainingVertices ) {
+					const expectedPoint = expectedFace.vertices[ expectedVertexIndex ];
+					const error = Math.max(
+						Math.abs( actualPoint[ 0 ] - expectedPoint[ 0 ] ),
+						Math.abs( actualPoint[ 1 ] - expectedPoint[ 1 ] ),
+						Math.abs( actualPoint[ 2 ] - expectedPoint[ 2 ] )
+					);
+					if ( error < closestError ) {
+						closestError = error;
+						closestIndex = expectedVertexIndex;
+					}
+				}
+				if ( closestError > actual.pointTolerance ) {
+					verticesMatch = false;
+					break;
+				}
+				remainingVertices.delete( closestIndex );
+				facePointError = Math.max( facePointError, closestError );
+			}
+			if ( ! verticesMatch ) continue;
+			matchedIndex = expectedIndex;
+			matchedMetrics = { facePointError, planeError, normalDot };
+			break;
+		}
+		if ( matchedIndex === -1 ) continue;
+		unmatchedExpected.delete( matchedIndex );
+		matchedFaceCount += 1;
+		maximumPointError = Math.max( maximumPointError, matchedMetrics.facePointError );
+		maximumPlaneError = Math.max( maximumPlaneError, matchedMetrics.planeError );
+		minimumNormalDot = Math.min( minimumNormalDot, matchedMetrics.normalDot );
+	}
+	const unmatchedActualCount = actual.faces.length - matchedFaceCount;
+	const unmatchedExpectedCount = unmatchedExpected.size;
+	return {
+		status: unmatchedActualCount === 0 && unmatchedExpectedCount === 0
+			? 'match'
+			: actual.faces.length === expected.faces.length
+				? 'value-mismatch'
+				: 'count-mismatch',
+		actualCount: actual.faces.length,
+		expectedCount: expected.faces.length,
+		matchedFaceCount,
+		unmatchedActualCount,
+		unmatchedExpectedCount,
+		maximumPointError,
+		maximumPlaneError,
+		minimumNormalDot,
+		pointTolerance: actual.pointTolerance,
+		planeTolerance: actual.planeTolerance,
+		normalDotTolerance: actual.normalDotTolerance
+	};
+}
+
 function compareExactArray( actual, expected ) {
 	if ( actual.length !== expected.length ) {
 		return {
@@ -420,15 +625,30 @@ function compareStroke(
 		unitScale,
 		handedness
 	);
+	const usesPolygonFaces =
+		( family === 'hull' || family === 'concave-hull' ) &&
+		fixtureStroke.polygonFaces?.faces !== undefined;
+	const polygonFaces = usesPolygonFaces
+		? comparePolygonFaces(
+			geometry,
+			fixtureStroke.polygonFaces,
+			unitScale,
+			handedness
+		)
+		: undefined;
 	const channels = {};
 	for ( const [ fixtureName ] of CHANNELS ) {
-		channels[ fixtureName ] = compareAttribute(
-			actual[ fixtureName ],
-			expected.attributes[ fixtureName ],
-			tolerance
-		);
+		channels[ fixtureName ] = usesPolygonFaces
+			? { status: 'not-compared-for-polygonal-hull' }
+			: compareAttribute(
+				actual[ fixtureName ],
+				expected.attributes[ fixtureName ],
+				tolerance
+			);
 	}
-	const indices = compareExactArray( geometry.indices, expected.indices );
+	const indices = usesPolygonFaces
+		? { status: 'replaced-by-polygon-faces' }
+		: compareExactArray( geometry.indices, expected.indices );
 	const isEmpty = geometry.positions.length === 0 && fixtureStroke.live.vertexCount === 0;
 	const bounds = isEmpty
 		? { status: 'empty' }
@@ -437,12 +657,15 @@ function compareStroke(
 			[ ...expected.bounds.min, ...expected.bounds.max ],
 			tolerance
 		);
-	const comparedChannels = Object.values( channels ).filter(
-		( channel ) => channel.status !== 'not-present-in-reference'
+	const comparedChannels = Object.values( channels ).filter( ( channel ) =>
+		channel.status !== 'not-present-in-reference' &&
+		channel.status !== 'not-compared-for-polygonal-hull'
 	);
-	const passed = indices.status === 'match' &&
-		( bounds.status === 'match' || bounds.status === 'empty' ) &&
-		comparedChannels.every( ( channel ) => channel.status === 'match' );
+	const passed = ( usesPolygonFaces
+		? polygonFaces.status === 'match'
+		: indices.status === 'match' &&
+			comparedChannels.every( ( channel ) => channel.status === 'match' ) ) &&
+		( bounds.status === 'match' || bounds.status === 'empty' );
 	return {
 		strokeIndex,
 		status: passed ? 'match' : 'mismatch',
@@ -457,6 +680,7 @@ function compareStroke(
 			expected: fixtureStroke.live.indexCount
 		},
 		indices,
+		polygonFaces,
 		channels,
 		bounds,
 		warning: geometry.warning
@@ -567,6 +791,10 @@ function compactStatus( comparison ) {
 		case 'not-present-in-reference':
 		case 'empty':
 			return '-';
+		case 'replaced-by-polygon-faces':
+			return 'faces';
+		case 'not-compared-for-polygonal-hull':
+			return '-';
 		default:
 			return comparison.status;
 	}
@@ -601,7 +829,11 @@ function formatTextReport( report ) {
 				stroke.family,
 				`${stroke.vertexCount.actual}/${stroke.vertexCount.expected}`,
 				`${stroke.indexCount.actual}/${stroke.indexCount.expected}`,
-				compactStatus( stroke.indices ),
+				stroke.polygonFaces
+					? stroke.polygonFaces.status === 'match'
+						? `match (${stroke.polygonFaces.actualCount} faces)`
+						: `!${stroke.polygonFaces.actualCount}/${stroke.polygonFaces.expectedCount} faces; ${stroke.polygonFaces.matchedFaceCount} matched`
+					: compactStatus( stroke.indices ),
 				compactStatus( stroke.channels.position ),
 				compactStatus( stroke.channels.normal ),
 				compactStatus( stroke.channels.tangent ),
