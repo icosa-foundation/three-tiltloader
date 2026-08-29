@@ -3763,6 +3763,7 @@ function $6fafcf15f6b61d60$var$generateParticleGeometry(stroke, options, out) {
 function $6fafcf15f6b61d60$var$generateSprayParticleGeometry(stroke, options, out) {
     out.uv0Size = 2;
     const hasLifetime = options.generatorClass === "MidpointPlusLifetimeSprayBrush";
+    stroke = $6fafcf15f6b61d60$var$retainSprayControlPoints(stroke, options, out, hasLifetime);
     out.uv1Size = hasLifetime ? 4 : 0;
     if (hasLifetime) {
         $6fafcf15f6b61d60$var$ensureGeometryPressureCapacity(out, stroke.controlPoints.length);
@@ -3874,11 +3875,11 @@ function $6fafcf15f6b61d60$var$generateSprayParticleGeometry(stroke, options, ou
         preferredRight[0] = 0;
         preferredRight[1] = 0;
         preferredRight[2] = 0;
-        $6fafcf15f6b61d60$var$computeSurfaceFrame(preferredRight, segmentDirection, pointerForward, pointerUp, true, frameRight, frameNormal);
+        $6fafcf15f6b61d60$var$computeSurfaceFrame(preferredRight, segmentDirection, pointerForward, pointerUp, true, frameRight, frameNormal, true);
         const baseOpacity = $6fafcf15f6b61d60$var$getPressureOpacityMultiplier(pressure, pressureOpacityMin, pressureOpacityMax) * descriptorOpacity;
         for(let segmentQuad = 0; segmentQuad < segmentQuadCount; segmentQuad += 1){
             const salt = hasLifetime ? 10 * ((pointIndex + knotIndexOffset) * 5 + segmentQuad) : 10 * ((pointIndex + knotIndexOffset) * 12 + segmentQuad % 12);
-            const rotation = ($6fafcf15f6b61d60$var$statelessRandom01(stroke.seed, salt + 1) * 2 - 1) * rotationVarianceRadians;
+            const rotation = -($6fafcf15f6b61d60$var$statelessRandom01(stroke.seed, salt + 1) * 2 - 1) * rotationVarianceRadians;
             $6fafcf15f6b61d60$var$rotateAroundAxis(frameRight, frameNormal, rotation, rotatedRight);
             $6fafcf15f6b61d60$var$rotateAroundAxis(segmentDirection, frameNormal, rotation, rotatedFacing);
             const size = pressuredSize * (1 + $6fafcf15f6b61d60$var$statelessRandom01(stroke.seed, salt) * sizeVariance);
@@ -3886,40 +3887,52 @@ function $6fafcf15f6b61d60$var$generateSprayParticleGeometry(stroke, options, ou
             center[1] = previousPoint.position[1] + segmentDirection[1] * spawnInterval * segmentQuad;
             center[2] = previousPoint.position[2] + segmentDirection[2] * spawnInterval * segmentQuad;
             $6fafcf15f6b61d60$var$writeRandomInsideSphere(stroke.seed, salt + 2, randomOffset);
+            randomOffset[2] = -randomOffset[2];
             center[0] += randomOffset[0] * size * positionVariance;
             center[1] += randomOffset[1] * size * positionVariance;
             center[2] += randomOffset[2] * size * positionVariance;
             const opacity = randomizeAlpha ? $6fafcf15f6b61d60$var$statelessRandom01(stroke.seed, salt + 5) : baseOpacity;
             const atlasCell = usesAtlas ? Math.min(3, Math.floor($6fafcf15f6b61d60$var$statelessRandom01(stroke.seed, salt + 6) * 4)) : 0;
-            $6fafcf15f6b61d60$var$writeSprayParticleQuad(positions, normals, tangents, colors, uvs, out.uv1s, indices, bounds, quadIndex, center, rotatedFacing, rotatedRight, frameNormal, size * sizeRatioX * 0.5, size * sizeRatioY * 0.5, stroke.color, opacity, usesAtlas, atlasCell, hasLifetime, options.deterministicBirthTime === true ? 0 : point.timestampMs * 0.001 + $6fafcf15f6b61d60$var$normalizeFinite(options.particleBirthTimeOffsetSeconds));
+            $6fafcf15f6b61d60$var$writeSprayParticleQuad(positions, normals, tangents, colors, uvs, out.uv1s, indices, bounds, quadIndex, center, rotatedFacing, rotatedRight, frameNormal, size * sizeRatioX * 0.5, size * sizeRatioY * 0.5, stroke.color, opacity, usesAtlas, atlasCell, hasLifetime, hasBackfaces, options.deterministicBirthTime === true ? 0 : point.timestampMs * 0.001 + $6fafcf15f6b61d60$var$normalizeFinite(options.particleBirthTimeOffsetSeconds));
             quadIndex += 1;
-        }
-    }
-    if (hasBackfaces) {
-        const backfaceColor = $6fafcf15f6b61d60$var$shiftHue(stroke.color, $6fafcf15f6b61d60$var$normalizeHueShift(options.geometryParams?.backfaceHueShift));
-        for(let vertex = 0; vertex < frontVertexCount; vertex += 1){
-            const backVertex = frontVertexCount + vertex;
-            $6fafcf15f6b61d60$var$copyPosition(positions, vertex, backVertex);
-            $6fafcf15f6b61d60$var$copyNegatedNormal(normals, vertex, backVertex);
-            $6fafcf15f6b61d60$var$copyTangent(tangents, vertex, backVertex, true);
-            $6fafcf15f6b61d60$var$copyUv(uvs, vertex, backVertex);
-            $6fafcf15f6b61d60$var$writeColorFromAlpha(colors, backVertex, backfaceColor, colors[vertex * 4 + 3]);
-        }
-        for(let quad = 0; quad < quadCount; quad += 1){
-            const vertex = frontVertexCount + quad * 4;
-            const indexOffset = frontIndexCount + quad * 6;
-            indices[indexOffset] = vertex;
-            indices[indexOffset + 1] = vertex + 3;
-            indices[indexOffset + 2] = vertex + 1;
-            indices[indexOffset + 3] = vertex;
-            indices[indexOffset + 4] = vertex + 2;
-            indices[indexOffset + 5] = vertex + 3;
         }
     }
     out.family = "particle";
     out.vertexCount = vertexCount;
     out.indexCount = indexCount;
     return reallocated;
+}
+function $6fafcf15f6b61d60$var$retainSprayControlPoints(stroke, options, out, smoothPressure) {
+    const source = stroke.controlPoints;
+    if (source.length < 2) return stroke;
+    const retained = out.tubeRetainedControlPoints;
+    retained.length = 0;
+    retained.push(source[0]);
+    const pressureSizeMin = $6fafcf15f6b61d60$var$normalizePressureSizeMin(options.pressureSizeRange?.[0]);
+    const particleRate = $6fafcf15f6b61d60$var$normalizePositive(options.geometryParams?.sprayRateMultiplier, 1);
+    const localBrushSize = $6fafcf15f6b61d60$var$getLocalBrushSize(stroke);
+    const smoothingWindow = options.geometryParams?.m11Compatibility === true ? 0.1 : 0.2;
+    let lastRetained = source[0];
+    let lastSmoothedPressure = $6fafcf15f6b61d60$var$clamp01(source[0].pressure);
+    for(let pointIndex = 1; pointIndex < source.length; pointIndex += 1){
+        const point = source[pointIndex];
+        const distance = $6fafcf15f6b61d60$var$distanceBetweenControlPoints(lastRetained, point);
+        const pressure = smoothPressure ? Math.pow(0.1, distance / smoothingWindow) * lastSmoothedPressure + (1 - Math.pow(0.1, distance / smoothingWindow)) * $6fafcf15f6b61d60$var$clamp01(point.pressure) : $6fafcf15f6b61d60$var$clamp01(point.pressure);
+        const pressuredSize = localBrushSize * $6fafcf15f6b61d60$var$getPressureSizeMultiplier(pressure, pressureSizeMin);
+        const spawnInterval = pressuredSize / particleRate;
+        // GeometryBrush repeatedly overwrites its leading knot until the distance
+        // from the last keeper exceeds the brush's spawn interval. The current
+        // leading knot remains renderable even when it has not become a keeper.
+        if (pointIndex + 1 === source.length || distance > spawnInterval) {
+            retained.push(point);
+            lastRetained = point;
+            lastSmoothedPressure = pressure;
+        }
+    }
+    return retained.length === source.length ? stroke : {
+        ...stroke,
+        controlPoints: retained
+    };
 }
 function $6fafcf15f6b61d60$var$generateGeniusParticleGeometry(stroke, options, out) {
     out.uv0Size = 4;
@@ -4489,22 +4502,44 @@ function $6fafcf15f6b61d60$var$clamp01(value) {
     if (value > 1) return 1;
     return value;
 }
-function $6fafcf15f6b61d60$var$writeSprayParticleQuad(positions, normals, tangents, colors, uvs, uv1s, indices, bounds, quadIndex, center, facing, right, normal, forwardScale, rightScale, color, opacity, usesAtlas, atlasCell, hasLifetime, birthTimeSeconds) {
-    const vertex = quadIndex * 4;
+function $6fafcf15f6b61d60$var$writeSprayParticleQuad(positions, normals, tangents, colors, uvs, uv1s, indices, bounds, quadIndex, center, facing, right, normal, forwardScale, rightScale, color, opacity, usesAtlas, atlasCell, hasLifetime, hasBackfaces, birthTimeSeconds) {
+    const vertexStride = hasBackfaces ? 2 : 1;
+    const vertex = quadIndex * 4 * vertexStride;
     const atlasScale = usesAtlas ? 0.5 : 1;
     const atlasU = usesAtlas ? atlasCell % 2 * 0.5 : 0;
     const atlasV = usesAtlas ? Math.floor(atlasCell / 2) * 0.5 : 0;
     $6fafcf15f6b61d60$var$writeSprayParticleVertex(positions, normals, tangents, colors, uvs, uv1s, bounds, vertex, center, facing, right, normal, -forwardScale, rightScale, color, opacity, atlasU, atlasV + atlasScale, hasLifetime, birthTimeSeconds);
-    $6fafcf15f6b61d60$var$writeSprayParticleVertex(positions, normals, tangents, colors, uvs, uv1s, bounds, vertex + 1, center, facing, right, normal, -forwardScale, -rightScale, color, opacity, atlasU, atlasV, hasLifetime, birthTimeSeconds);
-    $6fafcf15f6b61d60$var$writeSprayParticleVertex(positions, normals, tangents, colors, uvs, uv1s, bounds, vertex + 2, center, facing, right, normal, forwardScale, rightScale, color, opacity, atlasU + atlasScale, atlasV + atlasScale, hasLifetime, birthTimeSeconds);
-    $6fafcf15f6b61d60$var$writeSprayParticleVertex(positions, normals, tangents, colors, uvs, uv1s, bounds, vertex + 3, center, facing, right, normal, forwardScale, -rightScale, color, opacity, atlasU + atlasScale, atlasV, hasLifetime, birthTimeSeconds);
-    const indexOffset = quadIndex * 6;
+    $6fafcf15f6b61d60$var$writeSprayParticleVertex(positions, normals, tangents, colors, uvs, uv1s, bounds, vertex + vertexStride, center, facing, right, normal, -forwardScale, -rightScale, color, opacity, atlasU, atlasV, hasLifetime, birthTimeSeconds);
+    $6fafcf15f6b61d60$var$writeSprayParticleVertex(positions, normals, tangents, colors, uvs, uv1s, bounds, vertex + vertexStride * 2, center, facing, right, normal, forwardScale, rightScale, color, opacity, atlasU + atlasScale, atlasV + atlasScale, hasLifetime, birthTimeSeconds);
+    $6fafcf15f6b61d60$var$writeSprayParticleVertex(positions, normals, tangents, colors, uvs, uv1s, bounds, vertex + vertexStride * 3, center, facing, right, normal, forwardScale, -rightScale, color, opacity, atlasU + atlasScale, atlasV, hasLifetime, birthTimeSeconds);
+    if (hasBackfaces) for(let local = 0; local < 4; local += 1){
+        const frontVertex = vertex + local * 2;
+        const backVertex = frontVertex + 1;
+        $6fafcf15f6b61d60$var$copyPosition(positions, frontVertex, backVertex);
+        $6fafcf15f6b61d60$var$copyNegatedNormal(normals, frontVertex, backVertex);
+        $6fafcf15f6b61d60$var$copyTangent(tangents, frontVertex, backVertex, true);
+        $6fafcf15f6b61d60$var$copyUv(uvs, frontVertex, backVertex);
+        $6fafcf15f6b61d60$var$writeColorFromAlpha(colors, backVertex, color, colors[frontVertex * 4 + 3]);
+    }
+    const indexOffset = quadIndex * 6 * vertexStride;
     indices[indexOffset] = vertex;
-    indices[indexOffset + 1] = vertex + 1;
-    indices[indexOffset + 2] = vertex + 3;
-    indices[indexOffset + 3] = vertex;
-    indices[indexOffset + 4] = vertex + 3;
-    indices[indexOffset + 5] = vertex + 2;
+    indices[indexOffset + 1] = vertex + vertexStride * 3;
+    indices[indexOffset + 2] = vertex + vertexStride;
+    if (hasBackfaces) {
+        indices[indexOffset + 3] = vertex + 7;
+        indices[indexOffset + 4] = vertex + 1;
+        indices[indexOffset + 5] = vertex + 3;
+        indices[indexOffset + 6] = vertex;
+        indices[indexOffset + 7] = vertex + 4;
+        indices[indexOffset + 8] = vertex + 6;
+        indices[indexOffset + 9] = vertex + 5;
+        indices[indexOffset + 10] = vertex + 1;
+        indices[indexOffset + 11] = vertex + 7;
+    } else {
+        indices[indexOffset + 3] = vertex;
+        indices[indexOffset + 4] = vertex + 2;
+        indices[indexOffset + 5] = vertex + 3;
+    }
 }
 function $6fafcf15f6b61d60$var$writeSprayParticleVertex(positions, normals, tangents, colors, uvs, uv1s, bounds, vertex, center, facing, right, normal, forwardScale, rightScale, color, opacity, u, v, hasLifetime, birthTimeSeconds) {
     const positionOffset = vertex * 3;
@@ -4514,11 +4549,11 @@ function $6fafcf15f6b61d60$var$writeSprayParticleVertex(positions, normals, tang
     normals[positionOffset] = normal[0];
     normals[positionOffset + 1] = normal[1];
     normals[positionOffset + 2] = normal[2];
-    $6fafcf15f6b61d60$var$writeTangent(tangents, vertex, facing, 1);
+    $6fafcf15f6b61d60$var$writeTangent(tangents, vertex, facing, -1);
     $6fafcf15f6b61d60$var$writeColor(colors, vertex, color, opacity);
     const uvOffset = vertex * 2;
     uvs[uvOffset] = u;
-    uvs[uvOffset + 1] = v;
+    uvs[uvOffset + 1] = 1 - v;
     if (hasLifetime) {
         const uv1Offset = vertex * 4;
         uv1s[uv1Offset] = facing[0] * forwardScale + right[0] * rightScale;
