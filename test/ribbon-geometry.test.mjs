@@ -561,6 +561,25 @@ test( 'uses Open Brush radial tangents for hard-edged tube rings', () => {
 
 } );
 
+test( 'uses Unity zero-sign normals for zero-aspect tube caps', () => {
+
+	const stroke = createStroke();
+	stroke.brushSize = 1;
+	const geometry = generateBrushGeometry( stroke, 'tube', {
+		pressureSizeRange: [ 1, 1 ],
+		generatorClass: 'TubeBrush',
+		geometryParams: {
+			tubeSideCount: 4,
+			tubeEndCaps: true,
+			tubeCapAspect: 0
+		}
+	} );
+
+	assert.ok( geometry.normals[ 0 ] > 0.99 );
+	assert.ok( geometry.normals[ geometry.normals.length - 3 ] > 0.99 );
+
+} );
+
 test( 'overwrites short GeometryBrush updates but retains the trailing knot', () => {
 
 	const stroke = createStroke();
