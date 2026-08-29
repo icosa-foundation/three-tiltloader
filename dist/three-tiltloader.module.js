@@ -301,7 +301,7 @@ function $6fafcf15f6b61d60$var$generateRibbonGeometry(stroke, family, options, o
         const nextPointIndex = usesFlatGeometrySmoothing ? out.ribbonNextRetained[index] : Math.min(pointCount - 1, index + 1);
         const previousPoint = stroke.controlPoints[previousPointIndex];
         const nextPoint = stroke.controlPoints[nextPointIndex];
-        const center = usesFlatGeometrySmoothing && index > 0 ? [
+        const center = usesFlatGeometrySmoothing && options.geometryParams?.m11Compatibility !== true && index > 0 ? [
             previousPoint.position[0] * 0.3 + point.position[0] * 0.4 + nextPoint.position[0] * 0.3,
             previousPoint.position[1] * 0.3 + point.position[1] * 0.4 + nextPoint.position[1] * 0.3,
             previousPoint.position[2] * 0.3 + point.position[2] * 0.4 + nextPoint.position[2] * 0.3
@@ -1303,23 +1303,32 @@ function $6fafcf15f6b61d60$var$updateFlatGeometryTangents(positions, normals, ta
         0,
         0
     ];
-    for(let segment = 0; segment < pointCount - 1; segment += 1){
-        if (breakBefore[segment + 1] === 1) continue;
-        const leftPrevious = segment * 2;
+    let previousPoint = 0;
+    let previousHasGeometry = false;
+    for(let currentPoint = 1; currentPoint < pointCount; currentPoint += 1){
+        if (breakBefore[currentPoint] === 2) continue;
+        if (breakBefore[currentPoint] === 1) {
+            previousPoint = currentPoint;
+            previousHasGeometry = false;
+            continue;
+        }
+        const leftPrevious = previousPoint * 2;
         const rightPrevious = leftPrevious + 1;
-        const leftCurrent = leftPrevious + 2;
-        const rightCurrent = leftPrevious + 3;
+        const leftCurrent = currentPoint * 2;
+        const rightCurrent = leftCurrent + 1;
         $6fafcf15f6b61d60$var$computeTriangleSurfaceTangent(positions, uvs, rightPrevious, leftPrevious, leftCurrent, firstTriangle);
         $6fafcf15f6b61d60$var$computeTriangleSurfaceTangent(positions, uvs, rightPrevious, leftCurrent, rightCurrent, secondTriangle);
         combined[0] = firstTriangle[0] + secondTriangle[0];
         combined[1] = firstTriangle[1] + secondTriangle[1];
         combined[2] = firstTriangle[2] + secondTriangle[2];
-        if (segment === 0 || breakBefore[segment] === 1) {
-            $6fafcf15f6b61d60$var$writeOrthonormalTangent(tangents, normals, leftPrevious, firstTriangle);
-            $6fafcf15f6b61d60$var$writeOrthonormalTangent(tangents, normals, rightPrevious, combined);
+        if (!previousHasGeometry) {
+            $6fafcf15f6b61d60$var$writeOrthonormalTangent(tangents, normals, leftPrevious, combined);
+            $6fafcf15f6b61d60$var$writeOrthonormalTangent(tangents, normals, rightPrevious, secondTriangle);
         }
-        $6fafcf15f6b61d60$var$writeOrthonormalTangent(tangents, normals, leftCurrent, combined);
-        $6fafcf15f6b61d60$var$writeOrthonormalTangent(tangents, normals, rightCurrent, secondTriangle);
+        $6fafcf15f6b61d60$var$writeOrthonormalTangent(tangents, normals, leftCurrent, firstTriangle);
+        $6fafcf15f6b61d60$var$writeOrthonormalTangent(tangents, normals, rightCurrent, combined);
+        previousPoint = currentPoint;
+        previousHasGeometry = true;
     }
 }
 function $6fafcf15f6b61d60$var$computeTriangleSurfaceTangent(positions, uvs, first, second, third, out) {

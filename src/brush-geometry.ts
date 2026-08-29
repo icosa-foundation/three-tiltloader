@@ -439,7 +439,10 @@ function generateRibbonGeometry(
       : Math.min(pointCount - 1, index + 1);
     const previousPoint = stroke.controlPoints[previousPointIndex];
     const nextPoint = stroke.controlPoints[nextPointIndex];
-    const center: Vec3 = usesFlatGeometrySmoothing && index > 0
+    const center: Vec3 =
+      usesFlatGeometrySmoothing &&
+      options.geometryParams?.m11Compatibility !== true &&
+      index > 0
       ? [
           previousPoint.position[0] * 0.3 + point.position[0] * 0.4 + nextPoint.position[0] * 0.3,
           previousPoint.position[1] * 0.3 + point.position[1] * 0.4 + nextPoint.position[1] * 0.3,
@@ -2195,14 +2198,21 @@ function updateFlatGeometryTangents(
   const firstTriangle: Vec3 = [0, 0, 0];
   const secondTriangle: Vec3 = [0, 0, 0];
   const combined: Vec3 = [0, 0, 0];
-  for (let segment = 0; segment < pointCount - 1; segment += 1) {
-    if (breakBefore[segment + 1] === 1) {
+  let previousPoint = 0;
+  let previousHasGeometry = false;
+  for (let currentPoint = 1; currentPoint < pointCount; currentPoint += 1) {
+    if (breakBefore[currentPoint] === 2) {
       continue;
     }
-    const leftPrevious = segment * 2;
+    if (breakBefore[currentPoint] === 1) {
+      previousPoint = currentPoint;
+      previousHasGeometry = false;
+      continue;
+    }
+    const leftPrevious = previousPoint * 2;
     const rightPrevious = leftPrevious + 1;
-    const leftCurrent = leftPrevious + 2;
-    const rightCurrent = leftPrevious + 3;
+    const leftCurrent = currentPoint * 2;
+    const rightCurrent = leftCurrent + 1;
     computeTriangleSurfaceTangent(
       positions,
       uvs,
@@ -2222,27 +2232,29 @@ function updateFlatGeometryTangents(
     combined[0] = firstTriangle[0] + secondTriangle[0];
     combined[1] = firstTriangle[1] + secondTriangle[1];
     combined[2] = firstTriangle[2] + secondTriangle[2];
-    if (segment === 0 || breakBefore[segment] === 1) {
+    if (!previousHasGeometry) {
       writeOrthonormalTangent(
         tangents,
         normals,
         leftPrevious,
-        firstTriangle,
+        combined,
       );
       writeOrthonormalTangent(
         tangents,
         normals,
         rightPrevious,
-        combined,
+        secondTriangle,
       );
     }
-    writeOrthonormalTangent(tangents, normals, leftCurrent, combined);
+    writeOrthonormalTangent(tangents, normals, leftCurrent, firstTriangle);
     writeOrthonormalTangent(
       tangents,
       normals,
       rightCurrent,
-      secondTriangle,
+      combined,
     );
+    previousPoint = currentPoint;
+    previousHasGeometry = true;
   }
 }
 
