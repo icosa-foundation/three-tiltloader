@@ -1047,7 +1047,7 @@ test( 'generates outward-facing 3D-print triangles for Three.js', () => {
 
 } );
 
-test( 'smooths 3D-print ring pressure without reusing the end size at the start', () => {
+test( 'uses the current 3D-print basis for both rings of a solid', () => {
 
 	const stroke = createStroke();
 	stroke.brushSize = 1;
@@ -1063,8 +1063,30 @@ test( 'smooths 3D-print ring pressure without reusing the end size at the start'
 		...Array.from( { length: 8 }, ( _, vertex ) =>
 			Math.abs( geometry.positions[ ( firstVertex + vertex ) * 3 ] ) )
 	);
-	assertClose( maxRingX( 4 ), 0 );
-	assertClose( maxRingX( 12 ), ( 1 - Math.pow( 0.1, 0.5 ) ) * 0.5 );
+	const halfSize = ( 1 - Math.pow( 0.1, 0.5 ) ) * 0.5;
+	assertClose( maxRingX( 4 ), halfSize );
+	assertClose( maxRingX( 12 ), halfSize );
+
+} );
+
+test( 'closes and restarts a 3D-print ring across an alignment flip', () => {
+
+	const stroke = createStroke();
+	stroke.brushSize = 0.1;
+	stroke.controlPoints[ 1 ].position = [ 0, 0.1, 0 ];
+	stroke.controlPoints.push( {
+		position: [ 0, 0, 0 ],
+		orientation: [ 0, 0, 0, 1 ],
+		pressure: 1,
+		timestampMs: 32
+	} );
+	const geometry = generateBrushGeometry( stroke, 'print3d', {
+		generatorClass: 'Square3DPrintBrush',
+		pressureSizeRange: [ 1, 1 ]
+	} );
+
+	assert.equal( getGeneratedVertexCount( geometry ), 40 );
+	assert.equal( getGeneratedIndexCount( geometry ), 198 );
 
 } );
 
