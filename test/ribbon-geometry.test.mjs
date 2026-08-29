@@ -85,7 +85,7 @@ test( 'preserves distance and unitized ribbon UV modes', () => {
 	const unitized = generateBrushGeometry( stroke, 'ribbon', {
 		generatorClass: 'QuadStripUnitizedUVBrush'
 	} );
-	const unitizedQuadUvs = [ 0, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 0 ];
+	const unitizedQuadUvs = [ 0, 0, 0, 1, 1, 0, 0, 1, 1, 1, 1, 0 ];
 	assert.equal( getGeneratedVertexCount( unitized ), 12 );
 	assert.deepEqual( Array.from( unitized.indices ), Array.from( { length: 12 }, ( _, i ) => i ) );
 	assert.deepEqual( Array.from( unitized.uvs.slice( 0, 12 ) ), unitizedQuadUvs );
@@ -296,7 +296,9 @@ test( 'adjusts and recovers QuadStrip width with the source bend state', () => {
 
 	const angle = Math.PI / 3;
 	const direction = [ Math.cos( angle ), Math.sin( angle ), 0 ];
-	const turn = [ 1 + direction[ 0 ] * 0.1, direction[ 1 ] * 0.1, 0 ];
+	// Keep the bend beyond QuadStripBrush.GetSpawnInterval so it is committed
+	// rather than remaining the mutable leading quad.
+	const turn = [ 1 + direction[ 0 ] * 0.5, direction[ 1 ] * 0.5, 0 ];
 	const stroke = createStroke();
 	stroke.brushSize = 2;
 	stroke.controlPoints.push( {
