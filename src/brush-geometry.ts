@@ -752,6 +752,10 @@ function compactFlatGeometry(
     sourceFrontVertexCount,
     hasBackfaces,
   );
+  const compactedVertexUpperBound = pointCount * (hasBackfaces ? 4 : 2);
+  for (let vertex = 0; vertex < compactedVertexUpperBound; vertex += 1) {
+    out.tangents[vertex * 4 + 3] *= -1;
+  }
   compactFlatGeometryAttribute(
     out.colors,
     4,
@@ -891,7 +895,7 @@ function appendFlatGeometryPointAttribute(
   vertexWrite: number,
 ): number {
   for (let side = 0; side < 2; side += 1) {
-    const frontSource = pointIndex * 2 + 1 - side;
+    const frontSource = pointIndex * 2 + side;
     copyAttributeItem(scratch, target, frontSource, vertexWrite, itemSize);
     vertexWrite += 1;
     if (hasBackfaces) {

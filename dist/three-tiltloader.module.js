@@ -463,6 +463,8 @@ function $6fafcf15f6b61d60$var$generateRibbonGeometry(stroke, family, options, o
     $6fafcf15f6b61d60$var$compactFlatGeometryAttribute(out.positions, 3, out.particleUvs, breakBefore, pointCount, sourceFrontVertexCount, hasBackfaces);
     $6fafcf15f6b61d60$var$compactFlatGeometryAttribute(out.normals, 3, out.particleUvs, breakBefore, pointCount, sourceFrontVertexCount, hasBackfaces);
     $6fafcf15f6b61d60$var$compactFlatGeometryAttribute(out.tangents, 4, out.particleUvs, breakBefore, pointCount, sourceFrontVertexCount, hasBackfaces);
+    const compactedVertexUpperBound = pointCount * (hasBackfaces ? 4 : 2);
+    for(let vertex = 0; vertex < compactedVertexUpperBound; vertex += 1)out.tangents[vertex * 4 + 3] *= -1;
     $6fafcf15f6b61d60$var$compactFlatGeometryAttribute(out.colors, 4, out.particleUvs, breakBefore, pointCount, sourceFrontVertexCount, hasBackfaces);
     $6fafcf15f6b61d60$var$compactFlatGeometryAttribute(out.uvs, 2, out.particleUvs, breakBefore, pointCount, sourceFrontVertexCount, hasBackfaces);
     if (hasVectorOffset) $6fafcf15f6b61d60$var$compactFlatGeometryAttribute(out.vectorUvs, 3, out.particleUvs, breakBefore, pointCount, sourceFrontVertexCount, hasBackfaces);
@@ -533,7 +535,7 @@ function $6fafcf15f6b61d60$var$compactFlatGeometryAttribute(target, itemSize, sc
 }
 function $6fafcf15f6b61d60$var$appendFlatGeometryPointAttribute(target, itemSize, scratch, sourceFrontVertexCount, hasBackfaces, pointIndex, vertexWrite) {
     for(let side = 0; side < 2; side += 1){
-        const frontSource = pointIndex * 2 + 1 - side;
+        const frontSource = pointIndex * 2 + side;
         $6fafcf15f6b61d60$var$copyAttributeItem(scratch, target, frontSource, vertexWrite, itemSize);
         vertexWrite += 1;
         if (hasBackfaces) {
