@@ -408,10 +408,28 @@ function $6fafcf15f6b61d60$var$generateRibbonGeometry(stroke, family, options, o
         }
         $6fafcf15f6b61d60$var$includeBounds(bounds, positions, leftVertex);
         $6fafcf15f6b61d60$var$includeBounds(bounds, positions, rightVertex);
+        if (usesFlatGeometrySmoothing && ribbonBreakBefore[index] === 1) {
+            // FlatGeometryBrush clears the frame of a knot that terminates a strip.
+            // The next geometry knot must therefore bootstrap a fresh surface frame,
+            // while retaining the break knot's point, pressure, and size as its
+            // trailing endpoint.
+            previousRight[0] = 0;
+            previousRight[1] = 0;
+            previousRight[2] = 0;
+            previousFlatNormal[0] = 0;
+            previousFlatNormal[1] = 0;
+            previousFlatNormal[2] = 0;
+            if (flatHalfRights) {
+                const offset = index * 3;
+                flatHalfRights[offset] = 0;
+                flatHalfRights[offset + 1] = 0;
+                flatHalfRights[offset + 2] = 0;
+            }
+        }
     }
     if (flatHalfRights) {
         for(let vertex = 0; vertex < frontVertexCount; vertex += 1)uvs[vertex * 2 + 1] = 1 - uvs[vertex * 2 + 1];
-        if (options.geometryParams?.m11Compatibility !== true) $6fafcf15f6b61d60$var$smoothFlatGeometryEdges(stroke, positions, flatHalfRights, ribbonBreakBefore, bounds, renderPointCount);
+        if (options.geometryParams?.m11Compatibility !== true) $6fafcf15f6b61d60$var$smoothFlatGeometryEdges(stroke, positions, flatHalfRights, ribbonBreakBefore, ribbonSmoothedPressures, out.ribbonPreviousRetained, out.ribbonNextRetained, localBrushSize, pressureSizeMin, bounds, renderPointCount);
         $6fafcf15f6b61d60$var$updateFlatGeometryTangents(positions, normals, tangents, uvs, ribbonBreakBefore, renderPointCount);
     }
     let indexOffset = 0;
@@ -1239,37 +1257,57 @@ function $6fafcf15f6b61d60$var$writeQuadStripFusedCorner(out, vertex, x, y, z, n
     out.normals[offset + 1] = ny;
     out.normals[offset + 2] = nz;
 }
-function $6fafcf15f6b61d60$var$smoothFlatGeometryEdges(stroke, positions, halfRights, breakBefore, bounds, pointCount) {
+function $6fafcf15f6b61d60$var$smoothFlatGeometryEdges(stroke, positions, halfRights, breakBefore, smoothedPressures, previousRetained, nextRetained, localBrushSize, pressureSizeMin, bounds, pointCount) {
     $6fafcf15f6b61d60$var$resetBounds(bounds);
-    for(let index = 0; index < pointCount; index += 1){
-        const startsSection = index === 0 || breakBefore[index] === 1;
-        const endsSection = index === pointCount - 1 || breakBefore[index + 1] === 1;
-        const previousIndex = startsSection ? index : index - 1;
-        // Unity still includes the following non-geometry break knot when it
-        // smooths the final rendered center of a section. Only the terminal knot
-        // duplicates itself; edge width deliberately remains unsmoothed below
-        // when the following knot has no geometry.
-        const nextIndex = index === pointCount - 1 ? index : index + 1;
+    for(let index = 1; index < pointCount; index += 1){
+        if (breakBefore[index] !== 0) continue;
+        const previousIndex = previousRetained[index];
+        const nextIndex = nextRetained[index];
+        const startsSection = previousIndex === 0 || breakBefore[previousIndex] === 1;
+        const endsSection = breakBefore[nextIndex] === 1;
         const point = stroke.controlPoints[index].position;
         const previous = stroke.controlPoints[previousIndex].position;
         const next = stroke.controlPoints[nextIndex].position;
-        const center = startsSection ? point : [
+        const center = [
             previous[0] * 0.3 + point[0] * 0.4 + next[0] * 0.3,
             previous[1] * 0.3 + point[1] * 0.4 + next[1] * 0.3,
             previous[2] * 0.3 + point[2] * 0.4 + next[2] * 0.3
         ];
-        const rightSource = startsSection && !endsSection ? nextIndex : index;
-        const rightOffset = rightSource * 3;
-        let rightX = halfRights[rightOffset];
-        let rightY = halfRights[rightOffset + 1];
-        let rightZ = halfRights[rightOffset + 2];
-        if (!startsSection && !endsSection) {
+        const currentOffset = index * 3;
+        let rightX = halfRights[currentOffset];
+        let rightY = halfRights[currentOffset + 1];
+        let rightZ = halfRights[currentOffset + 2];
+        if (!endsSection) {
             const previousOffset = previousIndex * 3;
-            const currentOffset = index * 3;
             const nextOffset = nextIndex * 3;
-            rightX = halfRights[previousOffset] * 0.3 + halfRights[currentOffset] * 0.4 + halfRights[nextOffset] * 0.3;
-            rightY = halfRights[previousOffset + 1] * 0.3 + halfRights[currentOffset + 1] * 0.4 + halfRights[nextOffset + 1] * 0.3;
-            rightZ = halfRights[previousOffset + 2] * 0.3 + halfRights[currentOffset + 2] * 0.4 + halfRights[nextOffset + 2] * 0.3;
+            const previousRightX = previousIndex === 0 ? halfRights[currentOffset] : halfRights[previousOffset];
+            const previousRightY = previousIndex === 0 ? halfRights[currentOffset + 1] : halfRights[previousOffset + 1];
+            const previousRightZ = previousIndex === 0 ? halfRights[currentOffset + 2] : halfRights[previousOffset + 2];
+            rightX = previousRightX * 0.3 + halfRights[currentOffset] * 0.4 + halfRights[nextOffset] * 0.3;
+            rightY = previousRightY * 0.3 + halfRights[currentOffset + 1] * 0.4 + halfRights[nextOffset + 1] * 0.3;
+            rightZ = previousRightZ * 0.3 + halfRights[currentOffset + 2] * 0.4 + halfRights[nextOffset + 2] * 0.3;
+        }
+        if (startsSection) {
+            const currentLength = Math.hypot(halfRights[currentOffset], halfRights[currentOffset + 1], halfRights[currentOffset + 2]);
+            const previousHalfSize = localBrushSize * $6fafcf15f6b61d60$var$getPressureSizeMultiplier(smoothedPressures[previousIndex], pressureSizeMin) * 0.5;
+            const scale = currentLength > $6fafcf15f6b61d60$var$EPSILON ? previousHalfSize / currentLength : 0;
+            const previousRightX = halfRights[currentOffset] * scale;
+            const previousRightY = halfRights[currentOffset + 1] * scale;
+            const previousRightZ = halfRights[currentOffset + 2] * scale;
+            const previousLeftVertex = previousIndex * 2;
+            const previousRightVertex = previousLeftVertex + 1;
+            $6fafcf15f6b61d60$var$writePosition(positions, previousLeftVertex, [
+                previous[0] - previousRightX,
+                previous[1] - previousRightY,
+                previous[2] - previousRightZ
+            ]);
+            $6fafcf15f6b61d60$var$writePosition(positions, previousRightVertex, [
+                previous[0] + previousRightX,
+                previous[1] + previousRightY,
+                previous[2] + previousRightZ
+            ]);
+            $6fafcf15f6b61d60$var$includeBounds(bounds, positions, previousLeftVertex);
+            $6fafcf15f6b61d60$var$includeBounds(bounds, positions, previousRightVertex);
         }
         const leftVertex = index * 2;
         const rightVertex = leftVertex + 1;
