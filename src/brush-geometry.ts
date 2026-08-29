@@ -4208,6 +4208,11 @@ function generateTubeGeometry(
           const capU = usesStretchUvs
             ? ringU
             : ringU + direction * uRate * diagonal;
+          // TubeBrush derives this from Mathf.Sign(dot(tip - center, fwd)).
+          // Unity's Mathf.Sign(0) is +1, so a zero-aspect start cap has the
+          // same forward normal as the coincident end cap.
+          const capNormalDirection =
+            isStart && capAspect !== 0 ? -1 : 1;
 
           for (let side = 0; side < sideCount; side += 1) {
             const vertex = capBase + side;
@@ -4225,9 +4230,9 @@ function generateTubeGeometry(
               hardEdges
                 ? capRadial
                 : [
-                    capTangent[0] * direction,
-                    capTangent[1] * direction,
-                    capTangent[2] * direction,
+                    capTangent[0] * capNormalDirection,
+                    capTangent[1] * capNormalDirection,
+                    capTangent[2] * capNormalDirection,
                   ],
             );
             writeTangent(tangents, vertex, capRadial, -1);

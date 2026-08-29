@@ -2942,15 +2942,19 @@ function $6fafcf15f6b61d60$var$generateTubeGeometry(stroke, options, out) {
                 const diagonal = radius * Math.hypot(1, capAspect);
                 const uRate = tileRate / Math.max(2 * Math.PI * radius, $6fafcf15f6b61d60$var$EPSILON);
                 const capU = usesStretchUvs ? ringU : ringU + direction * uRate * diagonal;
+                // TubeBrush derives this from Mathf.Sign(dot(tip - center, fwd)).
+                // Unity's Mathf.Sign(0) is +1, so a zero-aspect start cap has the
+                // same forward normal as the coincident end cap.
+                const capNormalDirection = isStart && capAspect !== 0 ? -1 : 1;
                 for(let side = 0; side < sideCount; side += 1){
                     const vertex = capBase + side;
                     const fraction = (side + 0.5) / sideCount;
                     $6fafcf15f6b61d60$var$setTubeRadial(capRight, capUp, fraction * Math.PI * 2, capRadial);
                     $6fafcf15f6b61d60$var$writePosition(positions, vertex, capTip);
                     $6fafcf15f6b61d60$var$writeNormal(normals, vertex, hardEdges ? capRadial : [
-                        capTangent[0] * direction,
-                        capTangent[1] * direction,
-                        capTangent[2] * direction
+                        capTangent[0] * capNormalDirection,
+                        capTangent[1] * capNormalDirection,
+                        capTangent[2] * capNormalDirection
                     ]);
                     $6fafcf15f6b61d60$var$writeTangent(tangents, vertex, capRadial, -1);
                     $6fafcf15f6b61d60$var$writeColor(colors, vertex, stroke.color, opacity);
