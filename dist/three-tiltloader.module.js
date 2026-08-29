@@ -7293,7 +7293,7 @@ function $6fafcf15f6b61d60$var$createPrint3DBasis(stroke, index, pressureSizeMin
     if (distance < 0.003 || !$6fafcf15f6b61d60$var$normalizeInPlace(tangent)) return undefined;
     return $6fafcf15f6b61d60$var$createPrint3DBasisForTangent(stroke, index, index, tangent, pressureSizeMin, smoothedPressures);
 }
-function $6fafcf15f6b61d60$var$createPrint3DBasisForTangent(stroke, orientationIndex, pressureIndex, tangent, pressureSizeMin, smoothedPressures) {
+function $6fafcf15f6b61d60$var$createPrint3DBasisForTangent(stroke, orientationIndex, pressureIndex, tangent, pressureSizeMin, smoothedPressures, allowInPlane = false) {
     const current = stroke.controlPoints[orientationIndex];
     const planeNormal = [
         0,
@@ -7314,7 +7314,7 @@ function $6fafcf15f6b61d60$var$createPrint3DBasisForTangent(stroke, orientationI
     $6fafcf15f6b61d60$var$rotateByQuaternion(current.orientation, $6fafcf15f6b61d60$var$VEC_RIGHT, planeRight);
     $6fafcf15f6b61d60$var$rotateByQuaternion(current.orientation, $6fafcf15f6b61d60$var$VEC_FORWARD, planeForward);
     const alignment = $6fafcf15f6b61d60$var$dotVec3(tangent, planeNormal);
-    if (Math.abs(alignment) < 0.0087) return undefined;
+    if (!allowInPlane && Math.abs(alignment) < 0.0087) return undefined;
     const sign = alignment > 0 ? 1 : -1;
     const width = [
         ...planeRight
@@ -7354,7 +7354,7 @@ function $6fafcf15f6b61d60$var$appendPrint3DSection(stroke, segments, firstSegme
         if (i > firstSegment && segments[i - 1].inlineWithPlaneNormal !== basis.inlineWithPlaneNormal) {
             $6fafcf15f6b61d60$var$appendPrint3DRingFace(indices, previousRing);
             $6fafcf15f6b61d60$var$readScratchVec3(smoothedPositions, i - 1, center);
-            const previousBasisOnCurrentTangent = $6fafcf15f6b61d60$var$createPrint3DBasisForTangent(stroke, i - 1, i - 1, basis.tangent, pressureSizeMin, smoothedPressures);
+            const previousBasisOnCurrentTangent = $6fafcf15f6b61d60$var$createPrint3DBasisForTangent(stroke, i - 1, i - 1, basis.tangent, pressureSizeMin, smoothedPressures, true);
             if (previousBasisOnCurrentTangent) previousRing = $6fafcf15f6b61d60$var$appendPrint3DRing(center, previousBasisOnCurrentTangent, positions, normals);
         }
         $6fafcf15f6b61d60$var$readScratchVec3(smoothedPositions, i, center);

@@ -1279,6 +1279,41 @@ test( 'closes and restarts a 3D-print ring across an alignment flip', () => {
 
 } );
 
+test( 'retains a 3D-print transition ring when the previous plane is edge-on', () => {
+
+	const stroke = createStroke();
+	stroke.brushGuid = 'd3f3b18a-da03-f694-b838-28ba8e749a98';
+	stroke.brushSize = 0.01125;
+	stroke.controlPoints = [
+		{
+			position: [ 0.06500001, 10.0125282, -0.4605964 ],
+			orientation: [ -0.232563049, -0.341674268, 0.648119748, 0.6396202 ],
+			pressure: 0.9928767,
+			timestampMs: 29
+		},
+		{
+			position: [ 0.057500005, 10.0391823, -0.457352066 ],
+			orientation: [ -0.2882797, -0.310904443, 0.646010339, 0.6347471 ],
+			pressure: 0.94167614,
+			timestampMs: 30
+		},
+		{
+			position: [ 0.05, 10.0643654, -0.450956726 ],
+			orientation: [ -0.348646283, -0.2674156, 0.656637251, 0.612994432 ],
+			pressure: 0.847614944,
+			timestampMs: 31
+		}
+	];
+	const geometry = generateBrushGeometry( stroke, 'print3d', {
+		finalized: true,
+		lastControlPointIsKeeper: true
+	} );
+
+	assert.equal( getGeneratedVertexCount( geometry ), 40 );
+	assert.equal( getGeneratedIndexCount( geometry ), 198 );
+
+} );
+
 test( 'smooths Midpoint pressure while keeping Spray and Genius raw', () => {
 
 	const stroke = createStroke();

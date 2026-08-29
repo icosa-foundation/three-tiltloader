@@ -3197,6 +3197,7 @@ function createPrint3DBasisForTangent(
   tangent: Vec3,
   pressureSizeMin: number,
   smoothedPressures: Float32Array,
+  allowInPlane = false,
 ): Print3DBasis | undefined {
   const current = stroke.controlPoints[orientationIndex];
   const planeNormal: Vec3 = [0, 0, 0];
@@ -3206,7 +3207,7 @@ function createPrint3DBasisForTangent(
   rotateByQuaternion(current.orientation, VEC_RIGHT, planeRight);
   rotateByQuaternion(current.orientation, VEC_FORWARD, planeForward);
   const alignment = dotVec3(tangent, planeNormal);
-  if (Math.abs(alignment) < 0.0087) return undefined;
+  if (!allowInPlane && Math.abs(alignment) < 0.0087) return undefined;
   const sign = alignment > 0 ? 1 : -1;
   const width: Vec3 = [...planeRight];
   const thickness: Vec3 = [
@@ -3277,6 +3278,7 @@ function appendPrint3DSection(
         basis.tangent,
         pressureSizeMin,
         smoothedPressures,
+        true,
       );
       if (previousBasisOnCurrentTangent) {
         previousRing = appendPrint3DRing(
