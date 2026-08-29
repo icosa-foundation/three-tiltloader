@@ -1808,29 +1808,29 @@ function $6fafcf15f6b61d60$var$expandUnitizedRibbonTriangleSoup(out, segmentCoun
 }
 const $6fafcf15f6b61d60$var$THICK_STRIP_TRIANGLE_PATTERN = [
     0,
+    8,
+    2,
+    0,
+    6,
+    8,
+    1,
+    9,
+    7,
+    1,
+    3,
+    9,
+    3,
+    5,
+    11,
+    3,
+    11,
+    9,
     2,
     8,
-    0,
-    8,
-    6,
-    1,
-    7,
-    9,
-    1,
-    9,
-    3,
-    3,
-    11,
-    5,
-    3,
-    9,
-    11,
+    10,
     2,
     10,
-    8,
-    2,
-    4,
-    10
+    4
 ];
 function $6fafcf15f6b61d60$var$generateSquare3DPrintGeometry(stroke, options, out) {
     out.family = "print3d";
@@ -2582,21 +2582,30 @@ function $6fafcf15f6b61d60$var$getPointCloudScale(points) {
     return scale;
 }
 function $6fafcf15f6b61d60$var$generateThickStripGeometry(stroke, options, out) {
+    stroke = $6fafcf15f6b61d60$var$retainGeometryBrushControlPoints(stroke, options, out, false);
     out.family = "thick-strip";
     out.uv0Size = 2;
     const pointCount = stroke.controlPoints.length;
-    const vertexCount = pointCount * 6;
-    const indexCount = Math.max(0, pointCount - 1) * 24;
-    const reallocated = $6fafcf15f6b61d60$var$ensureGeometryCapacity(out, vertexCount, indexCount);
+    $6fafcf15f6b61d60$var$ensureTubeScratchCapacity(out, pointCount);
     $6fafcf15f6b61d60$var$ensureGeometryPressureCapacity(out, pointCount);
     $6fafcf15f6b61d60$var$prepareGeometrySmoothedPressures(stroke, options, out);
-    const { positions: positions, normals: normals, tangents: tangents, colors: colors, uvs: uvs, indices: indices, bounds: bounds, geometrySmoothedPressures: geometrySmoothedPressures } = out;
+    const maximumVertexCount = Math.max(0, pointCount - 1) * 12;
+    const maximumIndexCount = Math.max(0, pointCount - 1) * 24;
+    const reallocated = $6fafcf15f6b61d60$var$ensureGeometryCapacity(out, maximumVertexCount, maximumIndexCount);
+    const { positions: positions, normals: normals, tangents: tangents, colors: colors, uvs: uvs, indices: indices, bounds: bounds, geometrySmoothedPressures: geometrySmoothedPressures, tubeBreakBefore: tubeBreakBefore, tubeFrameRights: tubeFrameRights, tubeFrameUps: tubeFrameUps } = out;
     const localBrushSize = $6fafcf15f6b61d60$var$getLocalBrushSize(stroke);
     const pressureSizeMin = $6fafcf15f6b61d60$var$normalizePressureSizeMin(options.pressureSizeRange?.[0]);
     const pressureOpacityMin = $6fafcf15f6b61d60$var$normalizePressureOpacityMin(options.pressureOpacityRange);
     const pressureOpacityMax = $6fafcf15f6b61d60$var$normalizePressureOpacityMax(options.pressureOpacityRange);
-    const tileRate = $6fafcf15f6b61d60$var$normalizePositive(options.geometryParams?.tileRate, 1);
-    const tangent = [
+    const descriptorOpacity = $6fafcf15f6b61d60$var$normalizeDescriptorOpacity(options.geometryParams?.opacity);
+    const tileRate = $6fafcf15f6b61d60$var$normalizeTileRate(options.geometryParams?.tileRate);
+    const atlasRows = $6fafcf15f6b61d60$var$normalizeAtlasRows(options.geometryParams?.textureAtlasV);
+    const move = [
+        0,
+        0,
+        0
+    ];
+    const previousMove = [
         0,
         0,
         0
@@ -2628,54 +2637,161 @@ function $6fafcf15f6b61d60$var$generateThickStripGeometry(stroke, options, out) 
     ];
     const cosTheta = 1 / Math.sqrt(1 + 1 / 64);
     const sinTheta = cosTheta / 8;
-    let distance = 0;
-    for(let pointIndex = 0; pointIndex < pointCount; pointIndex += 1){
+    let previousHasGeometry = false;
+    // ThickGeometryBrush assigns geometry to the current knot's incoming solid.
+    // A rejected knot terminates the preceding section and seeds a fresh frame
+    // for the next valid solid.
+    for(let pointIndex = 1; pointIndex < pointCount; pointIndex += 1){
+        const previous = stroke.controlPoints[pointIndex - 1].position;
         const point = stroke.controlPoints[pointIndex];
-        const before = stroke.controlPoints[Math.max(0, pointIndex - 1)] ?? point;
-        const after = stroke.controlPoints[Math.min(pointCount - 1, pointIndex + 1)] ?? point;
-        tangent[0] = after.position[0] - before.position[0];
-        tangent[1] = after.position[1] - before.position[1];
-        tangent[2] = after.position[2] - before.position[2];
-        if (!$6fafcf15f6b61d60$var$normalizeInPlace(tangent)) {
-            tangent[0] = 1;
-            tangent[1] = 0;
-            tangent[2] = 0;
+        move[0] = point.position[0] - previous[0];
+        move[1] = point.position[1] - previous[1];
+        move[2] = point.position[2] - previous[2];
+        const length = Math.hypot(move[0], move[1], move[2]);
+        let shouldBreak = length < $6fafcf15f6b61d60$var$OPEN_BRUSH_TUBE_MINIMUM_MOVE_METERS;
+        if (!shouldBreak && previousHasGeometry && pointIndex > 1) {
+            const beforePrevious = stroke.controlPoints[pointIndex - 2].position;
+            previousMove[0] = previous[0] - beforePrevious[0];
+            previousMove[1] = previous[1] - beforePrevious[1];
+            previousMove[2] = previous[2] - beforePrevious[2];
+            const previousLength = Math.hypot(previousMove[0], previousMove[1], previousMove[2]);
+            const movementAngle = Math.acos(Math.min(1, Math.max(-1, $6fafcf15f6b61d60$var$dot(previousMove, move) / Math.max(previousLength * length, $6fafcf15f6b61d60$var$EPSILON))));
+            const pressuredSize = Math.max(localBrushSize * $6fafcf15f6b61d60$var$getPressureSizeMultiplier(geometrySmoothedPressures[pointIndex], pressureSizeMin), $6fafcf15f6b61d60$var$EPSILON);
+            shouldBreak = movementAngle > Math.atan(length / pressuredSize) * 2;
         }
+        if (shouldBreak) {
+            tubeBreakBefore[pointIndex] = 1;
+            preferredRight[0] = 0;
+            preferredRight[1] = 0;
+            preferredRight[2] = 0;
+            previousHasGeometry = false;
+            continue;
+        }
+        move[0] /= length;
+        move[1] /= length;
+        move[2] /= length;
         $6fafcf15f6b61d60$var$rotateByQuaternion(point.orientation, $6fafcf15f6b61d60$var$VEC_FORWARD, pointerForward);
         $6fafcf15f6b61d60$var$rotateByQuaternion(point.orientation, $6fafcf15f6b61d60$var$VEC_UP, pointerUp);
-        $6fafcf15f6b61d60$var$computeSurfaceFrame(preferredRight, tangent, pointerForward, pointerUp, pointIndex === 0, right, surface);
+        $6fafcf15f6b61d60$var$computeSurfaceFrame(preferredRight, move, pointerForward, pointerUp, !previousHasGeometry, right, surface, true);
+        $6fafcf15f6b61d60$var$writeScratchVec3(tubeFrameRights, pointIndex, right);
+        $6fafcf15f6b61d60$var$writeScratchVec3(tubeFrameUps, pointIndex, surface);
         preferredRight[0] = right[0];
         preferredRight[1] = right[1];
         preferredRight[2] = right[2];
-        if (pointIndex > 0) distance += $6fafcf15f6b61d60$var$distanceBetweenControlPoints(stroke.controlPoints[pointIndex - 1], point);
+        previousHasGeometry = true;
+    }
+    let vertexCount = 0;
+    let indexCount = 0;
+    previousHasGeometry = false;
+    const frameRight = [
+        0,
+        0,
+        0
+    ];
+    const frameSurface = [
+        0,
+        0,
+        0
+    ];
+    const surfaceTangent = [
+        0,
+        0,
+        0
+    ];
+    const previousMiddleTop = [
+        0,
+        0,
+        0
+    ];
+    const currentMiddleTop = [
+        0,
+        0,
+        0
+    ];
+    for(let pointIndex = 1; pointIndex < pointCount; pointIndex += 1){
+        if (tubeBreakBefore[pointIndex] === 1) {
+            previousHasGeometry = false;
+            continue;
+        }
+        const point = stroke.controlPoints[pointIndex];
+        const previousPoint = stroke.controlPoints[pointIndex - 1];
+        const startsSection = !previousHasGeometry;
+        const base = startsSection ? vertexCount : vertexCount - 6;
+        $6fafcf15f6b61d60$var$readScratchVec3(tubeFrameRights, pointIndex, frameRight);
+        $6fafcf15f6b61d60$var$readScratchVec3(tubeFrameUps, pointIndex, frameSurface);
+        if (startsSection) {
+            previousMiddleTop[0] = previousPoint.position[0];
+            previousMiddleTop[1] = previousPoint.position[1];
+            previousMiddleTop[2] = previousPoint.position[2];
+            const previousSize = localBrushSize * $6fafcf15f6b61d60$var$getPressureSizeMultiplier(geometrySmoothedPressures[pointIndex - 1], pressureSizeMin);
+            const previousOpacity = $6fafcf15f6b61d60$var$getPressureOpacityMultiplier(geometrySmoothedPressures[pointIndex - 1], pressureOpacityMin, pressureOpacityMax) * descriptorOpacity;
+            $6fafcf15f6b61d60$var$writeThickStripVertex(out, base, previousPoint.position, frameRight, frameSurface, previousSize / 2, 0, 0, 1, stroke.color, previousOpacity);
+            $6fafcf15f6b61d60$var$writeThickStripVertex(out, base + 1, previousPoint.position, frameRight, frameSurface, previousSize / 2, 0, 0, -1, stroke.color, previousOpacity);
+            $6fafcf15f6b61d60$var$writeThickStripVertex(out, base + 2, previousPoint.position, frameRight, frameSurface, 0, 0, 0, 1, stroke.color, previousOpacity);
+            $6fafcf15f6b61d60$var$writeThickStripVertex(out, base + 3, previousPoint.position, frameRight, frameSurface, 0, 0, 0, -1, stroke.color, previousOpacity);
+            $6fafcf15f6b61d60$var$writeThickStripVertex(out, base + 4, previousPoint.position, frameRight, frameSurface, -previousSize / 2, 0, 0, 1, stroke.color, previousOpacity);
+            $6fafcf15f6b61d60$var$writeThickStripVertex(out, base + 5, previousPoint.position, frameRight, frameSurface, -previousSize / 2, 0, 0, -1, stroke.color, previousOpacity);
+        }
         const size = localBrushSize * $6fafcf15f6b61d60$var$getPressureSizeMultiplier(geometrySmoothedPressures[pointIndex], pressureSizeMin);
-        const isEnd = pointIndex === 0 || pointIndex === pointCount - 1;
+        const isEnd = pointIndex + 1 === pointCount || tubeBreakBefore[pointIndex + 1] === 1;
         const belly = isEnd ? 0 : size / 16;
         const normalSide = isEnd ? 0 : sinTheta;
-        const opacity = $6fafcf15f6b61d60$var$getPressureOpacityMultiplier(geometrySmoothedPressures[pointIndex], pressureOpacityMin, pressureOpacityMax);
-        const u = size > $6fafcf15f6b61d60$var$EPSILON ? distance / size * tileRate : 0;
-        const base = pointIndex * 6;
-        $6fafcf15f6b61d60$var$writeThickStripVertex(out, base, point.position, right, surface, tangent, size / 2, 0, normalSide, cosTheta, stroke.color, opacity, u, 0.9);
-        $6fafcf15f6b61d60$var$writeThickStripVertex(out, base + 1, point.position, right, surface, tangent, size / 2, 0, normalSide, -cosTheta, stroke.color, opacity, u, 0.9);
-        $6fafcf15f6b61d60$var$writeThickStripVertex(out, base + 2, point.position, right, surface, tangent, 0, belly, 0, 1, stroke.color, opacity, u, 0.5);
-        $6fafcf15f6b61d60$var$writeThickStripVertex(out, base + 3, point.position, right, surface, tangent, 0, -belly, 0, -1, stroke.color, opacity, u, 0.5);
-        $6fafcf15f6b61d60$var$writeThickStripVertex(out, base + 4, point.position, right, surface, tangent, -size / 2, 0, -normalSide, cosTheta, stroke.color, opacity, u, 0.1);
-        $6fafcf15f6b61d60$var$writeThickStripVertex(out, base + 5, point.position, right, surface, tangent, -size / 2, 0, -normalSide, -cosTheta, stroke.color, opacity, u, 0.1);
-        for(let local = 0; local < 6; local += 1)$6fafcf15f6b61d60$var$includeBounds(bounds, positions, base + local);
-    }
-    let indexOffset = 0;
-    for(let segment = 0; segment < pointCount - 1; segment += 1){
-        const base = segment * 6;
-        for (const local of $6fafcf15f6b61d60$var$THICK_STRIP_TRIANGLE_PATTERN){
-            indices[indexOffset] = base + local;
-            indexOffset += 1;
+        const normalSurface = isEnd ? 1 : cosTheta;
+        const opacity = $6fafcf15f6b61d60$var$getPressureOpacityMultiplier(geometrySmoothedPressures[pointIndex], pressureOpacityMin, pressureOpacityMax) * descriptorOpacity;
+        const front = base + 6;
+        currentMiddleTop[0] = point.position[0] + frameSurface[0] * belly;
+        currentMiddleTop[1] = point.position[1] + frameSurface[1] * belly;
+        currentMiddleTop[2] = point.position[2] + frameSurface[2] * belly;
+        $6fafcf15f6b61d60$var$writeThickStripVertex(out, front, point.position, frameRight, frameSurface, size / 2, 0, normalSide, normalSurface, stroke.color, opacity);
+        $6fafcf15f6b61d60$var$writeThickStripVertex(out, front + 1, point.position, frameRight, frameSurface, size / 2, 0, normalSide, -normalSurface, stroke.color, opacity);
+        $6fafcf15f6b61d60$var$writeThickStripVertex(out, front + 2, point.position, frameRight, frameSurface, 0, belly, 0, 1, stroke.color, opacity);
+        $6fafcf15f6b61d60$var$writeThickStripVertex(out, front + 3, point.position, frameRight, frameSurface, 0, -belly, 0, -1, stroke.color, opacity);
+        $6fafcf15f6b61d60$var$writeThickStripVertex(out, front + 4, point.position, frameRight, frameSurface, -size / 2, 0, -normalSide, normalSurface, stroke.color, opacity);
+        $6fafcf15f6b61d60$var$writeThickStripVertex(out, front + 5, point.position, frameRight, frameSurface, -size / 2, 0, -normalSide, -normalSurface, stroke.color, opacity);
+        let u0;
+        let v0;
+        let v1;
+        if (startsSection) {
+            const random01 = $6fafcf15f6b61d60$var$statelessRandom01(stroke.seed, base - 1);
+            const atlasRow = Math.floor(random01 * 3331) % atlasRows;
+            u0 = random01;
+            v0 = (atlasRow + 0.1) / atlasRows;
+            v1 = (atlasRow + 0.9) / atlasRows;
+            $6fafcf15f6b61d60$var$writeThickStripRingUvs(out.uvs, base, u0, v0, v1);
+        } else {
+            u0 = out.uvs[(base + 4) * 2];
+            v0 = out.uvs[(base + 4) * 2 + 1];
+            v1 = out.uvs[base * 2 + 1];
         }
+        const length = $6fafcf15f6b61d60$var$distanceBetweenControlPoints(previousPoint, point);
+        const u1 = u0 + tileRate * (length / Math.max(size, $6fafcf15f6b61d60$var$EPSILON));
+        $6fafcf15f6b61d60$var$writeThickStripRingUvs(out.uvs, front, u1, v0, v1);
+        for (const local of $6fafcf15f6b61d60$var$THICK_STRIP_TRIANGLE_PATTERN){
+            indices[indexCount] = base + local;
+            indexCount += 1;
+        }
+        // ComputeST for BRT/BMT/FMT simplifies to the vector from the back
+        // middle-top vertex to the front middle-top vertex. Keep those source
+        // values in number precision so a distant stroke origin does not erase
+        // direction bits when positions are packed into meter-scale Float32Arrays.
+        surfaceTangent[0] = currentMiddleTop[0] - previousMiddleTop[0];
+        surfaceTangent[1] = currentMiddleTop[1] - previousMiddleTop[1];
+        surfaceTangent[2] = currentMiddleTop[2] - previousMiddleTop[2];
+        if (startsSection) for(let local = 0; local < 6; local += 1)$6fafcf15f6b61d60$var$writeOrthonormalTangent(tangents, normals, base + local, surfaceTangent, -1);
+        for(let local = 6; local < 12; local += 1)$6fafcf15f6b61d60$var$writeOrthonormalTangent(tangents, normals, base + local, surfaceTangent, -1);
+        vertexCount = startsSection ? vertexCount + 12 : vertexCount + 6;
+        previousMiddleTop[0] = currentMiddleTop[0];
+        previousMiddleTop[1] = currentMiddleTop[1];
+        previousMiddleTop[2] = currentMiddleTop[2];
+        previousHasGeometry = true;
     }
+    $6fafcf15f6b61d60$var$resetBounds(bounds);
+    for(let vertex = 0; vertex < vertexCount; vertex += 1)$6fafcf15f6b61d60$var$includeBounds(bounds, positions, vertex);
     out.vertexCount = vertexCount;
     out.indexCount = indexCount;
     return reallocated;
 }
-function $6fafcf15f6b61d60$var$writeThickStripVertex(out, vertex, center, right, surface, tangent, rightOffset, surfaceOffset, rightNormal, surfaceNormal, color, opacity, u, v) {
+function $6fafcf15f6b61d60$var$writeThickStripVertex(out, vertex, center, right, surface, rightOffset, surfaceOffset, rightNormal, surfaceNormal, color, opacity) {
     $6fafcf15f6b61d60$var$writePosition(out.positions, vertex, [
         center[0] + right[0] * rightOffset + surface[0] * surfaceOffset,
         center[1] + right[1] * rightOffset + surface[1] * surfaceOffset,
@@ -2686,12 +2802,23 @@ function $6fafcf15f6b61d60$var$writeThickStripVertex(out, vertex, center, right,
         right[1] * rightNormal + surface[1] * surfaceNormal,
         right[2] * rightNormal + surface[2] * surfaceNormal
     ]);
-    $6fafcf15f6b61d60$var$writeTangent(out.tangents, vertex, tangent, 1);
     $6fafcf15f6b61d60$var$writeColor(out.colors, vertex, color, opacity);
-    $6fafcf15f6b61d60$var$writeUv(out.uvs, vertex, [
-        u,
-        v
-    ]);
+}
+function $6fafcf15f6b61d60$var$writeThickStripRingUvs(uvs, base, u, v0, v1) {
+    const middle = (v0 + v1) * 0.5;
+    let offset = base * 2;
+    for (const v of [
+        v1,
+        v1,
+        middle,
+        middle,
+        v0,
+        v0
+    ]){
+        uvs[offset] = u;
+        uvs[offset + 1] = v;
+        offset += 2;
+    }
 }
 function $6fafcf15f6b61d60$var$generateTubeGeometry(stroke, options, out) {
     const isSquareBrush = options.generatorClass === "SquareBrush";
