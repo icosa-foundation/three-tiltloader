@@ -25,7 +25,7 @@ export {
 	getGeneratedVertexCount,
 	resolveBrushGeometryOptions
 } from './brush-geometry.ts';
-export { getOpenBrushGeometryDefaults } from './brush-defaults.ts';
+export { getOpenBrushGeometryDefaults } from './brush-defaults.js';
 
 export class TiltLoader extends Loader {
 	constructor(manager) {

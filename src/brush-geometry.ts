@@ -4,7 +4,7 @@ import type {
   BrushPressureOpacityRange,
   BrushPressureSizeRange,
 } from "./brush-types.js";
-import { getOpenBrushGeometryDefaults } from "./brush-defaults.ts";
+import { getOpenBrushGeometryDefaults } from "./brush-defaults.js";
 import type { ControlPoint, Quat, Rgba, StrokeData, Vec3 } from "./stroke-types.js";
 
 export interface BrushGeometryBounds {

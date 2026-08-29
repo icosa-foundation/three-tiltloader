@@ -44,6 +44,7 @@
     "dist",
     "src/*.d.ts",
     "src/*.d.mts",
+    "src/*.js",
     "src/*.ts"
   ],
   "funding": {

@@ -1,7 +1,6 @@
 {
   "compilerOptions": {
     "allowJs": true,
-    "allowImportingTsExtensions": true,
     "declaration": true,
     "baseUrl": "src",
     "outDir": "./dist",

@@ -6,7 +6,7 @@ import {
 	getGeneratedVertexCount,
 	resolveBrushGeometryOptions
 } from '../src/brush-geometry.ts';
-import { getOpenBrushGeometryDefaults } from '../src/brush-defaults.ts';
+import { getOpenBrushGeometryDefaults } from '../src/brush-defaults.js';
 
 function assertClose( actual, expected, tolerance = 1e-6 ) {
 

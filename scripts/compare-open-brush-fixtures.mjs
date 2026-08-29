@@ -1,7 +1,7 @@
 import { readFile, readdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
-import { getOpenBrushGeometryDefaults } from '../src/brush-defaults.ts';
+import { getOpenBrushGeometryDefaults } from '../src/brush-defaults.js';
 import { generateBrushGeometry } from '../src/brush-geometry.ts';
 
 const DEFAULT_TOLERANCE = 1e-5;
