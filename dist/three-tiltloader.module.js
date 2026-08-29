@@ -6235,7 +6235,7 @@ function $6fafcf15f6b61d60$var$applyQuadStripPositionQuads(out, stroke, options,
         if (!$6fafcf15f6b61d60$var$normalizeInPlace(tangent)) continue;
         $6fafcf15f6b61d60$var$rotateByQuaternion(point.orientation, $6fafcf15f6b61d60$var$VEC_FORWARD, pointerForward);
         $6fafcf15f6b61d60$var$rotateByQuaternion(point.orientation, $6fafcf15f6b61d60$var$VEC_UP, pointerUp);
-        $6fafcf15f6b61d60$var$computeSurfaceFrame(previousRight, tangent, pointerForward, pointerUp, solid === 0 || options.geometryParams?.backIsInvisible === true, right, normal, true);
+        $6fafcf15f6b61d60$var$computeSurfaceFrame(previousRight, tangent, pointerForward, pointerUp, solid === 0, right, normal, true, options.geometryParams?.backIsInvisible === true);
         const sourceSize = localBrushSize * $6fafcf15f6b61d60$var$getPressureSizeMultiplier(out.ribbonSmoothedPressures[pointIndex], pressureSizeMin);
         const spawnInterval = 0.0015 + sourceSize * 0.2;
         const generatesNewSolid = moveLength >= spawnInterval;
@@ -10228,7 +10228,7 @@ const $6fafcf15f6b61d60$var$surfaceFrameRight2 = [
  * pointer-up cross term takes over as pointer-forward approaches the movement
  * direction (pulling the brush), and both terms are flipped toward the
  * previous right vector so the strip never flips mid-stroke.
- */ function $6fafcf15f6b61d60$var$computeSurfaceFrame(preferredRight, tangent, pointerForward, pointerUp, isFirst, outRight, outNormal, mirrored = false) {
+ */ function $6fafcf15f6b61d60$var$computeSurfaceFrame(preferredRight, tangent, pointerForward, pointerUp, isFirst, outRight, outNormal, mirrored = false, preferPointerFacing = false) {
     $6fafcf15f6b61d60$var$cross(pointerForward, tangent, $6fafcf15f6b61d60$var$surfaceFrameRight1);
     $6fafcf15f6b61d60$var$cross(pointerUp, tangent, $6fafcf15f6b61d60$var$surfaceFrameRight2);
     if (mirrored) {
@@ -10239,17 +10239,18 @@ const $6fafcf15f6b61d60$var$surfaceFrameRight2 = [
         $6fafcf15f6b61d60$var$surfaceFrameRight2[1] = -$6fafcf15f6b61d60$var$surfaceFrameRight2[1];
         $6fafcf15f6b61d60$var$surfaceFrameRight2[2] = -$6fafcf15f6b61d60$var$surfaceFrameRight2[2];
     }
-    let preferred = preferredRight;
-    if (isFirst || Math.hypot(preferred[0], preferred[1], preferred[2]) < $6fafcf15f6b61d60$var$EPSILON) preferred = Math.hypot($6fafcf15f6b61d60$var$surfaceFrameRight1[0], $6fafcf15f6b61d60$var$surfaceFrameRight1[1], $6fafcf15f6b61d60$var$surfaceFrameRight1[2]) >= $6fafcf15f6b61d60$var$EPSILON ? $6fafcf15f6b61d60$var$surfaceFrameRight1 : $6fafcf15f6b61d60$var$surfaceFrameRight2;
-    const flip1 = $6fafcf15f6b61d60$var$dot($6fafcf15f6b61d60$var$surfaceFrameRight1, preferred) < 0 ? -1 : 1;
-    const upWeight = Math.abs($6fafcf15f6b61d60$var$dot(pointerForward, tangent)) * ($6fafcf15f6b61d60$var$dot($6fafcf15f6b61d60$var$surfaceFrameRight2, preferred) < 0 ? -1 : 1);
+    const hasPreferredRight = !isFirst && Math.hypot(preferredRight[0], preferredRight[1], preferredRight[2]) >= $6fafcf15f6b61d60$var$EPSILON;
+    const preferred = preferPointerFacing ? $6fafcf15f6b61d60$var$surfaceFrameRight1 : preferredRight;
+    const hasPreferred = preferPointerFacing || hasPreferredRight;
+    const flip1 = hasPreferred && $6fafcf15f6b61d60$var$dot($6fafcf15f6b61d60$var$surfaceFrameRight1, preferred) < 0 ? -1 : 1;
+    const upWeight = Math.abs($6fafcf15f6b61d60$var$dot(pointerForward, tangent)) * (hasPreferred && $6fafcf15f6b61d60$var$dot($6fafcf15f6b61d60$var$surfaceFrameRight2, preferred) < 0 ? -1 : 1);
     outRight[0] = $6fafcf15f6b61d60$var$surfaceFrameRight1[0] * flip1 + $6fafcf15f6b61d60$var$surfaceFrameRight2[0] * upWeight;
     outRight[1] = $6fafcf15f6b61d60$var$surfaceFrameRight1[1] * flip1 + $6fafcf15f6b61d60$var$surfaceFrameRight2[1] * upWeight;
     outRight[2] = $6fafcf15f6b61d60$var$surfaceFrameRight1[2] * flip1 + $6fafcf15f6b61d60$var$surfaceFrameRight2[2] * upWeight;
     if (!$6fafcf15f6b61d60$var$normalizeInPlace(outRight)) {
-        outRight[0] = preferred[0];
-        outRight[1] = preferred[1];
-        outRight[2] = preferred[2];
+        outRight[0] = hasPreferred ? preferred[0] : $6fafcf15f6b61d60$var$surfaceFrameRight1[0];
+        outRight[1] = hasPreferred ? preferred[1] : $6fafcf15f6b61d60$var$surfaceFrameRight1[1];
+        outRight[2] = hasPreferred ? preferred[2] : $6fafcf15f6b61d60$var$surfaceFrameRight1[2];
         if (!$6fafcf15f6b61d60$var$normalizeInPlace(outRight)) $6fafcf15f6b61d60$var$anyPerpendicular(tangent, outRight);
     }
     $6fafcf15f6b61d60$var$cross(tangent, outRight, outNormal);

@@ -1472,10 +1472,11 @@ function applyQuadStripPositionQuads(
       tangent,
       pointerForward,
       pointerUp,
-      solid === 0 || options.geometryParams?.backIsInvisible === true,
+      solid === 0,
       right,
       normal,
       true,
+      options.geometryParams?.backIsInvisible === true,
     );
     const sourceSize =
       localBrushSize *
@@ -7420,6 +7421,7 @@ function computeSurfaceFrame(
   outRight: Vec3,
   outNormal: Vec3,
   mirrored = false,
+  preferPointerFacing = false,
 ): void {
   cross(pointerForward, tangent, surfaceFrameRight1);
   cross(pointerUp, tangent, surfaceFrameRight2);
@@ -7432,29 +7434,23 @@ function computeSurfaceFrame(
     surfaceFrameRight2[2] = -surfaceFrameRight2[2];
   }
 
-  let preferred = preferredRight;
-  if (isFirst || Math.hypot(preferred[0], preferred[1], preferred[2]) < EPSILON) {
-    preferred =
-      Math.hypot(
-        surfaceFrameRight1[0],
-        surfaceFrameRight1[1],
-        surfaceFrameRight1[2],
-      ) >= EPSILON
-        ? surfaceFrameRight1
-        : surfaceFrameRight2;
-  }
-
-  const flip1 = dot(surfaceFrameRight1, preferred) < 0 ? -1 : 1;
+  const hasPreferredRight =
+    !isFirst &&
+    Math.hypot(preferredRight[0], preferredRight[1], preferredRight[2]) >=
+      EPSILON;
+  const preferred = preferPointerFacing ? surfaceFrameRight1 : preferredRight;
+  const hasPreferred = preferPointerFacing || hasPreferredRight;
+  const flip1 = hasPreferred && dot(surfaceFrameRight1, preferred) < 0 ? -1 : 1;
   const upWeight =
     Math.abs(dot(pointerForward, tangent)) *
-    (dot(surfaceFrameRight2, preferred) < 0 ? -1 : 1);
+    (hasPreferred && dot(surfaceFrameRight2, preferred) < 0 ? -1 : 1);
   outRight[0] = surfaceFrameRight1[0] * flip1 + surfaceFrameRight2[0] * upWeight;
   outRight[1] = surfaceFrameRight1[1] * flip1 + surfaceFrameRight2[1] * upWeight;
   outRight[2] = surfaceFrameRight1[2] * flip1 + surfaceFrameRight2[2] * upWeight;
   if (!normalizeInPlace(outRight)) {
-    outRight[0] = preferred[0];
-    outRight[1] = preferred[1];
-    outRight[2] = preferred[2];
+    outRight[0] = hasPreferred ? preferred[0] : surfaceFrameRight1[0];
+    outRight[1] = hasPreferred ? preferred[1] : surfaceFrameRight1[1];
+    outRight[2] = hasPreferred ? preferred[2] : surfaceFrameRight1[2];
     if (!normalizeInPlace(outRight)) {
       anyPerpendicular(tangent, outRight);
     }

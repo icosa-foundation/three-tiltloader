@@ -57,6 +57,42 @@ test( 'generates the existing ribbon topology and width', () => {
 
 } );
 
+test( 'keeps the initial QuadStrip surface frame unbiased', () => {
+
+	const stroke = createStroke();
+	stroke.brushSize = 0.01125;
+	stroke.controlPoints = [
+		{
+			position: [ -0.125, 10, -0.4 ],
+			orientation: [ 0, 0, 0, 1 ],
+			pressure: 0.25,
+			timestampMs: 0
+		},
+		{
+			position: [ -0.124999, 10.0000023, -0.40000124 ],
+			orientation: [ 0, 0, 0, 1 ],
+			pressure: 0.25,
+			timestampMs: 1
+		},
+		{
+			position: [ -0.12, 10.0130547, -0.4062461 ],
+			orientation: [ 0, 0, 0, 1 ],
+			pressure: 0.25,
+			timestampMs: 2
+		}
+	];
+	const geometry = generateBrushGeometry( stroke, 'ribbon', {
+		generatorClass: 'QuadStripBrushDistanceUV',
+		pressureSizeRange: [ 0.1, 1 ],
+		geometryParams: { tileRate: 1 }
+	} );
+
+	assertClose( geometry.normals[ 0 ], -0.3198769 );
+	assertClose( geometry.normals[ 1 ], -0.3064383 );
+	assertClose( geometry.normals[ 2 ], -0.8965346 );
+
+} );
+
 test( 'preserves distance and unitized ribbon UV modes', () => {
 
 	const stroke = createStroke();
