@@ -47,4 +47,5 @@ export interface BrushGeometryParams {
   particleRotationVariance?: number;
   particleSizeRatio?: [number, number];
   hullFaceted?: boolean;
+  hullKnotConversion?: "point" | "tetrahedron" | "directed-sphere";
 }

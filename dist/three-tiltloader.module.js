@@ -2088,7 +2088,7 @@ function $6fafcf15f6b61d60$var$writeConcaveHullVertex(out, vertex, position, nor
 function $6fafcf15f6b61d60$var$generateHullGeometry(stroke, options, out) {
     out.family = "hull";
     out.uv0Size = 3;
-    const points = $6fafcf15f6b61d60$var$createHullInputPoints(stroke);
+    const points = $6fafcf15f6b61d60$var$createHullInputPoints(stroke, options);
     const faces = $6fafcf15f6b61d60$var$createConvexHull(points);
     const faceted = options.geometryParams?.hullFaceted !== false;
     const doubleSided = options.geometryParams?.renderBackfaces === true;
@@ -2150,7 +2150,22 @@ function $6fafcf15f6b61d60$var$generateHullGeometry(stroke, options, out) {
     out.indexCount = indexCount;
     return reallocated;
 }
-function $6fafcf15f6b61d60$var$createHullInputPoints(stroke) {
+function $6fafcf15f6b61d60$var$createHullInputPoints(stroke, options) {
+    switch(options.geometryParams?.hullKnotConversion ?? "directed-sphere"){
+        case "point":
+            return $6fafcf15f6b61d60$var$createPointHullInputPoints(stroke);
+        case "tetrahedron":
+            return $6fafcf15f6b61d60$var$createTetrahedronHullInputPoints(stroke);
+        case "directed-sphere":
+            return $6fafcf15f6b61d60$var$createDirectedSphereHullInputPoints(stroke, options);
+    }
+}
+function $6fafcf15f6b61d60$var$createPointHullInputPoints(stroke) {
+    return stroke.controlPoints.map((controlPoint)=>[
+            ...controlPoint.position
+        ]);
+}
+function $6fafcf15f6b61d60$var$createTetrahedronHullInputPoints(stroke) {
     const points = [];
     const seen = new Set();
     const halfWidth = $6fafcf15f6b61d60$var$getLocalBrushSize(stroke) / Math.sqrt(3);
@@ -2186,6 +2201,104 @@ function $6fafcf15f6b61d60$var$createHullInputPoints(stroke) {
         if (!seen.has(key)) {
             seen.add(key);
             points.push(point);
+        }
+    }
+    return points;
+}
+/** Port of HullBrush.KnotConversion.DirectedSphere. */ function $6fafcf15f6b61d60$var$createDirectedSphereHullInputPoints(stroke, options) {
+    if (stroke.controlPoints.length === 0) return [];
+    const retainedPoints = [
+        0
+    ];
+    let previousRetained = 0;
+    for(let index = 1; index < stroke.controlPoints.length; index += 1){
+        if ($6fafcf15f6b61d60$var$distanceBetweenControlPoints(stroke.controlPoints[previousRetained], stroke.controlPoints[index]) < $6fafcf15f6b61d60$var$OPEN_BRUSH_RIBBON_MINIMUM_MOVE_METERS) continue;
+        retainedPoints.push(index);
+        previousRetained = index;
+    }
+    const points = [
+        [
+            ...stroke.controlPoints[retainedPoints[0]].position
+        ]
+    ];
+    const pressureSizeMin = $6fafcf15f6b61d60$var$normalizePressureSizeMin(options.pressureSizeRange?.[0]);
+    const localBrushSize = $6fafcf15f6b61d60$var$getLocalBrushSize(stroke);
+    const previousRight = [
+        0,
+        0,
+        0
+    ];
+    const direction = [
+        0,
+        0,
+        0
+    ];
+    const pointerForward = [
+        0,
+        0,
+        0
+    ];
+    const pointerUp = [
+        0,
+        0,
+        0
+    ];
+    const right = [
+        0,
+        0,
+        0
+    ];
+    const normal = [
+        0,
+        0,
+        0
+    ];
+    const ringPoint = [
+        0,
+        0,
+        0
+    ];
+    const rotated = [
+        0,
+        0,
+        0
+    ];
+    const ringAngle = Math.PI / 4;
+    const aroundRingAngle = Math.PI / 2;
+    for(let retainedIndex = 1; retainedIndex < retainedPoints.length; retainedIndex += 1){
+        const pointIndex = retainedPoints[retainedIndex];
+        const previousPointIndex = retainedPoints[retainedIndex - 1];
+        const controlPoint = stroke.controlPoints[pointIndex];
+        const previousPoint = stroke.controlPoints[previousPointIndex];
+        direction[0] = controlPoint.position[0] - previousPoint.position[0];
+        direction[1] = controlPoint.position[1] - previousPoint.position[1];
+        direction[2] = controlPoint.position[2] - previousPoint.position[2];
+        if (!$6fafcf15f6b61d60$var$normalizeInPlace(direction)) continue;
+        $6fafcf15f6b61d60$var$rotateByQuaternion(controlPoint.orientation, $6fafcf15f6b61d60$var$VEC_FORWARD, pointerForward);
+        $6fafcf15f6b61d60$var$rotateByQuaternion(controlPoint.orientation, $6fafcf15f6b61d60$var$VEC_UP, pointerUp);
+        $6fafcf15f6b61d60$var$computeSurfaceFrame(previousRight, direction, pointerForward, pointerUp, retainedIndex === 1, right, normal);
+        $6fafcf15f6b61d60$var$copyVec3(right, previousRight);
+        const radius = localBrushSize * $6fafcf15f6b61d60$var$getPressureSizeMultiplier(controlPoint.pressure, pressureSizeMin) * 0.5;
+        ringPoint[0] = direction[0] * radius;
+        ringPoint[1] = direction[1] * radius;
+        ringPoint[2] = direction[2] * radius;
+        points.push([
+            controlPoint.position[0] + ringPoint[0],
+            controlPoint.position[1] + ringPoint[1],
+            controlPoint.position[2] + ringPoint[2]
+        ]);
+        for(let ring = 0; ring < 2; ring += 1){
+            $6fafcf15f6b61d60$var$rotateAroundAxis(ringPoint, right, ringAngle, rotated);
+            $6fafcf15f6b61d60$var$copyVec3(rotated, ringPoint);
+            for(let point = 0; point < 4; point += 1){
+                points.push([
+                    controlPoint.position[0] + ringPoint[0],
+                    controlPoint.position[1] + ringPoint[1],
+                    controlPoint.position[2] + ringPoint[2]
+                ]);
+                $6fafcf15f6b61d60$var$rotateAroundAxis(ringPoint, direction, aroundRingAngle, rotated);
+                $6fafcf15f6b61d60$var$copyVec3(rotated, ringPoint);
+            }
         }
     }
     return points;

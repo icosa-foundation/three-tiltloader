@@ -3175,7 +3175,7 @@ function generateHullGeometry(
 ): boolean {
   out.family = "hull";
   out.uv0Size = 3;
-  const points = createHullInputPoints(stroke);
+  const points = createHullInputPoints(stroke, options);
   const faces = createConvexHull(points);
   const faceted = options.geometryParams?.hullFaceted !== false;
   const doubleSided = options.geometryParams?.renderBackfaces === true;
@@ -3244,7 +3244,25 @@ function generateHullGeometry(
   return reallocated;
 }
 
-function createHullInputPoints(stroke: StrokeData): Vec3[] {
+function createHullInputPoints(
+  stroke: StrokeData,
+  options: BrushGeometryOptions,
+): Vec3[] {
+  switch (options.geometryParams?.hullKnotConversion ?? "directed-sphere") {
+    case "point":
+      return createPointHullInputPoints(stroke);
+    case "tetrahedron":
+      return createTetrahedronHullInputPoints(stroke);
+    case "directed-sphere":
+      return createDirectedSphereHullInputPoints(stroke, options);
+  }
+}
+
+function createPointHullInputPoints(stroke: StrokeData): Vec3[] {
+  return stroke.controlPoints.map((controlPoint) => [...controlPoint.position]);
+}
+
+function createTetrahedronHullInputPoints(stroke: StrokeData): Vec3[] {
   const points: Vec3[] = [];
   const seen = new Set<string>();
   const halfWidth = getLocalBrushSize(stroke) / Math.sqrt(3);
@@ -3265,6 +3283,97 @@ function createHullInputPoints(stroke: StrokeData): Vec3[] {
       if (!seen.has(key)) {
         seen.add(key);
         points.push(point);
+      }
+    }
+  }
+  return points;
+}
+
+/** Port of HullBrush.KnotConversion.DirectedSphere. */
+function createDirectedSphereHullInputPoints(
+  stroke: StrokeData,
+  options: BrushGeometryOptions,
+): Vec3[] {
+  if (stroke.controlPoints.length === 0) {
+    return [];
+  }
+  const retainedPoints: number[] = [0];
+  let previousRetained = 0;
+  for (let index = 1; index < stroke.controlPoints.length; index += 1) {
+    if (
+      distanceBetweenControlPoints(
+        stroke.controlPoints[previousRetained],
+        stroke.controlPoints[index],
+      ) < OPEN_BRUSH_RIBBON_MINIMUM_MOVE_METERS
+    ) {
+      continue;
+    }
+    retainedPoints.push(index);
+    previousRetained = index;
+  }
+
+  const points: Vec3[] = [[...stroke.controlPoints[retainedPoints[0]].position]];
+  const pressureSizeMin = normalizePressureSizeMin(options.pressureSizeRange?.[0]);
+  const localBrushSize = getLocalBrushSize(stroke);
+  const previousRight: Vec3 = [0, 0, 0];
+  const direction: Vec3 = [0, 0, 0];
+  const pointerForward: Vec3 = [0, 0, 0];
+  const pointerUp: Vec3 = [0, 0, 0];
+  const right: Vec3 = [0, 0, 0];
+  const normal: Vec3 = [0, 0, 0];
+  const ringPoint: Vec3 = [0, 0, 0];
+  const rotated: Vec3 = [0, 0, 0];
+  const ringAngle = Math.PI / 4;
+  const aroundRingAngle = Math.PI / 2;
+
+  for (let retainedIndex = 1; retainedIndex < retainedPoints.length; retainedIndex += 1) {
+    const pointIndex = retainedPoints[retainedIndex];
+    const previousPointIndex = retainedPoints[retainedIndex - 1];
+    const controlPoint = stroke.controlPoints[pointIndex];
+    const previousPoint = stroke.controlPoints[previousPointIndex];
+    direction[0] = controlPoint.position[0] - previousPoint.position[0];
+    direction[1] = controlPoint.position[1] - previousPoint.position[1];
+    direction[2] = controlPoint.position[2] - previousPoint.position[2];
+    if (!normalizeInPlace(direction)) {
+      continue;
+    }
+    rotateByQuaternion(controlPoint.orientation, VEC_FORWARD, pointerForward);
+    rotateByQuaternion(controlPoint.orientation, VEC_UP, pointerUp);
+    computeSurfaceFrame(
+      previousRight,
+      direction,
+      pointerForward,
+      pointerUp,
+      retainedIndex === 1,
+      right,
+      normal,
+    );
+    copyVec3(right, previousRight);
+
+    const radius =
+      localBrushSize *
+      getPressureSizeMultiplier(controlPoint.pressure, pressureSizeMin) *
+      0.5;
+    ringPoint[0] = direction[0] * radius;
+    ringPoint[1] = direction[1] * radius;
+    ringPoint[2] = direction[2] * radius;
+    points.push([
+      controlPoint.position[0] + ringPoint[0],
+      controlPoint.position[1] + ringPoint[1],
+      controlPoint.position[2] + ringPoint[2],
+    ]);
+
+    for (let ring = 0; ring < 2; ring += 1) {
+      rotateAroundAxis(ringPoint, right, ringAngle, rotated);
+      copyVec3(rotated, ringPoint);
+      for (let point = 0; point < 4; point += 1) {
+        points.push([
+          controlPoint.position[0] + ringPoint[0],
+          controlPoint.position[1] + ringPoint[1],
+          controlPoint.position[2] + ringPoint[2],
+        ]);
+        rotateAroundAxis(ringPoint, direction, aroundRingAngle, rotated);
+        copyVec3(rotated, ringPoint);
       }
     }
   }
