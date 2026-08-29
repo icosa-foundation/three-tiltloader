@@ -960,6 +960,62 @@ test( 'smooths thick-strip size and opacity as a GeometryBrush', () => {
 
 } );
 
+test( 'shares ThickGeometry rings between adjacent solids', () => {
+
+	const stroke = createStroke();
+	stroke.brushSize = 0.01;
+	stroke.controlPoints.push( {
+		position: [ 2, 0, 0 ],
+		orientation: [ 0, 0, 0, 1 ],
+		pressure: 1,
+		timestampMs: 32
+	} );
+	const geometry = generateBrushGeometry( stroke, 'thick-strip', {
+		generatorClass: 'ThickGeometryBrush',
+		pressureSizeRange: [ 1, 1 ],
+		geometryParams: { solidMinLengthMeters: 0.002 }
+	} );
+
+	assert.equal( getGeneratedVertexCount( geometry ), 18 );
+	assert.equal( getGeneratedIndexCount( geometry ), 48 );
+	assert.ok( geometry.indices.slice( 24 ).some( index => index === 6 ) );
+	assertClose( Math.abs( geometry.normals[ 6 * 3 + 2 ] ), 1 / Math.sqrt( 1 + 1 / 64 ) );
+	assertClose( Math.abs( geometry.normals[ 12 * 3 + 2 ] ), 1 );
+
+} );
+
+test( 'ends and restarts ThickGeometry around a rejected turn knot', () => {
+
+	const stroke = createStroke();
+	stroke.brushSize = 0.01;
+	stroke.controlPoints[ 1 ].position = [ 0.01, 0, 0 ];
+	stroke.controlPoints.push(
+		{
+			position: [ 0, 0, 0 ],
+			orientation: [ 0, 0, 0, 1 ],
+			pressure: 1,
+			timestampMs: 32
+		},
+		{
+			position: [ 0, 0.01, 0 ],
+			orientation: [ 0, 0, 0, 1 ],
+			pressure: 1,
+			timestampMs: 48
+		}
+	);
+	const geometry = generateBrushGeometry( stroke, 'thick-strip', {
+		generatorClass: 'ThickGeometryBrush',
+		pressureSizeRange: [ 1, 1 ],
+		geometryParams: { solidMinLengthMeters: 0.002 }
+	} );
+
+	assert.equal( getGeneratedVertexCount( geometry ), 24 );
+	assert.equal( getGeneratedIndexCount( geometry ), 48 );
+	assert.ok( geometry.indices.slice( 24 ).every( index => index >= 12 ) );
+	assertClose( Math.abs( geometry.normals[ 6 * 3 + 2 ] ), 1 );
+
+} );
+
 test( 'generates outward-facing 3D-print triangles for Three.js', () => {
 
 	const stroke = createStroke();
