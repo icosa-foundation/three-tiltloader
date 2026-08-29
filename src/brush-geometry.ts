@@ -1644,6 +1644,7 @@ function applyQuadStripMidpointFusion(
   let sectionStart = 0;
   for (let segment = 0; segment < pointCount - 1; segment += 1) {
     const sectionState = breakBefore[segment + 1];
+    const previousSectionStart = sectionStart;
     if (sectionState === 2) {
       continue;
     }
@@ -1685,6 +1686,18 @@ function applyQuadStripMidpointFusion(
         hasBackfaces,
       );
       applyQuadStripSectionOpacityFade(out, sectionStart, solid + 1);
+    } else if (
+      generatorClass === "QuadStripUnitizedUVBrush" &&
+      sectionState === 1
+    ) {
+      // The break update computes the completed section together with the new
+      // leading solid. Capture those tangents now: later smoothing in the new
+      // section moves that solid, but does not revisit the old section.
+      updateQuadStripSectionTangents(
+        out,
+        previousSectionStart,
+        Math.min(solid + 1, frontSolidCount),
+      );
     }
     solid += 1;
   }
@@ -1700,7 +1713,11 @@ function applyQuadStripMidpointFusion(
     );
   }
 
-  updateQuadStripTangents(out, breakBefore, pointCount, frontSolidCount);
+  if (generatorClass === "QuadStripUnitizedUVBrush") {
+    updateQuadStripSectionTangents(out, sectionStart, frontSolidCount);
+  } else {
+    updateQuadStripTangents(out, breakBefore, pointCount, frontSolidCount);
+  }
 
   if (hasBackfaces) {
     const backVertexOffset = frontSolidCount * 6;

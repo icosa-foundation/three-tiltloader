@@ -1003,6 +1003,7 @@ function $6fafcf15f6b61d60$var$applyQuadStripMidpointFusion(out, breakBefore, po
     let sectionStart = 0;
     for(let segment = 0; segment < pointCount - 1; segment += 1){
         const sectionState = breakBefore[segment + 1];
+        const previousSectionStart = sectionStart;
         if (sectionState === 2) continue;
         if (sectionState === 1) {
             if (generatorClass === "QuadStripBrushDistanceUV") // Open Brush finalizes the old section before AppendLeadingQuad restores
@@ -1027,11 +1028,15 @@ function $6fafcf15f6b61d60$var$applyQuadStripMidpointFusion(out, breakBefore, po
         if (generatorClass === "QuadStripBrushDistanceUV") {
             $6fafcf15f6b61d60$var$updateQuadStripDistanceUvsForAppend(out, sectionStart, solid + 1, out.ribbonSectionLengths[solid], tileRate, atlasRows, seed, hasBackfaces);
             $6fafcf15f6b61d60$var$applyQuadStripSectionOpacityFade(out, sectionStart, solid + 1);
-        }
+        } else if (generatorClass === "QuadStripUnitizedUVBrush" && sectionState === 1) // The break update computes the completed section together with the new
+        // leading solid. Capture those tangents now: later smoothing in the new
+        // section moves that solid, but does not revisit the old section.
+        $6fafcf15f6b61d60$var$updateQuadStripSectionTangents(out, previousSectionStart, Math.min(solid + 1, frontSolidCount));
         solid += 1;
     }
     if (generatorClass === "QuadStripBrushStretchUV") $6fafcf15f6b61d60$var$applyQuadStripStretchUvs(out, breakBefore, pointCount, atlasRows, seed, hasBackfaces);
-    $6fafcf15f6b61d60$var$updateQuadStripTangents(out, breakBefore, pointCount, frontSolidCount);
+    if (generatorClass === "QuadStripUnitizedUVBrush") $6fafcf15f6b61d60$var$updateQuadStripSectionTangents(out, sectionStart, frontSolidCount);
+    else $6fafcf15f6b61d60$var$updateQuadStripTangents(out, breakBefore, pointCount, frontSolidCount);
     if (hasBackfaces) {
         const backVertexOffset = frontSolidCount * 6;
         const reverse = [
