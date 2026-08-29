@@ -156,6 +156,69 @@ test( 'replays DistanceUV updates over the newest three fused solids', () => {
 
 } );
 
+test( 'replays transient QuadStrip leading updates before a break', () => {
+
+	const makeStroke = ( positions ) => ( {
+		...createStroke(),
+		brushSize: 0.05,
+		controlPoints: positions.map( ( position, index ) => ( {
+			position: [ ...position, 0 ],
+			orientation: [ 0, 0, 0, 1 ],
+			pressure: 1,
+			timestampMs: index * 16
+		} ) )
+	} );
+	const options = {
+		generatorClass: 'QuadStripBrushDistanceUV',
+		pressureSizeRange: [ 1, 1 ],
+		geometryParams: { tileRate: 1 },
+		finalized: true,
+		lastControlPointIsKeeper: true
+	};
+	const withoutTransient = generateBrushGeometry( makeStroke( [
+		[ 0, 0 ], [ 0.03, 0 ], [ 0.06, 0 ], [ 0.03, 0 ]
+	] ), 'ribbon', options );
+	const withTransient = generateBrushGeometry( makeStroke( [
+		[ 0, 0 ], [ 0.03, 0 ], [ 0.06, 0 ], [ 0.07, 0.002 ], [ 0.03, 0 ]
+	] ), 'ribbon', options );
+
+	assert.deepEqual( Array.from( withTransient.positions ), Array.from( withoutTransient.positions ) );
+	assertClose( withoutTransient.colors[ 2 * 4 + 3 ], 1 );
+	assertClose( withTransient.colors[ 2 * 4 + 3 ], 0.8 );
+	assert.ok( withTransient.uvs[ 8 ] < withoutTransient.uvs[ 8 ] );
+	assert.ok( withTransient.tangents[ 4 * 4 ] < -0.99 );
+	assert.ok( withoutTransient.tangents[ 4 * 4 ] > 0.99 );
+
+} );
+
+test( 'keeps committed QuadStrip edges while smoothing a provisional facing', () => {
+
+	const stroke = createStroke();
+	stroke.brushSize = 0.02;
+	stroke.controlPoints = [ [ 0, 0 ], [ 0.03, 0 ], [ 0.034, 0.001 ] ].map(
+		( position, index ) => ( {
+			position: [ ...position, 0 ],
+			orientation: [ 0, 0, 0, 1 ],
+			pressure: 1,
+			timestampMs: index * 16
+		} )
+	);
+	const geometry = generateBrushGeometry( stroke, 'ribbon', {
+		generatorClass: 'QuadStripBrushStretchUV',
+		pressureSizeRange: [ 1, 1 ]
+	} );
+	const edgeCenter = ( first, second ) => [ 0, 1, 2 ].map( axis =>
+		( geometry.positions[ first * 3 + axis ] + geometry.positions[ second * 3 + axis ] ) * 0.5 );
+	const committedLeading = edgeCenter( 2, 4 );
+	const provisionalLeading = edgeCenter( 8, 10 );
+
+	assertClose( committedLeading[ 0 ], 0.03 );
+	assertClose( committedLeading[ 1 ], 0 );
+	assert.ok( provisionalLeading[ 0 ] > 0.03401 );
+	assert.ok( provisionalLeading[ 1 ] < 0.0009 );
+
+} );
+
 test( 'preserves reversal section breaks and explicit backfaces', () => {
 
 	const stroke = createStroke();
