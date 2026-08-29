@@ -1308,7 +1308,7 @@ function $6fafcf15f6b61d60$var$smoothFlatGeometryEdges(stroke, positions, halfRi
         const previousIndex = previousRetained[index];
         const nextIndex = nextRetained[index];
         const startsSection = previousIndex === 0 || breakBefore[previousIndex] === 1;
-        const endsSection = breakBefore[nextIndex] === 1;
+        const endsSection = nextIndex === index || breakBefore[nextIndex] === 1;
         const point = stroke.controlPoints[index].position;
         const previous = stroke.controlPoints[previousIndex].position;
         const next = stroke.controlPoints[nextIndex].position;
