@@ -561,6 +561,41 @@ test( 'uses Open Brush radial tangents for hard-edged tube rings', () => {
 
 } );
 
+test( 'retains completed UnitizedUV tangents across a strip break', () => {
+
+	const makeStroke = ( positions ) => ( {
+		...createStroke(),
+		controlPoints: positions.map( ( position, index ) => ( {
+			position,
+			orientation: [ 0, 0, 0, 1 ],
+			pressure: 1,
+			timestampMs: index * 16
+		} ) )
+	} );
+	const options = {
+		generatorClass: 'QuadStripUnitizedUVBrush',
+		geometryParams: { renderBackfaces: false },
+		finalized: true,
+		lastControlPointIsKeeper: true
+	};
+	const completed = generateBrushGeometry( makeStroke( [
+		[ 0, 0, 0 ], [ 1, 0, 0 ], [ 2, 1, 0 ], [ 1, 0, 0 ]
+	] ), 'ribbon', options );
+	const continued = generateBrushGeometry( makeStroke( [
+		[ 0, 0, 0 ], [ 1, 0, 0 ], [ 2, 1, 0 ], [ 1, 0, 0 ], [ 1, 1, 0 ]
+	] ), 'ribbon', options );
+
+	assert.deepEqual(
+		Array.from( continued.tangents.slice( 24, 48 ) ),
+		Array.from( completed.tangents.slice( 24, 48 ) )
+	);
+	assert.notDeepEqual(
+		Array.from( continued.tangents.slice( 48, 72 ) ),
+		Array.from( completed.tangents.slice( 48, 72 ) )
+	);
+
+} );
+
 test( 'uses Unity zero-sign normals for zero-aspect tube caps', () => {
 
 	const stroke = createStroke();
