@@ -57,9 +57,13 @@ function $6fafcf15f6b61d60$export$cbaccd875830d3d0() {
         tubeSmoothedPressures: new Float32Array($6fafcf15f6b61d60$var$INITIAL_VERTEX_CAPACITY),
         tubeRetainedControlPoints: [],
         ribbonBreakBefore: new Uint8Array($6fafcf15f6b61d60$var$INITIAL_VERTEX_CAPACITY),
+        ribbonProvisionalSamples: new Uint8Array($6fafcf15f6b61d60$var$INITIAL_VERTEX_CAPACITY),
         ribbonRunningLengths: new Float32Array($6fafcf15f6b61d60$var$INITIAL_VERTEX_CAPACITY),
         ribbonSectionLengths: new Float32Array($6fafcf15f6b61d60$var$INITIAL_VERTEX_CAPACITY),
         ribbonSmoothedPressures: new Float32Array($6fafcf15f6b61d60$var$INITIAL_VERTEX_CAPACITY),
+        quadStripRawPositions: new Float32Array($6fafcf15f6b61d60$var$INITIAL_VERTEX_CAPACITY * 18),
+        quadStripRawNormals: new Float32Array($6fafcf15f6b61d60$var$INITIAL_VERTEX_CAPACITY * 18),
+        quadStripPressuredSizes: new Float32Array($6fafcf15f6b61d60$var$INITIAL_VERTEX_CAPACITY),
         ribbonPreviousRetained: new Int32Array($6fafcf15f6b61d60$var$INITIAL_VERTEX_CAPACITY),
         ribbonNextRetained: new Int32Array($6fafcf15f6b61d60$var$INITIAL_VERTEX_CAPACITY),
         geometrySmoothedPressures: new Float32Array($6fafcf15f6b61d60$var$INITIAL_VERTEX_CAPACITY),
@@ -113,16 +117,22 @@ function $6fafcf15f6b61d60$var$ensureRibbonScratchCapacity(out, pointCount) {
         let capacity = Math.max(out.ribbonBreakBefore.length, $6fafcf15f6b61d60$var$INITIAL_VERTEX_CAPACITY);
         while(capacity < pointCount)capacity *= 2;
         out.ribbonBreakBefore = new Uint8Array(capacity);
+        out.ribbonProvisionalSamples = new Uint8Array(capacity);
         out.ribbonRunningLengths = new Float32Array(capacity);
         out.ribbonSectionLengths = new Float32Array(capacity);
         out.ribbonSmoothedPressures = new Float32Array(capacity);
+        out.quadStripRawPositions = new Float32Array(capacity * 18);
+        out.quadStripRawNormals = new Float32Array(capacity * 18);
+        out.quadStripPressuredSizes = new Float32Array(capacity);
         out.ribbonPreviousRetained = new Int32Array(capacity);
         out.ribbonNextRetained = new Int32Array(capacity);
     } else {
         out.ribbonBreakBefore.fill(0, 0, pointCount);
+        out.ribbonProvisionalSamples.fill(0, 0, pointCount);
         out.ribbonRunningLengths.fill(0, 0, pointCount);
         out.ribbonSectionLengths.fill(0, 0, pointCount);
         out.ribbonSmoothedPressures.fill(0, 0, pointCount);
+        out.quadStripPressuredSizes.fill(0, 0, pointCount);
         out.ribbonPreviousRetained.fill(0, 0, pointCount);
         out.ribbonNextRetained.fill(0, 0, pointCount);
     }
@@ -516,7 +526,7 @@ function $6fafcf15f6b61d60$var$generateRibbonGeometry(stroke, family, options, o
     if (usesQuadStripTriangleSoup) {
         $6fafcf15f6b61d60$var$expandRibbonTriangleSoup(out, ribbonBreakBefore, renderPointCount, frontVertexCount, frontIndexCount, hasBackfaces, vertexCount);
         $6fafcf15f6b61d60$var$applyQuadStripPositionQuads(out, stroke, options, ribbonBreakBefore, renderPointCount);
-        $6fafcf15f6b61d60$var$applyQuadStripMidpointFusion(out, ribbonBreakBefore, renderPointCount, frontIndexCount / 6, hasBackfaces, options.generatorClass, tileRate, atlasRows, stroke.seed);
+        $6fafcf15f6b61d60$var$applyQuadStripMidpointFusion(out, stroke, options, ribbonBreakBefore, renderPointCount, frontIndexCount / 6, hasBackfaces, options.generatorClass, tileRate, atlasRows, stroke.seed);
     }
     const finalizedCounts = usesQuadStripTriangleSoup ? $6fafcf15f6b61d60$var$finalizeQuadStripUsedGeometry(out, ribbonBreakBefore, renderPointCount, frontIndexCount / 6, hasBackfaces, options) : undefined;
     let finalVertexCount = finalizedCounts?.vertexCount ?? vertexCount;
@@ -856,11 +866,24 @@ function $6fafcf15f6b61d60$var$applyQuadStripPositionQuads(out, stroke, options,
         0,
         0
     ];
+    const lastGeneratedFacing = [
+        0,
+        0,
+        0
+    ];
+    const positionedFacing = [
+        0,
+        0,
+        0
+    ];
     const pressureSizeMin = $6fafcf15f6b61d60$var$normalizePressureSizeMin(options.pressureSizeRange?.[0]);
     const pressureOpacityMin = $6fafcf15f6b61d60$var$normalizePressureOpacityMin(options.pressureOpacityRange);
     const pressureOpacityMax = $6fafcf15f6b61d60$var$normalizePressureOpacityMax(options.pressureOpacityRange);
     const descriptorOpacity = $6fafcf15f6b61d60$var$normalizeDescriptorOpacity(options.geometryParams?.opacity);
     const localBrushSize = $6fafcf15f6b61d60$var$getLocalBrushSize(stroke);
+    const provisionalSamples = out.ribbonProvisionalSamples;
+    const rawPositions = out.quadStripRawPositions;
+    const rawNormals = out.quadStripRawNormals;
     let previousOpacity = 0;
     let lastSizeShrink = 0;
     let sectionSolidCount = 0;
@@ -868,7 +891,8 @@ function $6fafcf15f6b61d60$var$applyQuadStripPositionQuads(out, stroke, options,
     let solid = 0;
     for(let pointIndex = 1; pointIndex < pointCount; pointIndex += 1){
         const sectionState = breakBefore[pointIndex];
-        if (sectionState === 2) continue;
+        const isTransientProvisional = sectionState === 2 && provisionalSamples[pointIndex] === 1;
+        if (sectionState === 2 && !isTransientProvisional) continue;
         if (sectionState === 1) sectionSolidCount = 0;
         const previousPoint = stroke.controlPoints[lastSpawnPointIndex];
         const point = stroke.controlPoints[pointIndex];
@@ -881,13 +905,17 @@ function $6fafcf15f6b61d60$var$applyQuadStripPositionQuads(out, stroke, options,
         $6fafcf15f6b61d60$var$rotateByQuaternion(point.orientation, $6fafcf15f6b61d60$var$VEC_UP, pointerUp);
         $6fafcf15f6b61d60$var$computeSurfaceFrame(previousRight, tangent, pointerForward, pointerUp, solid === 0 || options.geometryParams?.backIsInvisible === true, right, normal, true);
         const sourceSize = localBrushSize * $6fafcf15f6b61d60$var$getPressureSizeMultiplier(out.ribbonSmoothedPressures[pointIndex], pressureSizeMin);
+        const spawnInterval = 0.0015 + sourceSize * 0.2;
+        const generatesNewSolid = moveLength >= spawnInterval;
+        if (!generatesNewSolid && $6fafcf15f6b61d60$var$normalizeInPlace(lastGeneratedFacing)) $6fafcf15f6b61d60$var$slerpUnitVectors(lastGeneratedFacing, tangent, moveLength / spawnInterval, positionedFacing);
+        else $6fafcf15f6b61d60$var$copyVec3(tangent, positionedFacing);
         let size = sourceSize - lastSizeShrink;
         center[0] = (previousPoint.position[0] + point.position[0]) * 0.5;
         center[1] = (previousPoint.position[1] + point.position[1]) * 0.5;
         center[2] = (previousPoint.position[2] + point.position[2]) * 0.5;
-        halfForward[0] = (point.position[0] - previousPoint.position[0]) * 0.5;
-        halfForward[1] = (point.position[1] - previousPoint.position[1]) * 0.5;
-        halfForward[2] = (point.position[2] - previousPoint.position[2]) * 0.5;
+        halfForward[0] = positionedFacing[0] * moveLength * 0.5;
+        halfForward[1] = positionedFacing[1] * moveLength * 0.5;
+        halfForward[2] = positionedFacing[2] * moveLength * 0.5;
         halfRight[0] = right[0] * size * 0.5;
         halfRight[1] = right[1] * size * 0.5;
         halfRight[2] = right[2] * size * 0.5;
@@ -948,6 +976,10 @@ function $6fafcf15f6b61d60$var$applyQuadStripPositionQuads(out, stroke, options,
         $6fafcf15f6b61d60$var$writeColor(out.colors, vertex + 5, stroke.color, opacity);
         if (out.uv1Size === 3) $6fafcf15f6b61d60$var$writeQuadStripVectorOffset(out.vectorUvs, vertex, halfRight[0], halfRight[1], halfRight[2]);
         out.ribbonSectionLengths[solid] = size;
+        out.quadStripPressuredSizes[pointIndex] = size;
+        rawPositions.set(out.positions.subarray(vertex * 3, vertex * 3 + 18), pointIndex * 18);
+        rawNormals.set(out.normals.subarray(vertex * 3, vertex * 3 + 18), pointIndex * 18);
+        if (isTransientProvisional) continue;
         previousOpacity = opacity;
         $6fafcf15f6b61d60$var$copyVec3(center, previousCenter);
         $6fafcf15f6b61d60$var$copyVec3(halfForward, previousHalfForward);
@@ -955,6 +987,7 @@ function $6fafcf15f6b61d60$var$applyQuadStripPositionQuads(out, stroke, options,
         $6fafcf15f6b61d60$var$copyVec3(halfRight, previousRight);
         $6fafcf15f6b61d60$var$normalizeInPlace(previousRight);
         lastSizeShrink = sizeShrink;
+        if (generatesNewSolid) $6fafcf15f6b61d60$var$copyVec3(tangent, lastGeneratedFacing);
         sectionSolidCount += 1;
         lastSpawnPointIndex = pointIndex;
         solid += 1;
@@ -991,51 +1024,89 @@ const $6fafcf15f6b61d60$var$QUAD_STRIP_CORNER_SIDES = [
     1,
     -1
 ];
-function $6fafcf15f6b61d60$var$applyQuadStripMidpointFusion(out, breakBefore, pointCount, frontSolidCount, hasBackfaces, generatorClass, tileRate, atlasRows, seed) {
+function $6fafcf15f6b61d60$var$applyQuadStripMidpointFusion(out, stroke, options, breakBefore, pointCount, frontSolidCount, hasBackfaces, generatorClass, tileRate, atlasRows, seed) {
     // Open Brush mutates the newest three solids after every append. Preserve the
-    // unsmoothed front positions because starting a detached section restores the
-    // previous solid before touching up the end of the old section. uv1s is
-    // reusable geometry scratch for QuadStrip brushes and is overwritten later
-    // if backfaces need interleaving.
-    const rawPositions = out.uv1s;
-    rawPositions.set(out.positions.subarray(0, frontSolidCount * 18), 0);
+    // unsmoothed positions for every accepted input sample because provisional
+    // samples temporarily overwrite the mutable leading solid. Starting a
+    // detached section also restores the previous committed solid before touching
+    // up the end of the old section.
+    const rawPositions = out.quadStripRawPositions;
+    const rawNormals = out.quadStripRawNormals;
+    const provisionalSamples = out.ribbonProvisionalSamples;
+    const localBrushSize = $6fafcf15f6b61d60$var$getLocalBrushSize(stroke);
+    const pressureSizeMin = $6fafcf15f6b61d60$var$normalizePressureSizeMin(options.pressureSizeRange?.[0]);
     let solid = 0;
     let sectionStart = 0;
+    let lastSpawnPointIndex = 0;
+    let pendingDistanceTangentStart = -1;
+    let pendingDistanceTangentEnd = -1;
+    const requestDistanceTangents = (start, end)=>{
+        if (pendingDistanceTangentStart >= 0 && pendingDistanceTangentStart !== start) {
+            $6fafcf15f6b61d60$var$updateQuadStripSectionTangents(out, pendingDistanceTangentStart, Math.min(pendingDistanceTangentEnd, frontSolidCount));
+            pendingDistanceTangentStart = -1;
+            pendingDistanceTangentEnd = -1;
+        }
+        if (pendingDistanceTangentStart < 0) {
+            pendingDistanceTangentStart = start;
+            pendingDistanceTangentEnd = end;
+        } else pendingDistanceTangentEnd = Math.max(pendingDistanceTangentEnd, end);
+    };
     for(let segment = 0; segment < pointCount - 1; segment += 1){
-        const sectionState = breakBefore[segment + 1];
+        const pointIndex = segment + 1;
+        const sectionState = breakBefore[pointIndex];
         const previousSectionStart = sectionStart;
-        if (sectionState === 2) continue;
+        const isTransientProvisional = sectionState === 2 && provisionalSamples[pointIndex] === 1;
+        if (sectionState === 2 && !isTransientProvisional) continue;
+        const previousPosition = stroke.controlPoints[lastSpawnPointIndex].position;
+        const position = stroke.controlPoints[pointIndex].position;
+        const moveLength = Math.hypot(position[0] - previousPosition[0], position[1] - previousPosition[1], position[2] - previousPosition[2]);
+        const sourceSize = localBrushSize * $6fafcf15f6b61d60$var$getPressureSizeMultiplier(out.ribbonSmoothedPressures[pointIndex], pressureSizeMin);
+        const generatesNewSolid = moveLength >= 0.0015 + sourceSize * 0.2;
         if (sectionState === 1) {
-            if (generatorClass === "QuadStripBrushDistanceUV") // Open Brush finalizes the old section before AppendLeadingQuad restores
-            // and re-fuses its last solid. Its endpoint alpha therefore reflects the
-            // geometry immediately before the detached section begins.
-            $6fafcf15f6b61d60$var$applyQuadStripSectionOpacityFade(out, sectionStart, solid);
+            if (generatorClass === "QuadStripBrushDistanceUV") {
+                // Open Brush finalizes the old section before AppendLeadingQuad restores
+                // and re-fuses its last solid. Its endpoint alpha therefore reflects the
+                // geometry immediately before the detached section begins.
+                $6fafcf15f6b61d60$var$updateQuadStripDistanceUvsForAppend(out, sectionStart, solid, out.quadStripPressuredSizes[pointIndex], tileRate, atlasRows, seed, hasBackfaces);
+                $6fafcf15f6b61d60$var$applyQuadStripSectionOpacityFade(out, sectionStart, solid);
+                requestDistanceTangents(sectionStart, solid);
+            }
             const previousSectionLength = solid - sectionStart;
             if (solid > 0) {
-                $6fafcf15f6b61d60$var$restoreRawQuadStripSolidPositions(out.positions, rawPositions, solid - 1);
-                if (solid + 1 > 2 && previousSectionLength > 1) $6fafcf15f6b61d60$var$fuseQuadStripSolids(out, solid - 2, solid - 1);
-                else if (previousSectionLength === 1) $6fafcf15f6b61d60$var$squashRawQuadStripSolid(out.positions, rawPositions, solid - 1);
+                $6fafcf15f6b61d60$var$restoreRawQuadStripSolidPositions(out.positions, rawPositions, solid - 1, lastSpawnPointIndex);
+                if (solid + 1 > 2 && previousSectionLength > 1) $6fafcf15f6b61d60$var$fuseQuadStripSolids(out, solid - 2, solid - 1, generatesNewSolid);
+                else if (previousSectionLength === 1 && generatesNewSolid) $6fafcf15f6b61d60$var$squashRawQuadStripSolid(out.positions, rawPositions, solid - 1, lastSpawnPointIndex);
             }
             sectionStart = solid;
         }
+        $6fafcf15f6b61d60$var$restoreRawQuadStripSolidPositions(out.positions, rawPositions, solid, pointIndex);
+        $6fafcf15f6b61d60$var$restoreRawQuadStripSolidPositions(out.normals, rawNormals, solid, pointIndex);
         const sectionLength = solid - sectionStart + 1;
-        if (sectionLength === 2) $6fafcf15f6b61d60$var$fuseQuadStripSolids(out, solid - 1, solid);
+        if (sectionLength === 2) $6fafcf15f6b61d60$var$fuseQuadStripSolids(out, solid - 1, solid, generatesNewSolid);
         else if (sectionLength > 2) {
             $6fafcf15f6b61d60$var$averageQuadStripSolid(out, solid - 2, solid - 1, solid);
-            $6fafcf15f6b61d60$var$fuseQuadStripSolids(out, solid - 2, solid - 1);
-            $6fafcf15f6b61d60$var$fuseQuadStripSolids(out, solid - 1, solid);
+            $6fafcf15f6b61d60$var$fuseQuadStripSolids(out, solid - 2, solid - 1, generatesNewSolid);
+            $6fafcf15f6b61d60$var$fuseQuadStripSolids(out, solid - 1, solid, generatesNewSolid);
         }
         if (generatorClass === "QuadStripBrushDistanceUV") {
-            $6fafcf15f6b61d60$var$updateQuadStripDistanceUvsForAppend(out, sectionStart, solid + 1, out.ribbonSectionLengths[solid], tileRate, atlasRows, seed, hasBackfaces);
+            $6fafcf15f6b61d60$var$updateQuadStripDistanceUvsForAppend(out, sectionStart, solid + 1, out.quadStripPressuredSizes[pointIndex], tileRate, atlasRows, seed, hasBackfaces);
             $6fafcf15f6b61d60$var$applyQuadStripSectionOpacityFade(out, sectionStart, solid + 1);
+            // DistanceUV unions requests for one section and flushes them when a new
+            // section starts. A transient leading solid can extend that request past
+            // the committed section boundary.
+            requestDistanceTangents(sectionStart, solid + 1);
         } else if (generatorClass === "QuadStripUnitizedUVBrush" && sectionState === 1) // The break update computes the completed section together with the new
         // leading solid. Capture those tangents now: later smoothing in the new
         // section moves that solid, but does not revisit the old section.
         $6fafcf15f6b61d60$var$updateQuadStripSectionTangents(out, previousSectionStart, Math.min(solid + 1, frontSolidCount));
+        if (isTransientProvisional) continue;
+        if (generatesNewSolid) lastSpawnPointIndex = pointIndex;
         solid += 1;
     }
     if (generatorClass === "QuadStripBrushStretchUV") $6fafcf15f6b61d60$var$applyQuadStripStretchUvs(out, breakBefore, pointCount, atlasRows, seed, hasBackfaces);
-    if (generatorClass === "QuadStripUnitizedUVBrush") $6fafcf15f6b61d60$var$updateQuadStripSectionTangents(out, sectionStart, frontSolidCount);
+    if (generatorClass === "QuadStripBrushDistanceUV") {
+        if (pendingDistanceTangentStart >= 0) $6fafcf15f6b61d60$var$updateQuadStripSectionTangents(out, pendingDistanceTangentStart, Math.min(pendingDistanceTangentEnd, frontSolidCount));
+    } else if (generatorClass === "QuadStripUnitizedUVBrush") $6fafcf15f6b61d60$var$updateQuadStripSectionTangents(out, sectionStart, frontSolidCount);
     else $6fafcf15f6b61d60$var$updateQuadStripTangents(out, breakBefore, pointCount, frontSolidCount);
     if (hasBackfaces) {
         const backVertexOffset = frontSolidCount * 6;
@@ -1064,14 +1135,15 @@ function $6fafcf15f6b61d60$var$applyQuadStripMidpointFusion(out, breakBefore, po
     const vertexCount = frontSolidCount * 6 * (hasBackfaces ? 2 : 1);
     for(let vertex = 0; vertex < vertexCount; vertex += 1)$6fafcf15f6b61d60$var$includeBounds(out.bounds, out.positions, vertex);
 }
-function $6fafcf15f6b61d60$var$restoreRawQuadStripSolidPositions(positions, rawPositions, solid) {
-    const firstValue = solid * 18;
-    positions.set(rawPositions.subarray(firstValue, firstValue + 18), firstValue);
+function $6fafcf15f6b61d60$var$restoreRawQuadStripSolidPositions(positions, rawPositions, solid, pointIndex) {
+    const destination = solid * 18;
+    const source = pointIndex * 18;
+    positions.set(rawPositions.subarray(source, source + 18), destination);
 }
-function $6fafcf15f6b61d60$var$squashRawQuadStripSolid(positions, rawPositions, solid) {
+function $6fafcf15f6b61d60$var$squashRawQuadStripSolid(positions, rawPositions, solid, pointIndex) {
     const vertex = solid * 6;
-    const firstOffset = vertex * 3;
-    const oppositeOffset = (vertex + 4) * 3;
+    const firstOffset = pointIndex * 18;
+    const oppositeOffset = firstOffset + 12;
     const centerX = (rawPositions[firstOffset] + rawPositions[oppositeOffset]) * 0.5;
     const centerY = (rawPositions[firstOffset + 1] + rawPositions[oppositeOffset + 1]) * 0.5;
     const centerZ = (rawPositions[firstOffset + 2] + rawPositions[oppositeOffset + 2]) * 0.5;
@@ -1263,38 +1335,43 @@ function $6fafcf15f6b61d60$var$averageQuadStripSolid(out, backSolid, middleSolid
         out.positions[middleOffset + 2] = (out.positions[backOffset + 2] + out.positions[frontOffset + 2]) * 0.5;
     }
 }
-function $6fafcf15f6b61d60$var$fuseQuadStripSolids(out, backSolid, frontSolid) {
+function $6fafcf15f6b61d60$var$fuseQuadStripSolids(out, backSolid, frontSolid, alterBackSolid = true) {
     const backVertex = backSolid * 6;
     const frontVertex = frontSolid * 6;
     const backNormalOffset = (backVertex + 2) * 3;
     const frontNormalOffset = frontVertex * 3;
-    let nx = out.normals[backNormalOffset] + out.normals[frontNormalOffset];
-    let ny = out.normals[backNormalOffset + 1] + out.normals[frontNormalOffset + 1];
-    let nz = out.normals[backNormalOffset + 2] + out.normals[frontNormalOffset + 2];
-    const normalLength = Math.hypot(nx, ny, nz);
-    if (normalLength > $6fafcf15f6b61d60$var$EPSILON) {
-        nx /= normalLength;
-        ny /= normalLength;
-        nz /= normalLength;
-    } else {
-        nx = out.normals[backNormalOffset];
-        ny = out.normals[backNormalOffset + 1];
-        nz = out.normals[backNormalOffset + 2];
+    let nx = out.normals[backNormalOffset];
+    let ny = out.normals[backNormalOffset + 1];
+    let nz = out.normals[backNormalOffset + 2];
+    if (alterBackSolid) {
+        nx += out.normals[frontNormalOffset];
+        ny += out.normals[frontNormalOffset + 1];
+        nz += out.normals[frontNormalOffset + 2];
+        const normalLength = Math.hypot(nx, ny, nz);
+        if (normalLength > $6fafcf15f6b61d60$var$EPSILON) {
+            nx /= normalLength;
+            ny /= normalLength;
+            nz /= normalLength;
+        } else {
+            nx = out.normals[backNormalOffset];
+            ny = out.normals[backNormalOffset + 1];
+            nz = out.normals[backNormalOffset + 2];
+        }
     }
-    $6fafcf15f6b61d60$var$fuseQuadStripEdge(out, backVertex, frontVertex, 2, 0, nx, ny, nz);
-    $6fafcf15f6b61d60$var$fuseQuadStripEdge(out, backVertex, frontVertex, 4, 1, nx, ny, nz);
+    $6fafcf15f6b61d60$var$fuseQuadStripEdge(out, backVertex, frontVertex, 2, 0, nx, ny, nz, alterBackSolid);
+    $6fafcf15f6b61d60$var$fuseQuadStripEdge(out, backVertex, frontVertex, 4, 1, nx, ny, nz, alterBackSolid);
     $6fafcf15f6b61d60$var$copyPosition(out.positions, backVertex + 2, backVertex + 5);
     $6fafcf15f6b61d60$var$copyPosition(out.positions, frontVertex + 1, frontVertex + 3);
     $6fafcf15f6b61d60$var$copyVec3At(out.normals, backVertex + 2, backVertex + 5);
     $6fafcf15f6b61d60$var$copyVec3At(out.normals, frontVertex + 1, frontVertex + 3);
 }
-function $6fafcf15f6b61d60$var$fuseQuadStripEdge(out, backVertex, frontVertex, backCorner, frontCorner, nx, ny, nz) {
+function $6fafcf15f6b61d60$var$fuseQuadStripEdge(out, backVertex, frontVertex, backCorner, frontCorner, nx, ny, nz, alterBackVertex) {
     const backOffset = (backVertex + backCorner) * 3;
     const frontOffset = (frontVertex + frontCorner) * 3;
-    const x = (out.positions[backOffset] + out.positions[frontOffset]) * 0.5;
-    const y = (out.positions[backOffset + 1] + out.positions[frontOffset + 1]) * 0.5;
-    const z = (out.positions[backOffset + 2] + out.positions[frontOffset + 2]) * 0.5;
-    $6fafcf15f6b61d60$var$writeQuadStripFusedCorner(out, backVertex + backCorner, x, y, z, nx, ny, nz);
+    const x = alterBackVertex ? (out.positions[backOffset] + out.positions[frontOffset]) * 0.5 : out.positions[backOffset];
+    const y = alterBackVertex ? (out.positions[backOffset + 1] + out.positions[frontOffset + 1]) * 0.5 : out.positions[backOffset + 1];
+    const z = alterBackVertex ? (out.positions[backOffset + 2] + out.positions[frontOffset + 2]) * 0.5 : out.positions[backOffset + 2];
+    if (alterBackVertex) $6fafcf15f6b61d60$var$writeQuadStripFusedCorner(out, backVertex + backCorner, x, y, z, nx, ny, nz);
     $6fafcf15f6b61d60$var$writeQuadStripFusedCorner(out, frontVertex + frontCorner, x, y, z, nx, ny, nz);
 }
 function $6fafcf15f6b61d60$var$writeQuadStripFusedCorner(out, vertex, x, y, z, nx, ny, nz) {
@@ -1687,7 +1764,7 @@ function $6fafcf15f6b61d60$var$generateUnitizedRibbonGeometry(stroke, family, op
         0
     ];
     for(let solid = 0; solid < segmentCount; solid += 1)out.uvs.set(unitizedUvs, solid * 12);
-    $6fafcf15f6b61d60$var$applyQuadStripMidpointFusion(out, out.ribbonBreakBefore, pointCount, segmentCount, hasBackfaces, options.generatorClass, $6fafcf15f6b61d60$var$normalizeTileRate(options.geometryParams?.tileRate), $6fafcf15f6b61d60$var$normalizeAtlasRows(options.geometryParams?.textureAtlasV), stroke.seed);
+    $6fafcf15f6b61d60$var$applyQuadStripMidpointFusion(out, stroke, options, out.ribbonBreakBefore, pointCount, segmentCount, hasBackfaces, options.generatorClass, $6fafcf15f6b61d60$var$normalizeTileRate(options.geometryParams?.tileRate), $6fafcf15f6b61d60$var$normalizeAtlasRows(options.geometryParams?.textureAtlasV), stroke.seed);
     const finalizedCounts = $6fafcf15f6b61d60$var$finalizeQuadStripUsedGeometry(out, out.ribbonBreakBefore, pointCount, segmentCount, hasBackfaces, options);
     out.family = family;
     out.vertexCount = finalizedCounts?.vertexCount ?? vertexCount;
@@ -4170,6 +4247,7 @@ function $6fafcf15f6b61d60$var$prepareRibbonSections(stroke, out) {
         const isFinalProvisional = index === pointCount - 1;
         if (segmentLength < spawnInterval && !isFinalProvisional) {
             ribbonBreakBefore[index] = 2;
+            out.ribbonProvisionalSamples[index] = 1;
             ribbonRunningLengths[index] = runningLength;
             continue;
         }
@@ -4490,6 +4568,24 @@ function $6fafcf15f6b61d60$var$normalizeInPlace(v) {
     v[1] /= length;
     v[2] /= length;
     return true;
+}
+/** Matches Vector3.Slerp for unit directions and a clamped interpolation value. */ function $6fafcf15f6b61d60$var$slerpUnitVectors(from, to, amount, out) {
+    const t = $6fafcf15f6b61d60$var$clamp01(amount);
+    const cosine = Math.max(-1, Math.min(1, $6fafcf15f6b61d60$var$dot(from, to)));
+    const angle = Math.acos(cosine);
+    const sine = Math.sin(angle);
+    if (sine < $6fafcf15f6b61d60$var$EPSILON) {
+        out[0] = from[0] + (to[0] - from[0]) * t;
+        out[1] = from[1] + (to[1] - from[1]) * t;
+        out[2] = from[2] + (to[2] - from[2]) * t;
+        $6fafcf15f6b61d60$var$normalizeInPlace(out);
+        return;
+    }
+    const fromWeight = Math.sin((1 - t) * angle) / sine;
+    const toWeight = Math.sin(t * angle) / sine;
+    out[0] = from[0] * fromWeight + to[0] * toWeight;
+    out[1] = from[1] * fromWeight + to[1] * toWeight;
+    out[2] = from[2] * fromWeight + to[2] * toWeight;
 }
 /** Writes some unit vector perpendicular to the given unit vector. */ function $6fafcf15f6b61d60$var$anyPerpendicular(v, out) {
     if (Math.abs(v[1]) < 0.9) $6fafcf15f6b61d60$var$cross($6fafcf15f6b61d60$var$VEC_UP, v, out);

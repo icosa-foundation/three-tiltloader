@@ -72,9 +72,13 @@ export interface BrushGeometryArrays {
   tubeSmoothedPressures: Float32Array;
   tubeRetainedControlPoints: ControlPoint[];
   ribbonBreakBefore: Uint8Array;
+  ribbonProvisionalSamples: Uint8Array;
   ribbonRunningLengths: Float32Array;
   ribbonSectionLengths: Float32Array;
   ribbonSmoothedPressures: Float32Array;
+  quadStripRawPositions: Float32Array;
+  quadStripRawNormals: Float32Array;
+  quadStripPressuredSizes: Float32Array;
   ribbonPreviousRetained: Int32Array;
   ribbonNextRetained: Int32Array;
   geometrySmoothedPressures: Float32Array;
@@ -114,9 +118,13 @@ export function createBrushGeometryArrays(): BrushGeometryArrays {
     tubeSmoothedPressures: new Float32Array(INITIAL_VERTEX_CAPACITY),
     tubeRetainedControlPoints: [],
     ribbonBreakBefore: new Uint8Array(INITIAL_VERTEX_CAPACITY),
+    ribbonProvisionalSamples: new Uint8Array(INITIAL_VERTEX_CAPACITY),
     ribbonRunningLengths: new Float32Array(INITIAL_VERTEX_CAPACITY),
     ribbonSectionLengths: new Float32Array(INITIAL_VERTEX_CAPACITY),
     ribbonSmoothedPressures: new Float32Array(INITIAL_VERTEX_CAPACITY),
+    quadStripRawPositions: new Float32Array(INITIAL_VERTEX_CAPACITY * 18),
+    quadStripRawNormals: new Float32Array(INITIAL_VERTEX_CAPACITY * 18),
+    quadStripPressuredSizes: new Float32Array(INITIAL_VERTEX_CAPACITY),
     ribbonPreviousRetained: new Int32Array(INITIAL_VERTEX_CAPACITY),
     ribbonNextRetained: new Int32Array(INITIAL_VERTEX_CAPACITY),
     geometrySmoothedPressures: new Float32Array(INITIAL_VERTEX_CAPACITY),
@@ -197,16 +205,22 @@ function ensureRibbonScratchCapacity(
       capacity *= 2;
     }
     out.ribbonBreakBefore = new Uint8Array(capacity);
+    out.ribbonProvisionalSamples = new Uint8Array(capacity);
     out.ribbonRunningLengths = new Float32Array(capacity);
     out.ribbonSectionLengths = new Float32Array(capacity);
     out.ribbonSmoothedPressures = new Float32Array(capacity);
+    out.quadStripRawPositions = new Float32Array(capacity * 18);
+    out.quadStripRawNormals = new Float32Array(capacity * 18);
+    out.quadStripPressuredSizes = new Float32Array(capacity);
     out.ribbonPreviousRetained = new Int32Array(capacity);
     out.ribbonNextRetained = new Int32Array(capacity);
   } else {
     out.ribbonBreakBefore.fill(0, 0, pointCount);
+    out.ribbonProvisionalSamples.fill(0, 0, pointCount);
     out.ribbonRunningLengths.fill(0, 0, pointCount);
     out.ribbonSectionLengths.fill(0, 0, pointCount);
     out.ribbonSmoothedPressures.fill(0, 0, pointCount);
+    out.quadStripPressuredSizes.fill(0, 0, pointCount);
     out.ribbonPreviousRetained.fill(0, 0, pointCount);
     out.ribbonNextRetained.fill(0, 0, pointCount);
   }
@@ -784,6 +798,8 @@ function generateRibbonGeometry(
     );
     applyQuadStripMidpointFusion(
       out,
+      stroke,
+      options,
       ribbonBreakBefore,
       renderPointCount,
       frontIndexCount / 6,
@@ -1380,6 +1396,8 @@ function applyQuadStripPositionQuads(
   const previousCenter: Vec3 = [0, 0, 0];
   const previousHalfForward: Vec3 = [0, 0, 0];
   const previousHalfRight: Vec3 = [0, 0, 0];
+  const lastGeneratedFacing: Vec3 = [0, 0, 0];
+  const positionedFacing: Vec3 = [0, 0, 0];
   const pressureSizeMin = normalizePressureSizeMin(options.pressureSizeRange?.[0]);
   const pressureOpacityMin = normalizePressureOpacityMin(
     options.pressureOpacityRange,
@@ -1391,6 +1409,9 @@ function applyQuadStripPositionQuads(
     options.geometryParams?.opacity,
   );
   const localBrushSize = getLocalBrushSize(stroke);
+  const provisionalSamples = out.ribbonProvisionalSamples;
+  const rawPositions = out.quadStripRawPositions;
+  const rawNormals = out.quadStripRawNormals;
   let previousOpacity = 0;
   let lastSizeShrink = 0;
   let sectionSolidCount = 0;
@@ -1398,7 +1419,9 @@ function applyQuadStripPositionQuads(
   let solid = 0;
   for (let pointIndex = 1; pointIndex < pointCount; pointIndex += 1) {
     const sectionState = breakBefore[pointIndex];
-    if (sectionState === 2) {
+    const isTransientProvisional =
+      sectionState === 2 && provisionalSamples[pointIndex] === 1;
+    if (sectionState === 2 && !isTransientProvisional) {
       continue;
     }
     if (sectionState === 1) {
@@ -1431,13 +1454,25 @@ function applyQuadStripPositionQuads(
         out.ribbonSmoothedPressures[pointIndex],
         pressureSizeMin,
       );
+    const spawnInterval = 0.0015 + sourceSize * 0.2;
+    const generatesNewSolid = moveLength >= spawnInterval;
+    if (!generatesNewSolid && normalizeInPlace(lastGeneratedFacing)) {
+      slerpUnitVectors(
+        lastGeneratedFacing,
+        tangent,
+        moveLength / spawnInterval,
+        positionedFacing,
+      );
+    } else {
+      copyVec3(tangent, positionedFacing);
+    }
     let size = sourceSize - lastSizeShrink;
     center[0] = (previousPoint.position[0] + point.position[0]) * 0.5;
     center[1] = (previousPoint.position[1] + point.position[1]) * 0.5;
     center[2] = (previousPoint.position[2] + point.position[2]) * 0.5;
-    halfForward[0] = (point.position[0] - previousPoint.position[0]) * 0.5;
-    halfForward[1] = (point.position[1] - previousPoint.position[1]) * 0.5;
-    halfForward[2] = (point.position[2] - previousPoint.position[2]) * 0.5;
+    halfForward[0] = positionedFacing[0] * moveLength * 0.5;
+    halfForward[1] = positionedFacing[1] * moveLength * 0.5;
+    halfForward[2] = positionedFacing[2] * moveLength * 0.5;
     halfRight[0] = right[0] * size * 0.5;
     halfRight[1] = right[1] * size * 0.5;
     halfRight[2] = right[2] * size * 0.5;
@@ -1539,6 +1574,18 @@ function applyQuadStripPositionQuads(
       );
     }
     out.ribbonSectionLengths[solid] = size;
+    out.quadStripPressuredSizes[pointIndex] = size;
+    rawPositions.set(
+      out.positions.subarray(vertex * 3, vertex * 3 + 18),
+      pointIndex * 18,
+    );
+    rawNormals.set(
+      out.normals.subarray(vertex * 3, vertex * 3 + 18),
+      pointIndex * 18,
+    );
+    if (isTransientProvisional) {
+      continue;
+    }
     previousOpacity = opacity;
     copyVec3(center, previousCenter);
     copyVec3(halfForward, previousHalfForward);
@@ -1546,6 +1593,9 @@ function applyQuadStripPositionQuads(
     copyVec3(halfRight, previousRight);
     normalizeInPlace(previousRight);
     lastSizeShrink = sizeShrink;
+    if (generatesNewSolid) {
+      copyVec3(tangent, lastGeneratedFacing);
+    }
     sectionSolidCount += 1;
     lastSpawnPointIndex = pointIndex;
     solid += 1;
@@ -1624,6 +1674,8 @@ const QUAD_STRIP_CORNER_SIDES = [-1, 1, -1, 1, 1, -1] as const;
 
 function applyQuadStripMidpointFusion(
   out: BrushGeometryArrays,
+  stroke: StrokeData,
+  options: BrushGeometryOptions,
   breakBefore: Uint8Array,
   pointCount: number,
   frontSolidCount: number,
@@ -1634,58 +1686,135 @@ function applyQuadStripMidpointFusion(
   seed: number,
 ): void {
   // Open Brush mutates the newest three solids after every append. Preserve the
-  // unsmoothed front positions because starting a detached section restores the
-  // previous solid before touching up the end of the old section. uv1s is
-  // reusable geometry scratch for QuadStrip brushes and is overwritten later
-  // if backfaces need interleaving.
-  const rawPositions = out.uv1s;
-  rawPositions.set(out.positions.subarray(0, frontSolidCount * 18), 0);
+  // unsmoothed positions for every accepted input sample because provisional
+  // samples temporarily overwrite the mutable leading solid. Starting a
+  // detached section also restores the previous committed solid before touching
+  // up the end of the old section.
+  const rawPositions = out.quadStripRawPositions;
+  const rawNormals = out.quadStripRawNormals;
+  const provisionalSamples = out.ribbonProvisionalSamples;
+  const localBrushSize = getLocalBrushSize(stroke);
+  const pressureSizeMin = normalizePressureSizeMin(options.pressureSizeRange?.[0]);
   let solid = 0;
   let sectionStart = 0;
+  let lastSpawnPointIndex = 0;
+  let pendingDistanceTangentStart = -1;
+  let pendingDistanceTangentEnd = -1;
+  const requestDistanceTangents = (start: number, end: number): void => {
+    if (pendingDistanceTangentStart >= 0 && pendingDistanceTangentStart !== start) {
+      updateQuadStripSectionTangents(
+        out,
+        pendingDistanceTangentStart,
+        Math.min(pendingDistanceTangentEnd, frontSolidCount),
+      );
+      pendingDistanceTangentStart = -1;
+      pendingDistanceTangentEnd = -1;
+    }
+    if (pendingDistanceTangentStart < 0) {
+      pendingDistanceTangentStart = start;
+      pendingDistanceTangentEnd = end;
+    } else {
+      pendingDistanceTangentEnd = Math.max(pendingDistanceTangentEnd, end);
+    }
+  };
   for (let segment = 0; segment < pointCount - 1; segment += 1) {
-    const sectionState = breakBefore[segment + 1];
+    const pointIndex = segment + 1;
+    const sectionState = breakBefore[pointIndex];
     const previousSectionStart = sectionStart;
-    if (sectionState === 2) {
+    const isTransientProvisional =
+      sectionState === 2 && provisionalSamples[pointIndex] === 1;
+    if (sectionState === 2 && !isTransientProvisional) {
       continue;
     }
+    const previousPosition = stroke.controlPoints[lastSpawnPointIndex].position;
+    const position = stroke.controlPoints[pointIndex].position;
+    const moveLength = Math.hypot(
+      position[0] - previousPosition[0],
+      position[1] - previousPosition[1],
+      position[2] - previousPosition[2],
+    );
+    const sourceSize =
+      localBrushSize *
+      getPressureSizeMultiplier(
+        out.ribbonSmoothedPressures[pointIndex],
+        pressureSizeMin,
+      );
+    const generatesNewSolid = moveLength >= 0.0015 + sourceSize * 0.2;
     if (sectionState === 1) {
       if (generatorClass === "QuadStripBrushDistanceUV") {
         // Open Brush finalizes the old section before AppendLeadingQuad restores
         // and re-fuses its last solid. Its endpoint alpha therefore reflects the
         // geometry immediately before the detached section begins.
+        updateQuadStripDistanceUvsForAppend(
+          out,
+          sectionStart,
+          solid,
+          out.quadStripPressuredSizes[pointIndex],
+          tileRate,
+          atlasRows,
+          seed,
+          hasBackfaces,
+        );
         applyQuadStripSectionOpacityFade(out, sectionStart, solid);
+        requestDistanceTangents(sectionStart, solid);
       }
       const previousSectionLength = solid - sectionStart;
       if (solid > 0) {
-        restoreRawQuadStripSolidPositions(out.positions, rawPositions, solid - 1);
+        restoreRawQuadStripSolidPositions(
+          out.positions,
+          rawPositions,
+          solid - 1,
+          lastSpawnPointIndex,
+        );
         if (solid + 1 > 2 && previousSectionLength > 1) {
-          fuseQuadStripSolids(out, solid - 2, solid - 1);
-        } else if (previousSectionLength === 1) {
-          squashRawQuadStripSolid(out.positions, rawPositions, solid - 1);
+          fuseQuadStripSolids(out, solid - 2, solid - 1, generatesNewSolid);
+        } else if (previousSectionLength === 1 && generatesNewSolid) {
+          squashRawQuadStripSolid(
+            out.positions,
+            rawPositions,
+            solid - 1,
+            lastSpawnPointIndex,
+          );
         }
       }
       sectionStart = solid;
     }
+    restoreRawQuadStripSolidPositions(
+      out.positions,
+      rawPositions,
+      solid,
+      pointIndex,
+    );
+    restoreRawQuadStripSolidPositions(
+      out.normals,
+      rawNormals,
+      solid,
+      pointIndex,
+    );
     const sectionLength = solid - sectionStart + 1;
     if (sectionLength === 2) {
-      fuseQuadStripSolids(out, solid - 1, solid);
+      fuseQuadStripSolids(out, solid - 1, solid, generatesNewSolid);
     } else if (sectionLength > 2) {
       averageQuadStripSolid(out, solid - 2, solid - 1, solid);
-      fuseQuadStripSolids(out, solid - 2, solid - 1);
-      fuseQuadStripSolids(out, solid - 1, solid);
+      fuseQuadStripSolids(out, solid - 2, solid - 1, generatesNewSolid);
+      fuseQuadStripSolids(out, solid - 1, solid, generatesNewSolid);
     }
     if (generatorClass === "QuadStripBrushDistanceUV") {
       updateQuadStripDistanceUvsForAppend(
         out,
         sectionStart,
         solid + 1,
-        out.ribbonSectionLengths[solid],
+        out.quadStripPressuredSizes[pointIndex],
         tileRate,
         atlasRows,
         seed,
         hasBackfaces,
       );
       applyQuadStripSectionOpacityFade(out, sectionStart, solid + 1);
+      // DistanceUV unions requests for one section and flushes them when a new
+      // section starts. A transient leading solid can extend that request past
+      // the committed section boundary.
+      requestDistanceTangents(sectionStart, solid + 1);
     } else if (
       generatorClass === "QuadStripUnitizedUVBrush" &&
       sectionState === 1
@@ -1698,6 +1827,12 @@ function applyQuadStripMidpointFusion(
         previousSectionStart,
         Math.min(solid + 1, frontSolidCount),
       );
+    }
+    if (isTransientProvisional) {
+      continue;
+    }
+    if (generatesNewSolid) {
+      lastSpawnPointIndex = pointIndex;
     }
     solid += 1;
   }
@@ -1713,7 +1848,15 @@ function applyQuadStripMidpointFusion(
     );
   }
 
-  if (generatorClass === "QuadStripUnitizedUVBrush") {
+  if (generatorClass === "QuadStripBrushDistanceUV") {
+    if (pendingDistanceTangentStart >= 0) {
+      updateQuadStripSectionTangents(
+        out,
+        pendingDistanceTangentStart,
+        Math.min(pendingDistanceTangentEnd, frontSolidCount),
+      );
+    }
+  } else if (generatorClass === "QuadStripUnitizedUVBrush") {
     updateQuadStripSectionTangents(out, sectionStart, frontSolidCount);
   } else {
     updateQuadStripTangents(out, breakBefore, pointCount, frontSolidCount);
@@ -1771,19 +1914,22 @@ function restoreRawQuadStripSolidPositions(
   positions: Float32Array,
   rawPositions: Float32Array,
   solid: number,
+  pointIndex: number,
 ): void {
-  const firstValue = solid * 18;
-  positions.set(rawPositions.subarray(firstValue, firstValue + 18), firstValue);
+  const destination = solid * 18;
+  const source = pointIndex * 18;
+  positions.set(rawPositions.subarray(source, source + 18), destination);
 }
 
 function squashRawQuadStripSolid(
   positions: Float32Array,
   rawPositions: Float32Array,
   solid: number,
+  pointIndex: number,
 ): void {
   const vertex = solid * 6;
-  const firstOffset = vertex * 3;
-  const oppositeOffset = (vertex + 4) * 3;
+  const firstOffset = pointIndex * 18;
+  const oppositeOffset = firstOffset + 12;
   const centerX = (rawPositions[firstOffset] + rawPositions[oppositeOffset]) * 0.5;
   const centerY =
     (rawPositions[firstOffset + 1] + rawPositions[oppositeOffset + 1]) * 0.5;
@@ -2135,26 +2281,52 @@ function fuseQuadStripSolids(
   out: BrushGeometryArrays,
   backSolid: number,
   frontSolid: number,
+  alterBackSolid = true,
 ): void {
   const backVertex = backSolid * 6;
   const frontVertex = frontSolid * 6;
   const backNormalOffset = (backVertex + 2) * 3;
   const frontNormalOffset = frontVertex * 3;
-  let nx = out.normals[backNormalOffset] + out.normals[frontNormalOffset];
-  let ny = out.normals[backNormalOffset + 1] + out.normals[frontNormalOffset + 1];
-  let nz = out.normals[backNormalOffset + 2] + out.normals[frontNormalOffset + 2];
-  const normalLength = Math.hypot(nx, ny, nz);
-  if (normalLength > EPSILON) {
-    nx /= normalLength;
-    ny /= normalLength;
-    nz /= normalLength;
-  } else {
-    nx = out.normals[backNormalOffset];
-    ny = out.normals[backNormalOffset + 1];
-    nz = out.normals[backNormalOffset + 2];
+  let nx = out.normals[backNormalOffset];
+  let ny = out.normals[backNormalOffset + 1];
+  let nz = out.normals[backNormalOffset + 2];
+  if (alterBackSolid) {
+    nx += out.normals[frontNormalOffset];
+    ny += out.normals[frontNormalOffset + 1];
+    nz += out.normals[frontNormalOffset + 2];
+    const normalLength = Math.hypot(nx, ny, nz);
+    if (normalLength > EPSILON) {
+      nx /= normalLength;
+      ny /= normalLength;
+      nz /= normalLength;
+    } else {
+      nx = out.normals[backNormalOffset];
+      ny = out.normals[backNormalOffset + 1];
+      nz = out.normals[backNormalOffset + 2];
+    }
   }
-  fuseQuadStripEdge(out, backVertex, frontVertex, 2, 0, nx, ny, nz);
-  fuseQuadStripEdge(out, backVertex, frontVertex, 4, 1, nx, ny, nz);
+  fuseQuadStripEdge(
+    out,
+    backVertex,
+    frontVertex,
+    2,
+    0,
+    nx,
+    ny,
+    nz,
+    alterBackSolid,
+  );
+  fuseQuadStripEdge(
+    out,
+    backVertex,
+    frontVertex,
+    4,
+    1,
+    nx,
+    ny,
+    nz,
+    alterBackSolid,
+  );
   copyPosition(out.positions, backVertex + 2, backVertex + 5);
   copyPosition(out.positions, frontVertex + 1, frontVertex + 3);
   copyVec3At(out.normals, backVertex + 2, backVertex + 5);
@@ -2170,24 +2342,31 @@ function fuseQuadStripEdge(
   nx: number,
   ny: number,
   nz: number,
+  alterBackVertex: boolean,
 ): void {
   const backOffset = (backVertex + backCorner) * 3;
   const frontOffset = (frontVertex + frontCorner) * 3;
-  const x = (out.positions[backOffset] + out.positions[frontOffset]) * 0.5;
-  const y =
-    (out.positions[backOffset + 1] + out.positions[frontOffset + 1]) * 0.5;
-  const z =
-    (out.positions[backOffset + 2] + out.positions[frontOffset + 2]) * 0.5;
-  writeQuadStripFusedCorner(
-    out,
-    backVertex + backCorner,
-    x,
-    y,
-    z,
-    nx,
-    ny,
-    nz,
-  );
+  const x = alterBackVertex
+    ? (out.positions[backOffset] + out.positions[frontOffset]) * 0.5
+    : out.positions[backOffset];
+  const y = alterBackVertex
+    ? (out.positions[backOffset + 1] + out.positions[frontOffset + 1]) * 0.5
+    : out.positions[backOffset + 1];
+  const z = alterBackVertex
+    ? (out.positions[backOffset + 2] + out.positions[frontOffset + 2]) * 0.5
+    : out.positions[backOffset + 2];
+  if (alterBackVertex) {
+    writeQuadStripFusedCorner(
+      out,
+      backVertex + backCorner,
+      x,
+      y,
+      z,
+      nx,
+      ny,
+      nz,
+    );
+  }
   writeQuadStripFusedCorner(
     out,
     frontVertex + frontCorner,
@@ -2708,6 +2887,8 @@ function generateUnitizedRibbonGeometry(
   }
   applyQuadStripMidpointFusion(
     out,
+    stroke,
+    options,
     out.ribbonBreakBefore,
     pointCount,
     segmentCount,
@@ -6099,6 +6280,7 @@ function prepareQuadStripSections(
     const isFinalProvisional = index === pointCount - 1;
     if (segmentLength < spawnInterval && !isFinalProvisional) {
       ribbonBreakBefore[index] = 2;
+      out.ribbonProvisionalSamples[index] = 1;
       ribbonRunningLengths[index] = runningLength;
       continue;
     }
@@ -6739,6 +6921,31 @@ function normalizeInPlace(v: Vec3): boolean {
   v[1] /= length;
   v[2] /= length;
   return true;
+}
+
+/** Matches Vector3.Slerp for unit directions and a clamped interpolation value. */
+function slerpUnitVectors(
+  from: Vec3,
+  to: Vec3,
+  amount: number,
+  out: Vec3,
+): void {
+  const t = clamp01(amount);
+  const cosine = Math.max(-1, Math.min(1, dot(from, to)));
+  const angle = Math.acos(cosine);
+  const sine = Math.sin(angle);
+  if (sine < EPSILON) {
+    out[0] = from[0] + (to[0] - from[0]) * t;
+    out[1] = from[1] + (to[1] - from[1]) * t;
+    out[2] = from[2] + (to[2] - from[2]) * t;
+    normalizeInPlace(out);
+    return;
+  }
+  const fromWeight = Math.sin((1 - t) * angle) / sine;
+  const toWeight = Math.sin(t * angle) / sine;
+  out[0] = from[0] * fromWeight + to[0] * toWeight;
+  out[1] = from[1] * fromWeight + to[1] * toWeight;
+  out[2] = from[2] * fromWeight + to[2] * toWeight;
 }
 
 /** Writes some unit vector perpendicular to the given unit vector. */
