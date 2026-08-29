@@ -5782,13 +5782,14 @@ function generateGeniusParticleGeometry(
   out: BrushGeometryArrays,
 ): boolean {
   out.uv0Size = 4;
-  out.uv1Size = 4;
-  const pointCount = stroke.controlPoints.length;
+  out.uv1Size = 3;
   const particleRate = normalizePositive(
     options.geometryParams?.particleRate,
     1,
   );
   const spawnInterval = OPEN_BRUSH_GENIUS_PARTICLE_INTERVAL / particleRate;
+  stroke = retainGeniusControlPoints(stroke, options, out, spawnInterval);
+  const pointCount = stroke.controlPoints.length;
   const distanceRemainder =
     normalizeNonNegative(options.particleDistanceOffset) % spawnInterval;
   const totalLength = measureStrokeLength(stroke) + distanceRemainder;
@@ -5807,7 +5808,7 @@ function generateGeniusParticleGeometry(
     colors,
     uvs,
     particleUvs,
-    uv1s,
+    vectorUvs,
     indices,
     bounds,
   } = out;
@@ -5905,10 +5906,13 @@ function generateGeniusParticleGeometry(
       getPressureSizeMultiplier(pressure, pressureSizeMin) *
       (1 + statelessRandom01(stroke.seed, salt) * sizeVariance);
     writeRandomUnitSphere(stroke.seed, salt + 2, sphereOffset);
+    sphereOffset[2] = -sphereOffset[2];
     center[0] += sphereOffset[0] * size * positionScale;
     center[1] += sphereOffset[1] * size * positionScale;
     center[2] += sphereOffset[2] * size * positionScale;
     writeRandomRotation(stroke.seed, salt + 4, particleRotation);
+    particleRotation[0] = -particleRotation[0];
+    particleRotation[1] = -particleRotation[1];
     rotateByQuaternion(particleRotation, VEC_UP, particleUp);
     rotateByQuaternion(particleRotation, VEC_RIGHT, particleRight);
     const opacity = randomizeAlpha
@@ -5918,6 +5922,7 @@ function generateGeniusParticleGeometry(
           pressureOpacityMin,
           pressureOpacityMax,
         ) * descriptorOpacity;
+    const quantizedOpacity = Math.floor(clamp01(opacity) * 255) / 255;
     const atlasCell =
       atlasRows > 1
         ? Math.min(3, Math.floor(statelessRandom01(stroke.seed, salt + 8) * 4))
@@ -5929,8 +5934,7 @@ function generateGeniusParticleGeometry(
         Math.PI) /
       360;
     const initialRotation =
-      (statelessRandom01(stroke.seed, salt + 7) * 2 - 1) *
-      halfRotationRange;
+      (statelessRandom01(stroke.seed, salt + 7) * 2 - 1) * halfRotationRange;
     const birthTimeSeconds =
       options.deterministicBirthTime === true
         ? 0
@@ -5944,7 +5948,7 @@ function generateGeniusParticleGeometry(
       colors,
       uvs,
       particleUvs,
-      uv1s,
+      vectorUvs,
       indices,
       bounds,
       particleIndex,
@@ -5953,7 +5957,7 @@ function generateGeniusParticleGeometry(
       particleRight,
       size,
       stroke.color,
-      opacity,
+      quantizedOpacity,
       atlasRows > 1,
       atlasCell,
       initialRotation,
@@ -5969,6 +5973,42 @@ function generateGeniusParticleGeometry(
   out.vertexCount = vertexCount;
   out.indexCount = indexCount;
   return reallocated;
+}
+
+function retainGeniusControlPoints(
+  stroke: StrokeData,
+  options: BrushGeometryOptions,
+  out: BrushGeometryArrays,
+  spawnInterval: number,
+): StrokeData {
+  const source = stroke.controlPoints;
+  if (
+    source.length < 2 ||
+    normalizeNonNegativeInteger(options.particleKnotIndexOffset) > 0
+  ) {
+    return stroke;
+  }
+  const retained = out.tubeRetainedControlPoints;
+  retained.length = 0;
+  retained.push(source[0]);
+  let distanceTravelled = normalizeNonNegative(options.particleDistanceOffset);
+  let crossedSpawnInterval = false;
+  for (let pointIndex = 1; pointIndex < source.length; pointIndex += 1) {
+    // GeniusParticlesBrush checks its cumulative pointer travel inside the
+    // base update before recording the movement to the current sample. The
+    // first keeper therefore arrives one sample after crossing the interval.
+    crossedSpawnInterval ||= distanceTravelled > spawnInterval;
+    if (crossedSpawnInterval || pointIndex + 1 === source.length) {
+      retained.push(source[pointIndex]);
+    }
+    distanceTravelled += distanceBetweenControlPoints(
+      source[pointIndex - 1],
+      source[pointIndex],
+    );
+  }
+  return retained.length === source.length
+    ? stroke
+    : { ...stroke, controlPoints: retained };
 }
 
 function getPressureSizeMultiplier(
@@ -6913,7 +6953,7 @@ function writeGeniusParticleQuad(
   colors: Float32Array,
   uvs: Float32Array,
   particleUvs: Float32Array,
-  uv1s: Float32Array,
+  vectorUvs: Float32Array,
   indices: Uint32Array,
   bounds: BrushGeometryBounds,
   particleIndex: number,
@@ -6946,7 +6986,7 @@ function writeGeniusParticleQuad(
       colors,
       uvs,
       particleUvs,
-      uv1s,
+      vectorUvs,
       bounds,
       vertex + corner,
       center,
@@ -6967,11 +7007,11 @@ function writeGeniusParticleQuad(
   }
   const indexOffset = particleIndex * 6;
   indices[indexOffset] = vertex;
-  indices[indexOffset + 1] = vertex + 1;
-  indices[indexOffset + 2] = vertex + 3;
+  indices[indexOffset + 1] = vertex + 3;
+  indices[indexOffset + 2] = vertex + 1;
   indices[indexOffset + 3] = vertex;
-  indices[indexOffset + 4] = vertex + 3;
-  indices[indexOffset + 5] = vertex + 2;
+  indices[indexOffset + 4] = vertex + 2;
+  indices[indexOffset + 5] = vertex + 3;
 }
 
 function writeGeniusParticleVertex(
@@ -6981,7 +7021,7 @@ function writeGeniusParticleVertex(
   colors: Float32Array,
   uvs: Float32Array,
   particleUvs: Float32Array,
-  uv1s: Float32Array,
+  vectorUvs: Float32Array,
   bounds: BrushGeometryBounds,
   vertex: number,
   center: Vec3,
@@ -7023,17 +7063,16 @@ function writeGeniusParticleVertex(
   particleUvs[packedUvOffset + 1] = 1 - v;
   particleUvs[packedUvOffset + 2] = initialRotation;
   particleUvs[packedUvOffset + 3] = birthTimeSeconds;
-  const uv1Offset = vertex * 4;
-  uv1s[uv1Offset] =
+  const uv1Offset = vertex * 3;
+  vectorUvs[uv1Offset] =
     previousPosition[0] +
     (currentPosition[0] - previousPosition[0]) * positionRatio;
-  uv1s[uv1Offset + 1] =
+  vectorUvs[uv1Offset + 1] =
     previousPosition[1] +
     (currentPosition[1] - previousPosition[1]) * positionRatio;
-  uv1s[uv1Offset + 2] =
+  vectorUvs[uv1Offset + 2] =
     previousPosition[2] +
     (currentPosition[2] - previousPosition[2]) * positionRatio;
-  uv1s[uv1Offset + 3] = vertex;
   includeBounds(bounds, positions, vertex);
 }
 

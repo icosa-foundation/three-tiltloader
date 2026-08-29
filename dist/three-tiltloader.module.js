@@ -3969,10 +3969,11 @@ function $6fafcf15f6b61d60$var$retainSprayControlPoints(stroke, options, out, sm
 }
 function $6fafcf15f6b61d60$var$generateGeniusParticleGeometry(stroke, options, out) {
     out.uv0Size = 4;
-    out.uv1Size = 4;
-    const pointCount = stroke.controlPoints.length;
+    out.uv1Size = 3;
     const particleRate = $6fafcf15f6b61d60$var$normalizePositive(options.geometryParams?.particleRate, 1);
     const spawnInterval = $6fafcf15f6b61d60$var$OPEN_BRUSH_GENIUS_PARTICLE_INTERVAL / particleRate;
+    stroke = $6fafcf15f6b61d60$var$retainGeniusControlPoints(stroke, options, out, spawnInterval);
+    const pointCount = stroke.controlPoints.length;
     const distanceRemainder = $6fafcf15f6b61d60$var$normalizeNonNegative(options.particleDistanceOffset) % spawnInterval;
     const totalLength = $6fafcf15f6b61d60$var$measureStrokeLength(stroke) + distanceRemainder;
     const finalizedParticleCount = pointCount === 0 ? 0 : Math.floor(totalLength / spawnInterval) + 1;
@@ -3980,7 +3981,7 @@ function $6fafcf15f6b61d60$var$generateGeniusParticleGeometry(stroke, options, o
     const vertexCount = particleCount * 4;
     const indexCount = particleCount * 6;
     const reallocated = $6fafcf15f6b61d60$var$ensureGeometryCapacity(out, vertexCount, indexCount);
-    const { positions: positions, normals: normals, tangents: tangents, colors: colors, uvs: uvs, particleUvs: particleUvs, uv1s: uv1s, indices: indices, bounds: bounds } = out;
+    const { positions: positions, normals: normals, tangents: tangents, colors: colors, uvs: uvs, particleUvs: particleUvs, vectorUvs: vectorUvs, indices: indices, bounds: bounds } = out;
     const pressureSizeMin = $6fafcf15f6b61d60$var$normalizePressureSizeMin(options.pressureSizeRange?.[0]);
     const pressureOpacityMin = $6fafcf15f6b61d60$var$normalizePressureOpacityMin(options.pressureOpacityRange);
     const pressureOpacityMax = $6fafcf15f6b61d60$var$normalizePressureOpacityMax(options.pressureOpacityRange);
@@ -4043,24 +4044,49 @@ function $6fafcf15f6b61d60$var$generateGeniusParticleGeometry(stroke, options, o
         const salt = 16 * ((segmentIndex + knotIndexOffset) * 16 + particleWithinKnot);
         const size = localBrushSize * $6fafcf15f6b61d60$var$getPressureSizeMultiplier(pressure, pressureSizeMin) * (1 + $6fafcf15f6b61d60$var$statelessRandom01(stroke.seed, salt) * sizeVariance);
         $6fafcf15f6b61d60$var$writeRandomUnitSphere(stroke.seed, salt + 2, sphereOffset);
+        sphereOffset[2] = -sphereOffset[2];
         center[0] += sphereOffset[0] * size * positionScale;
         center[1] += sphereOffset[1] * size * positionScale;
         center[2] += sphereOffset[2] * size * positionScale;
         $6fafcf15f6b61d60$var$writeRandomRotation(stroke.seed, salt + 4, particleRotation);
+        particleRotation[0] = -particleRotation[0];
+        particleRotation[1] = -particleRotation[1];
         $6fafcf15f6b61d60$var$rotateByQuaternion(particleRotation, $6fafcf15f6b61d60$var$VEC_UP, particleUp);
         $6fafcf15f6b61d60$var$rotateByQuaternion(particleRotation, $6fafcf15f6b61d60$var$VEC_RIGHT, particleRight);
         const opacity = randomizeAlpha ? $6fafcf15f6b61d60$var$statelessRandom01(stroke.seed, salt + 1) : $6fafcf15f6b61d60$var$getPressureOpacityMultiplier(pressure, pressureOpacityMin, pressureOpacityMax) * descriptorOpacity;
+        const quantizedOpacity = Math.floor($6fafcf15f6b61d60$var$clamp01(opacity) * 255) / 255;
         const atlasCell = atlasRows > 1 ? Math.min(3, Math.floor($6fafcf15f6b61d60$var$statelessRandom01(stroke.seed, salt + 8) * 4)) : 0;
         const halfRotationRange = $6fafcf15f6b61d60$var$normalizeNonNegative(options.geometryParams?.particleInitialRotationRange) * Math.PI / 360;
         const initialRotation = ($6fafcf15f6b61d60$var$statelessRandom01(stroke.seed, salt + 7) * 2 - 1) * halfRotationRange;
         const birthTimeSeconds = options.deterministicBirthTime === true ? 0 : (currentPoint.timestampMs * 0.001 + $6fafcf15f6b61d60$var$normalizeFinite(options.particleBirthTimeOffsetSeconds)) * (options.particlePreview === true ? -1 : 1);
-        $6fafcf15f6b61d60$var$writeGeniusParticleQuad(positions, normals, tangents, colors, uvs, particleUvs, uv1s, indices, bounds, particleIndex, center, particleUp, particleRight, size, stroke.color, opacity, atlasRows > 1, atlasCell, initialRotation, birthTimeSeconds, previousPoint.position, currentPoint.position, ratio);
+        $6fafcf15f6b61d60$var$writeGeniusParticleQuad(positions, normals, tangents, colors, uvs, particleUvs, vectorUvs, indices, bounds, particleIndex, center, particleUp, particleRight, size, stroke.color, quantizedOpacity, atlasRows > 1, atlasCell, initialRotation, birthTimeSeconds, previousPoint.position, currentPoint.position, ratio);
         particleWithinKnot += 1;
     }
     out.family = "particle";
     out.vertexCount = vertexCount;
     out.indexCount = indexCount;
     return reallocated;
+}
+function $6fafcf15f6b61d60$var$retainGeniusControlPoints(stroke, options, out, spawnInterval) {
+    const source = stroke.controlPoints;
+    if (source.length < 2 || $6fafcf15f6b61d60$var$normalizeNonNegativeInteger(options.particleKnotIndexOffset) > 0) return stroke;
+    const retained = out.tubeRetainedControlPoints;
+    retained.length = 0;
+    retained.push(source[0]);
+    let distanceTravelled = $6fafcf15f6b61d60$var$normalizeNonNegative(options.particleDistanceOffset);
+    let crossedSpawnInterval = false;
+    for(let pointIndex = 1; pointIndex < source.length; pointIndex += 1){
+        // GeniusParticlesBrush checks its cumulative pointer travel inside the
+        // base update before recording the movement to the current sample. The
+        // first keeper therefore arrives one sample after crossing the interval.
+        crossedSpawnInterval ||= distanceTravelled > spawnInterval;
+        if (crossedSpawnInterval || pointIndex + 1 === source.length) retained.push(source[pointIndex]);
+        distanceTravelled += $6fafcf15f6b61d60$var$distanceBetweenControlPoints(source[pointIndex - 1], source[pointIndex]);
+    }
+    return retained.length === source.length ? stroke : {
+        ...stroke,
+        controlPoints: retained
+    };
 }
 function $6fafcf15f6b61d60$var$getPressureSizeMultiplier(pressure, pressureSizeMin) {
     const clampedPressure = $6fafcf15f6b61d60$var$clamp01(pressure);
@@ -4596,7 +4622,7 @@ function $6fafcf15f6b61d60$var$writeSprayParticleVertex(positions, normals, tang
     }
     $6fafcf15f6b61d60$var$includeBounds(bounds, positions, vertex);
 }
-function $6fafcf15f6b61d60$var$writeGeniusParticleQuad(positions, normals, tangents, colors, uvs, particleUvs, uv1s, indices, bounds, particleIndex, center, up, right, size, color, opacity, usesAtlas, atlasCell, initialRotation, birthTimeSeconds, previousPosition, currentPosition, positionRatio) {
+function $6fafcf15f6b61d60$var$writeGeniusParticleQuad(positions, normals, tangents, colors, uvs, particleUvs, vectorUvs, indices, bounds, particleIndex, center, up, right, size, color, opacity, usesAtlas, atlasCell, initialRotation, birthTimeSeconds, previousPosition, currentPosition, positionRatio) {
     const vertex = particleIndex * 4;
     const halfSize = size * 0.5;
     const atlasScale = usesAtlas ? 0.5 : 1;
@@ -4605,17 +4631,17 @@ function $6fafcf15f6b61d60$var$writeGeniusParticleQuad(positions, normals, tange
     for(let corner = 0; corner < 4; corner += 1){
         const isTop = corner >= 2;
         const isRight = corner % 2 === 0;
-        $6fafcf15f6b61d60$var$writeGeniusParticleVertex(positions, normals, tangents, colors, uvs, particleUvs, uv1s, bounds, vertex + corner, center, up, right, isTop ? halfSize : -halfSize, isRight ? halfSize : -halfSize, color, opacity, atlasU + (isTop ? atlasScale : 0), atlasV + (isRight ? atlasScale : 0), initialRotation, birthTimeSeconds, previousPosition, currentPosition, positionRatio);
+        $6fafcf15f6b61d60$var$writeGeniusParticleVertex(positions, normals, tangents, colors, uvs, particleUvs, vectorUvs, bounds, vertex + corner, center, up, right, isTop ? halfSize : -halfSize, isRight ? halfSize : -halfSize, color, opacity, atlasU + (isTop ? atlasScale : 0), atlasV + (isRight ? atlasScale : 0), initialRotation, birthTimeSeconds, previousPosition, currentPosition, positionRatio);
     }
     const indexOffset = particleIndex * 6;
     indices[indexOffset] = vertex;
-    indices[indexOffset + 1] = vertex + 1;
-    indices[indexOffset + 2] = vertex + 3;
+    indices[indexOffset + 1] = vertex + 3;
+    indices[indexOffset + 2] = vertex + 1;
     indices[indexOffset + 3] = vertex;
-    indices[indexOffset + 4] = vertex + 3;
-    indices[indexOffset + 5] = vertex + 2;
+    indices[indexOffset + 4] = vertex + 2;
+    indices[indexOffset + 5] = vertex + 3;
 }
-function $6fafcf15f6b61d60$var$writeGeniusParticleVertex(positions, normals, tangents, colors, uvs, particleUvs, uv1s, bounds, vertex, center, up, right, upScale, rightScale, color, opacity, u, v, initialRotation, birthTimeSeconds, previousPosition, currentPosition, positionRatio) {
+function $6fafcf15f6b61d60$var$writeGeniusParticleVertex(positions, normals, tangents, colors, uvs, particleUvs, vectorUvs, bounds, vertex, center, up, right, upScale, rightScale, color, opacity, u, v, initialRotation, birthTimeSeconds, previousPosition, currentPosition, positionRatio) {
     const positionOffset = vertex * 3;
     positions[positionOffset] = center[0] + up[0] * upScale + right[0] * rightScale;
     positions[positionOffset + 1] = center[1] + up[1] * upScale + right[1] * rightScale;
@@ -4637,11 +4663,10 @@ function $6fafcf15f6b61d60$var$writeGeniusParticleVertex(positions, normals, tan
     particleUvs[packedUvOffset + 1] = 1 - v;
     particleUvs[packedUvOffset + 2] = initialRotation;
     particleUvs[packedUvOffset + 3] = birthTimeSeconds;
-    const uv1Offset = vertex * 4;
-    uv1s[uv1Offset] = previousPosition[0] + (currentPosition[0] - previousPosition[0]) * positionRatio;
-    uv1s[uv1Offset + 1] = previousPosition[1] + (currentPosition[1] - previousPosition[1]) * positionRatio;
-    uv1s[uv1Offset + 2] = previousPosition[2] + (currentPosition[2] - previousPosition[2]) * positionRatio;
-    uv1s[uv1Offset + 3] = vertex;
+    const uv1Offset = vertex * 3;
+    vectorUvs[uv1Offset] = previousPosition[0] + (currentPosition[0] - previousPosition[0]) * positionRatio;
+    vectorUvs[uv1Offset + 1] = previousPosition[1] + (currentPosition[1] - previousPosition[1]) * positionRatio;
+    vectorUvs[uv1Offset + 2] = previousPosition[2] + (currentPosition[2] - previousPosition[2]) * positionRatio;
     $6fafcf15f6b61d60$var$includeBounds(bounds, positions, vertex);
 }
 function $6fafcf15f6b61d60$var$writeParticleVertex(positions, normals, tangents, colors, uvs, bounds, vertex, center, color, opacityMultiplier, offsetX, offsetY, u, v) {
