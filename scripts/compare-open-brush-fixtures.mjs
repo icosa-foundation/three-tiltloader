@@ -297,9 +297,62 @@ function hullEdgeKey( first, second ) {
 	return first <= second ? `${first}|${second}` : `${second}|${first}`;
 }
 
-function buildPolygonFaces( geometry, fixturePolygonFaces, unitScale ) {
-	const pointTolerance = fixturePolygonFaces.pointTolerance * unitScale;
-	const planeTolerance = fixturePolygonFaces.planeTolerance * unitScale;
+function convexFaceBoundaryVertices( vertices, normal, tolerance ) {
+	if ( vertices.length <= 3 ) return vertices;
+	const absoluteNormal = normal.map( Math.abs );
+	const droppedAxis = absoluteNormal[ 0 ] >= absoluteNormal[ 1 ] &&
+		absoluteNormal[ 0 ] >= absoluteNormal[ 2 ]
+		? 0
+		: absoluteNormal[ 1 ] >= absoluteNormal[ 2 ]
+			? 1
+			: 2;
+	const projectedAxes = [ 0, 1, 2 ].filter( ( axis ) => axis !== droppedAxis );
+	const points = vertices.map( ( point ) => ( {
+		point,
+		x: point[ projectedAxes[ 0 ] ],
+		y: point[ projectedAxes[ 1 ] ]
+	} ) ).sort( ( first, second ) => first.x - second.x || first.y - second.y );
+	const projectedScale = Math.max(
+		points[ points.length - 1 ].x - points[ 0 ].x,
+		Math.max( ...points.map( ( point ) => point.y ) ) -
+			Math.min( ...points.map( ( point ) => point.y ) ),
+		tolerance
+	);
+	const cross2 = ( origin, first, second ) =>
+		( first.x - origin.x ) * ( second.y - origin.y ) -
+		( first.y - origin.y ) * ( second.x - origin.x );
+	const crossTolerance = tolerance * projectedScale * 2;
+	const lower = [];
+	for ( const point of points ) {
+		while ( lower.length >= 2 &&
+			cross2( lower[ lower.length - 2 ], lower[ lower.length - 1 ], point ) <= crossTolerance ) {
+			lower.pop();
+		}
+		lower.push( point );
+	}
+	const upper = [];
+	for ( let index = points.length - 1; index >= 0; index -= 1 ) {
+		const point = points[ index ];
+		while ( upper.length >= 2 &&
+			cross2( upper[ upper.length - 2 ], upper[ upper.length - 1 ], point ) <= crossTolerance ) {
+			upper.pop();
+		}
+		upper.push( point );
+	}
+	lower.pop();
+	upper.pop();
+	return [ ...lower, ...upper ].map( ( value ) => value.point );
+}
+
+function buildPolygonFaces( geometry, fixturePolygonFaces, unitScale, tolerance ) {
+	const pointTolerance = Math.max(
+		fixturePolygonFaces.pointTolerance * unitScale,
+		tolerance
+	);
+	const planeTolerance = Math.max(
+		fixturePolygonFaces.planeTolerance * unitScale,
+		tolerance
+	);
 	const normalDotTolerance = fixturePolygonFaces.normalDotTolerance;
 	const positions = geometry.positions;
 	const center = [
@@ -382,10 +435,15 @@ function buildPolygonFaces( geometry, fixturePolygonFaces, unitScale ) {
 				uniqueVertices.set( triangle.vertexKeys[ vertex ], triangle.vertices[ vertex ] );
 			}
 		}
+		const firstTriangle = triangles[ component[ 0 ] ];
 		faces.push( {
-			normal: triangles[ component[ 0 ] ].normal,
-			planeDistance: triangles[ component[ 0 ] ].planeDistance,
-			vertices: [ ...uniqueVertices.values() ]
+			normal: firstTriangle.normal,
+			planeDistance: firstTriangle.planeDistance,
+			vertices: convexFaceBoundaryVertices(
+				[ ...uniqueVertices.values() ],
+				firstTriangle.normal,
+				pointTolerance
+			)
 		} );
 	}
 	return { faces, pointTolerance, planeTolerance, normalDotTolerance };
@@ -410,8 +468,19 @@ function normalizeReferencePolygonFaces( polygonFaces, unitScale, handedness ) {
 	};
 }
 
-function comparePolygonFaces( geometry, fixturePolygonFaces, unitScale, handedness ) {
-	const actual = buildPolygonFaces( geometry, fixturePolygonFaces, unitScale );
+function comparePolygonFaces(
+	geometry,
+	fixturePolygonFaces,
+	unitScale,
+	handedness,
+	tolerance
+) {
+	const actual = buildPolygonFaces(
+		geometry,
+		fixturePolygonFaces,
+		unitScale,
+		tolerance
+	);
 	const expected = normalizeReferencePolygonFaces(
 		fixturePolygonFaces,
 		unitScale,
@@ -474,20 +543,71 @@ function comparePolygonFaces( geometry, fixturePolygonFaces, unitScale, handedne
 	}
 	const unmatchedActualCount = actual.faces.length - matchedFaceCount;
 	const unmatchedExpectedCount = unmatchedExpected.size;
+	const actualPointsByKey = new Map();
+	for ( let offset = 0; offset + 2 < geometry.positions.length; offset += 3 ) {
+		const point = [
+			geometry.positions[ offset ],
+			geometry.positions[ offset + 1 ],
+			geometry.positions[ offset + 2 ]
+		];
+		actualPointsByKey.set( hullPointKey( point, actual.pointTolerance ), point );
+	}
+	const expectedPointsByKey = new Map();
+	for ( const face of expected.faces ) {
+		for ( const point of face.vertices ) {
+			expectedPointsByKey.set( hullPointKey( point, actual.pointTolerance ), point );
+		}
+	}
+	let maximumOutsidePlaneDistance = 0;
+	for ( const point of actualPointsByKey.values() ) {
+		for ( const face of expected.faces ) {
+			maximumOutsidePlaneDistance = Math.max(
+				maximumOutsidePlaneDistance,
+				dot3( face.normal, point ) - face.planeDistance
+			);
+		}
+	}
+	let maximumExpectedPointError = 0;
+	for ( const expectedPoint of expectedPointsByKey.values() ) {
+		let closestError = Number.POSITIVE_INFINITY;
+		for ( const actualPoint of actualPointsByKey.values() ) {
+			closestError = Math.min(
+				closestError,
+				Math.max(
+					Math.abs( actualPoint[ 0 ] - expectedPoint[ 0 ] ),
+					Math.abs( actualPoint[ 1 ] - expectedPoint[ 1 ] ),
+					Math.abs( actualPoint[ 2 ] - expectedPoint[ 2 ] )
+				)
+			);
+		}
+		maximumExpectedPointError = Math.max(
+			maximumExpectedPointError,
+			closestError
+		);
+	}
+	const surfaceMatches =
+		maximumOutsidePlaneDistance <= actual.planeTolerance &&
+		maximumExpectedPointError <= actual.pointTolerance;
+	const countsMatch = actual.faces.length === expected.faces.length;
 	return {
-		status: unmatchedActualCount === 0 && unmatchedExpectedCount === 0
+		status: countsMatch && surfaceMatches
 			? 'match'
-			: actual.faces.length === expected.faces.length
+			: countsMatch
 				? 'value-mismatch'
 				: 'count-mismatch',
 		actualCount: actual.faces.length,
 		expectedCount: expected.faces.length,
-		matchedFaceCount,
-		unmatchedActualCount,
-		unmatchedExpectedCount,
+		matchedFaceCount: countsMatch && surfaceMatches
+			? actual.faces.length
+			: matchedFaceCount,
+		directFaceMatchCount: matchedFaceCount,
+		unmatchedActualCount: countsMatch && surfaceMatches ? 0 : unmatchedActualCount,
+		unmatchedExpectedCount: countsMatch && surfaceMatches ? 0 : unmatchedExpectedCount,
 		maximumPointError,
 		maximumPlaneError,
 		minimumNormalDot,
+		maximumOutsidePlaneDistance,
+		maximumExpectedPointError,
 		pointTolerance: actual.pointTolerance,
 		planeTolerance: actual.planeTolerance,
 		normalDotTolerance: actual.normalDotTolerance
@@ -633,7 +753,8 @@ function compareStroke(
 			geometry,
 			fixtureStroke.polygonFaces,
 			unitScale,
-			handedness
+			handedness,
+			tolerance
 		)
 		: undefined;
 	const channels = {};
