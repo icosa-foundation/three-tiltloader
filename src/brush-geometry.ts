@@ -2983,12 +2983,12 @@ interface ConcaveHullBatch {
 
 interface Print3DBasis {
   tangent: Vec3;
+  inlineWithPlaneNormal: boolean;
   planeNormal: Vec3;
   planeRight: Vec3;
   width: Vec3;
   thickness: Vec3;
   halfSize: number;
-  startHalfSize: number;
 }
 
 function generateSquare3DPrintGeometry(
@@ -2996,6 +2996,7 @@ function generateSquare3DPrintGeometry(
   options: BrushGeometryOptions,
   out: BrushGeometryArrays,
 ): boolean {
+  stroke = retainPrint3DControlPoints(stroke, out);
   out.family = "print3d";
   out.uv0Size = 2;
   ensureGeometryPressureCapacity(out, stroke.controlPoints.length);
@@ -3032,6 +3033,7 @@ function generateSquare3DPrintGeometry(
     while (segment + 1 < segments.length && segments[segment + 1]) segment += 1;
     const lastSegment = segment;
     appendPrint3DSection(
+      stroke,
       segments as Print3DBasis[],
       firstSegment,
       lastSegment,
@@ -3039,6 +3041,8 @@ function generateSquare3DPrintGeometry(
       normals,
       indices,
       out.geometrySmoothedPositions,
+      out.geometrySmoothedPressures,
+      pressureSizeMin,
     );
     segment += 1;
   }
@@ -3060,6 +3064,33 @@ function generateSquare3DPrintGeometry(
   return reallocated;
 }
 
+function retainPrint3DControlPoints(
+  stroke: StrokeData,
+  out: BrushGeometryArrays,
+): StrokeData {
+  const source = stroke.controlPoints;
+  if (source.length < 2) {
+    return stroke;
+  }
+  const retained = out.tubeRetainedControlPoints;
+  retained.length = 0;
+  retained.push(source[0]);
+  let lastRetained = source[0];
+  for (let pointIndex = 1; pointIndex < source.length; pointIndex += 1) {
+    const point = source[pointIndex];
+    if (
+      pointIndex + 1 === source.length ||
+      distanceBetweenControlPoints(lastRetained, point) > 0.005
+    ) {
+      retained.push(point);
+      lastRetained = point;
+    }
+  }
+  return retained.length === source.length
+    ? stroke
+    : { ...stroke, controlPoints: retained };
+}
+
 function createPrint3DBasis(
   stroke: StrokeData,
   index: number,
@@ -3075,6 +3106,25 @@ function createPrint3DBasis(
   const tangent = subtractVec3(currentPosition, previousPosition);
   const distance = Math.sqrt(dotVec3(tangent, tangent));
   if (distance < 0.003 || !normalizeInPlace(tangent)) return undefined;
+  return createPrint3DBasisForTangent(
+    stroke,
+    index,
+    index,
+    tangent,
+    pressureSizeMin,
+    smoothedPressures,
+  );
+}
+
+function createPrint3DBasisForTangent(
+  stroke: StrokeData,
+  orientationIndex: number,
+  pressureIndex: number,
+  tangent: Vec3,
+  pressureSizeMin: number,
+  smoothedPressures: Float32Array,
+): Print3DBasis | undefined {
+  const current = stroke.controlPoints[orientationIndex];
   const planeNormal: Vec3 = [0, 0, 0];
   const planeRight: Vec3 = [0, 0, 0];
   const planeForward: Vec3 = [0, 0, 0];
@@ -3092,24 +3142,21 @@ function createPrint3DBasis(
   ];
   const halfSize =
     getLocalBrushSize(stroke) *
-    getPressureSizeMultiplier(smoothedPressures[index], pressureSizeMin) *
-    0.5;
-  const startHalfSize =
-    getLocalBrushSize(stroke) *
-    getPressureSizeMultiplier(smoothedPressures[index - 1], pressureSizeMin) *
+    getPressureSizeMultiplier(smoothedPressures[pressureIndex], pressureSizeMin) *
     0.5;
   return {
     tangent,
+    inlineWithPlaneNormal: alignment > 0,
     planeNormal,
     planeRight,
     width,
     thickness,
     halfSize,
-    startHalfSize,
   };
 }
 
 function appendPrint3DSection(
+  stroke: StrokeData,
   segments: Print3DBasis[],
   firstSegment: number,
   lastSegment: number,
@@ -3117,6 +3164,8 @@ function appendPrint3DSection(
   normals: number[],
   indices: number[],
   smoothedPositions: Float32Array,
+  smoothedPressures: Float32Array,
+  pressureSizeMin: number,
 ): void {
   const firstBasis = segments[firstSegment];
   const center: Vec3 = [0, 0, 0];
@@ -3127,14 +3176,12 @@ function appendPrint3DSection(
     false,
     positions,
     normals,
-    firstBasis.startHalfSize,
   );
   const firstRing = appendPrint3DRing(
     center,
     firstBasis,
     positions,
     normals,
-    firstBasis.startHalfSize,
   );
   appendTriangle(indices, startCap + 2, startCap + 3, startCap + 1);
   appendTriangle(indices, startCap + 1, startCap + 3, startCap);
@@ -3142,10 +3189,34 @@ function appendPrint3DSection(
 
   let previousRing = firstRing;
   for (let i = firstSegment; i <= lastSegment; i += 1) {
+    const basis = segments[i];
+    if (
+      i > firstSegment &&
+      segments[i - 1].inlineWithPlaneNormal !== basis.inlineWithPlaneNormal
+    ) {
+      appendPrint3DRingFace(indices, previousRing);
+      readScratchVec3(smoothedPositions, i - 1, center);
+      const previousBasisOnCurrentTangent = createPrint3DBasisForTangent(
+        stroke,
+        i - 1,
+        i - 1,
+        basis.tangent,
+        pressureSizeMin,
+        smoothedPressures,
+      );
+      if (previousBasisOnCurrentTangent) {
+        previousRing = appendPrint3DRing(
+          center,
+          previousBasisOnCurrentTangent,
+          positions,
+          normals,
+        );
+      }
+    }
     readScratchVec3(smoothedPositions, i, center);
     const ring = appendPrint3DRing(
       center,
-      segments[i],
+      basis,
       positions,
       normals,
     );
@@ -3164,6 +3235,12 @@ function appendPrint3DSection(
   appendPrint3DCapToRing(indices, previousRing, endCap, false);
   appendTriangle(indices, endCap + 1, endCap, endCap + 2);
   appendTriangle(indices, endCap + 2, endCap, endCap + 3);
+}
+
+function appendPrint3DRingFace(indices: number[], ring: number): void {
+  for (let vertex = 2; vertex < 8; vertex += 1) {
+    appendTriangle(indices, ring + vertex, ring + vertex - 1, ring);
+  }
 }
 
 function appendPrint3DRing(
@@ -3209,9 +3286,9 @@ function appendPrint3DCap(
   const inset = halfSize * 0.99;
   const direction = ending ? 1 : -1;
   const capCenter: Vec3 = [
-    center[0] + basis.tangent[0] * 0.01 * direction,
-    center[1] + basis.tangent[1] * 0.01 * direction,
-    center[2] + basis.tangent[2] * 0.01 * direction,
+    center[0] + basis.tangent[0] * 0.001 * direction,
+    center[1] + basis.tangent[1] * 0.001 * direction,
+    center[2] + basis.tangent[2] * 0.001 * direction,
   ];
   for (const [width, thickness] of [[1, -1], [-1, -1], [-1, 1], [1, 1]] as const) {
     const position: Vec3 = [
