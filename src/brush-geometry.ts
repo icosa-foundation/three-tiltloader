@@ -331,6 +331,8 @@ function generateRibbonGeometry(
   const pointCount = stroke.controlPoints.length;
   if (usesQuadStripTriangleSoup) {
     prepareQuadStripSections(stroke, options, out);
+  } else if (usesFlatGeometrySmoothing) {
+    prepareFlatGeometrySections(stroke, options, out);
   } else {
     prepareRibbonSections(stroke, out);
     prepareRibbonSmoothedPressures(stroke, options, out);
@@ -580,7 +582,10 @@ function generateRibbonGeometry(
 
   let indexOffset = 0;
   for (let segment = 0; segment < segmentCount; segment += 1) {
-    if (ribbonBreakBefore[segment + 1] === 1) {
+    if (
+      ribbonBreakBefore[segment + 1] === 1 ||
+      (usesFlatGeometrySmoothing && ribbonBreakBefore[segment + 1] === 2)
+    ) {
       continue;
     }
     const vertex = segment * 2;
@@ -617,7 +622,10 @@ function generateRibbonGeometry(
 
     let backIndexOffset = frontIndexCount;
     for (let segment = 0; segment < segmentCount; segment += 1) {
-      if (ribbonBreakBefore[segment + 1] === 1) {
+      if (
+        ribbonBreakBefore[segment + 1] === 1 ||
+        (usesFlatGeometrySmoothing && ribbonBreakBefore[segment + 1] === 2)
+      ) {
         continue;
       }
       const vertex = frontVertexCount + segment * 2;
@@ -691,10 +699,213 @@ function generateRibbonGeometry(
   if (usesQuadStripTriangleSoup && hasBackfaces && finalVertexCount > 0) {
     interleaveQuadStripBackfaces(out, finalVertexCount / 12);
   }
+  if (usesFlatGeometrySmoothing) {
+    const compacted = compactFlatGeometry(
+      out,
+      ribbonBreakBefore,
+      renderPointCount,
+      hasBackfaces,
+      hasVectorOffset,
+    );
+    finalVertexCount = compacted.vertexCount;
+    finalIndexCount = compacted.indexCount;
+  }
   out.family = family;
   out.vertexCount = finalVertexCount;
   out.indexCount = finalIndexCount;
   return reallocated;
+}
+
+/** Repack point-pair scratch into GeometryBrush's shared indexed strip layout. */
+function compactFlatGeometry(
+  out: BrushGeometryArrays,
+  breakBefore: Uint8Array,
+  pointCount: number,
+  hasBackfaces: boolean,
+  hasVectorOffset: boolean,
+): { vertexCount: number; indexCount: number } {
+  const sourceFrontVertexCount = pointCount * 2;
+  compactFlatGeometryAttribute(
+    out.positions,
+    3,
+    out.particleUvs,
+    breakBefore,
+    pointCount,
+    sourceFrontVertexCount,
+    hasBackfaces,
+  );
+  compactFlatGeometryAttribute(
+    out.normals,
+    3,
+    out.particleUvs,
+    breakBefore,
+    pointCount,
+    sourceFrontVertexCount,
+    hasBackfaces,
+  );
+  compactFlatGeometryAttribute(
+    out.tangents,
+    4,
+    out.particleUvs,
+    breakBefore,
+    pointCount,
+    sourceFrontVertexCount,
+    hasBackfaces,
+  );
+  compactFlatGeometryAttribute(
+    out.colors,
+    4,
+    out.particleUvs,
+    breakBefore,
+    pointCount,
+    sourceFrontVertexCount,
+    hasBackfaces,
+  );
+  compactFlatGeometryAttribute(
+    out.uvs,
+    2,
+    out.particleUvs,
+    breakBefore,
+    pointCount,
+    sourceFrontVertexCount,
+    hasBackfaces,
+  );
+  if (hasVectorOffset) {
+    compactFlatGeometryAttribute(
+      out.vectorUvs,
+      3,
+      out.particleUvs,
+      breakBefore,
+      pointCount,
+      sourceFrontVertexCount,
+      hasBackfaces,
+    );
+  }
+
+  const verticesPerPoint = hasBackfaces ? 4 : 2;
+  let vertexWrite = 0;
+  let indexWrite = 0;
+  let continuesStrip = false;
+  for (let pointIndex = 1; pointIndex < pointCount; pointIndex += 1) {
+    if (breakBefore[pointIndex] === 2) {
+      continue;
+    }
+    if (breakBefore[pointIndex] === 1) {
+      continuesStrip = false;
+      continue;
+    }
+    if (!continuesStrip) {
+      vertexWrite += verticesPerPoint;
+    }
+    const previous = vertexWrite - verticesPerPoint;
+    const current = vertexWrite;
+    if (hasBackfaces) {
+      out.indices[indexWrite] = previous;
+      out.indices[indexWrite + 1] = current + 2;
+      out.indices[indexWrite + 2] = previous + 2;
+      out.indices[indexWrite + 3] = current + 3;
+      out.indices[indexWrite + 4] = previous + 1;
+      out.indices[indexWrite + 5] = previous + 3;
+      out.indices[indexWrite + 6] = previous;
+      out.indices[indexWrite + 7] = current;
+      out.indices[indexWrite + 8] = current + 2;
+      out.indices[indexWrite + 9] = current + 1;
+      out.indices[indexWrite + 10] = previous + 1;
+      out.indices[indexWrite + 11] = current + 3;
+      indexWrite += 12;
+    } else {
+      out.indices[indexWrite] = previous;
+      out.indices[indexWrite + 1] = current + 1;
+      out.indices[indexWrite + 2] = previous + 1;
+      out.indices[indexWrite + 3] = previous;
+      out.indices[indexWrite + 4] = current;
+      out.indices[indexWrite + 5] = current + 1;
+      indexWrite += 6;
+    }
+    vertexWrite += verticesPerPoint;
+    continuesStrip = true;
+  }
+
+  resetBounds(out.bounds);
+  for (let vertex = 0; vertex < vertexWrite; vertex += 1) {
+    includeBounds(out.bounds, out.positions, vertex);
+  }
+  return { vertexCount: vertexWrite, indexCount: indexWrite };
+}
+
+function compactFlatGeometryAttribute(
+  target: Float32Array,
+  itemSize: number,
+  scratch: Float32Array,
+  breakBefore: Uint8Array,
+  pointCount: number,
+  sourceFrontVertexCount: number,
+  hasBackfaces: boolean,
+): void {
+  const sourceVertexCount = sourceFrontVertexCount * (hasBackfaces ? 2 : 1);
+  scratch.set(target.subarray(0, sourceVertexCount * itemSize), 0);
+  let vertexWrite = 0;
+  let continuesStrip = false;
+  let lastRetainedPoint = 0;
+  for (let pointIndex = 1; pointIndex < pointCount; pointIndex += 1) {
+    if (breakBefore[pointIndex] === 2) {
+      continue;
+    }
+    if (breakBefore[pointIndex] === 1) {
+      continuesStrip = false;
+      lastRetainedPoint = pointIndex;
+      continue;
+    }
+    if (!continuesStrip) {
+      vertexWrite = appendFlatGeometryPointAttribute(
+        target,
+        itemSize,
+        scratch,
+        sourceFrontVertexCount,
+        hasBackfaces,
+        lastRetainedPoint,
+        vertexWrite,
+      );
+    }
+    vertexWrite = appendFlatGeometryPointAttribute(
+      target,
+      itemSize,
+      scratch,
+      sourceFrontVertexCount,
+      hasBackfaces,
+      pointIndex,
+      vertexWrite,
+    );
+    continuesStrip = true;
+    lastRetainedPoint = pointIndex;
+  }
+}
+
+function appendFlatGeometryPointAttribute(
+  target: Float32Array,
+  itemSize: number,
+  scratch: Float32Array,
+  sourceFrontVertexCount: number,
+  hasBackfaces: boolean,
+  pointIndex: number,
+  vertexWrite: number,
+): number {
+  for (let side = 0; side < 2; side += 1) {
+    const frontSource = pointIndex * 2 + 1 - side;
+    copyAttributeItem(scratch, target, frontSource, vertexWrite, itemSize);
+    vertexWrite += 1;
+    if (hasBackfaces) {
+      copyAttributeItem(
+        scratch,
+        target,
+        sourceFrontVertexCount + frontSource,
+        vertexWrite,
+        itemSize,
+      );
+      vertexWrite += 1;
+    }
+  }
+  return vertexWrite;
 }
 
 /** Port of QuadStripBrush.WeldSingleSidedQuadStrip in canonical Three winding. */
@@ -5387,6 +5598,97 @@ function prepareRibbonSections(
     ribbonSectionLengths[sectionIndex] = runningLength;
   }
   return connectedSegmentCount;
+}
+
+/** Frame the retained GeometryBrush knots before FlatGeometry emits strips. */
+function prepareFlatGeometrySections(
+  stroke: StrokeData,
+  options: BrushGeometryOptions,
+  out: BrushGeometryArrays,
+): void {
+  const pointCount = stroke.controlPoints.length;
+  ensureRibbonScratchCapacity(out, pointCount);
+  prepareRibbonSmoothedPressures(stroke, options, out);
+  const {
+    ribbonBreakBefore,
+    ribbonRunningLengths,
+    ribbonSectionLengths,
+  } = out;
+
+  let lastRetainedPoint = 0;
+  for (let pointIndex = 1; pointIndex < pointCount; pointIndex += 1) {
+    const length = distanceBetweenControlPoints(
+      stroke.controlPoints[lastRetainedPoint],
+      stroke.controlPoints[pointIndex],
+    );
+    if (length < OPEN_BRUSH_RIBBON_MINIMUM_MOVE_METERS) {
+      ribbonBreakBefore[pointIndex] = 2;
+      continue;
+    }
+    lastRetainedPoint = pointIndex;
+  }
+
+  if (options.geometryParams?.m11Compatibility !== true) {
+    let previousRetainedPoint = 0;
+    let currentRetainedPoint = -1;
+    for (let pointIndex = 1; pointIndex < pointCount; pointIndex += 1) {
+      if (ribbonBreakBefore[pointIndex] === 2) {
+        continue;
+      }
+      if (currentRetainedPoint < 0) {
+        currentRetainedPoint = pointIndex;
+        continue;
+      }
+      const previous = stroke.controlPoints[previousRetainedPoint].position;
+      const current = stroke.controlPoints[currentRetainedPoint].position;
+      const next = stroke.controlPoints[pointIndex].position;
+      const incomingX = current[0] - previous[0];
+      const incomingY = current[1] - previous[1];
+      const incomingZ = current[2] - previous[2];
+      const outgoingX = next[0] - current[0];
+      const outgoingY = next[1] - current[1];
+      const outgoingZ = next[2] - current[2];
+      if (
+        incomingX * outgoingX +
+          incomingY * outgoingY +
+          incomingZ * outgoingZ <
+        0
+      ) {
+        ribbonBreakBefore[currentRetainedPoint] = 1;
+      }
+      previousRetainedPoint = currentRetainedPoint;
+      currentRetainedPoint = pointIndex;
+    }
+  }
+
+  let sectionStart = 0;
+  let runningLength = 0;
+  lastRetainedPoint = 0;
+  for (let pointIndex = 1; pointIndex < pointCount; pointIndex += 1) {
+    const state = ribbonBreakBefore[pointIndex];
+    if (state === 2) {
+      ribbonRunningLengths[pointIndex] = runningLength;
+      continue;
+    }
+    const length = distanceBetweenControlPoints(
+      stroke.controlPoints[lastRetainedPoint],
+      stroke.controlPoints[pointIndex],
+    );
+    if (state === 1) {
+      for (let index = sectionStart; index < pointIndex; index += 1) {
+        ribbonSectionLengths[index] = runningLength;
+      }
+      sectionStart = pointIndex;
+      runningLength = 0;
+    } else {
+      runningLength += length;
+    }
+    ribbonRunningLengths[pointIndex] = runningLength;
+    lastRetainedPoint = pointIndex;
+  }
+  for (let index = sectionStart; index < pointCount; index += 1) {
+    ribbonSectionLengths[index] = runningLength;
+  }
 }
 
 /**
