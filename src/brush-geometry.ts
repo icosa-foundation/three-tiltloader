@@ -4197,8 +4197,14 @@ function generateThickStripGeometry(
   const preferredRight: Vec3 = [0, 0, 0];
   const pointerForward: Vec3 = [0, 0, 0];
   const pointerUp: Vec3 = [0, 0, 0];
-  const cosTheta = 1 / Math.sqrt(1 + 1 / 64);
-  const sinTheta = cosTheta / 8;
+  const bellyRatio = Math.fround(1 / 8);
+  const hypotenuse = Math.fround(
+    Math.sqrt(
+      Math.fround(1 + Math.fround(bellyRatio * bellyRatio)),
+    ),
+  );
+  const sinTheta = Math.fround(bellyRatio / hypotenuse);
+  const cosTheta = Math.fround(1 / hypotenuse);
   let previousHasGeometry = false;
 
   // ThickGeometryBrush assigns geometry to the current knot's incoming solid.
@@ -4249,12 +4255,10 @@ function generateThickStripGeometry(
       previousHasGeometry = false;
       continue;
     }
-    move[0] /= length;
-    move[1] /= length;
-    move[2] /= length;
-    rotateByQuaternion(point.orientation, VEC_FORWARD, pointerForward);
-    rotateByQuaternion(point.orientation, VEC_UP, pointerUp);
-    computeSurfaceFrame(
+    writeOpenBrushFloatDirection(previous, point.position, move);
+    rotateByUnityQuaternionFloat(point.orientation, VEC_FORWARD, pointerForward);
+    rotateByUnityQuaternionFloat(point.orientation, VEC_UP, pointerUp);
+    computeSurfaceFrameUnityFloat(
       preferredRight,
       move,
       pointerForward,
@@ -4278,8 +4282,6 @@ function generateThickStripGeometry(
   const frameRight: Vec3 = [0, 0, 0];
   const frameSurface: Vec3 = [0, 0, 0];
   const surfaceTangent: Vec3 = [0, 0, 0];
-  const previousMiddleTop: Vec3 = [0, 0, 0];
-  const currentMiddleTop: Vec3 = [0, 0, 0];
   for (let pointIndex = 1; pointIndex < pointCount; pointIndex += 1) {
     if (tubeBreakBefore[pointIndex] === 1) {
       previousHasGeometry = false;
@@ -4293,15 +4295,14 @@ function generateThickStripGeometry(
     readScratchVec3(tubeFrameUps, pointIndex, frameSurface);
 
     if (startsSection) {
-      previousMiddleTop[0] = previousPoint.position[0];
-      previousMiddleTop[1] = previousPoint.position[1];
-      previousMiddleTop[2] = previousPoint.position[2];
       const previousSize =
-        localBrushSize *
-        getPressureSizeMultiplier(
-          geometrySmoothedPressures[pointIndex - 1],
-          pressureSizeMin,
-        );
+        Math.fround(
+          Math.fround(localBrushSize * OPEN_BRUSH_UNITS_PER_METER) *
+            getPressureSizeMultiplierUnityFloat(
+              geometrySmoothedPressures[pointIndex - 1],
+              pressureSizeMin,
+            ),
+        ) / OPEN_BRUSH_UNITS_PER_METER;
       const previousOpacity =
         getPressureOpacityMultiplier(
           geometrySmoothedPressures[pointIndex - 1],
@@ -4317,11 +4318,13 @@ function generateThickStripGeometry(
     }
 
     const size =
-      localBrushSize *
-      getPressureSizeMultiplier(
-        geometrySmoothedPressures[pointIndex],
-        pressureSizeMin,
-      );
+      Math.fround(
+        Math.fround(localBrushSize * OPEN_BRUSH_UNITS_PER_METER) *
+          getPressureSizeMultiplierUnityFloat(
+            geometrySmoothedPressures[pointIndex],
+            pressureSizeMin,
+          ),
+      ) / OPEN_BRUSH_UNITS_PER_METER;
     const isEnd =
       pointIndex + 1 === pointCount || tubeBreakBefore[pointIndex + 1] === 1;
     const belly = isEnd ? 0 : size / 16;
@@ -4334,9 +4337,6 @@ function generateThickStripGeometry(
         pressureOpacityMax,
       ) * descriptorOpacity;
     const front = base + 6;
-    currentMiddleTop[0] = point.position[0] + frameSurface[0] * belly;
-    currentMiddleTop[1] = point.position[1] + frameSurface[1] * belly;
-    currentMiddleTop[2] = point.position[2] + frameSurface[2] * belly;
     writeThickStripVertex(out, front, point.position, frameRight, frameSurface, size / 2, 0, normalSide, normalSurface, stroke.color, opacity);
     writeThickStripVertex(out, front + 1, point.position, frameRight, frameSurface, size / 2, 0, normalSide, -normalSurface, stroke.color, opacity);
     writeThickStripVertex(out, front + 2, point.position, frameRight, frameSurface, 0, belly, 0, 1, stroke.color, opacity);
@@ -4368,13 +4368,16 @@ function generateThickStripGeometry(
       indexCount += 1;
     }
 
-    // ComputeST for BRT/BMT/FMT simplifies to the vector from the back
-    // middle-top vertex to the front middle-top vertex. Keep those source
-    // values in number precision so a distant stroke origin does not erase
-    // direction bits when positions are packed into meter-scale Float32Arrays.
-    surfaceTangent[0] = currentMiddleTop[0] - previousMiddleTop[0];
-    surfaceTangent[1] = currentMiddleTop[1] - previousMiddleTop[1];
-    surfaceTangent[2] = currentMiddleTop[2] - previousMiddleTop[2];
+    // Open Brush computes this from its source-unit Float32 vertex buffer.
+    computeTriangleSurfaceTangent(
+      out.packedUvs,
+      uvs,
+      base,
+      base + 2,
+      front + 2,
+      surfaceTangent,
+      true,
+    );
     if (startsSection) {
       for (let local = 0; local < 6; local += 1) {
         writeOrthonormalTangent(tangents, normals, base + local, surfaceTangent, -1);
@@ -4384,9 +4387,6 @@ function generateThickStripGeometry(
       writeOrthonormalTangent(tangents, normals, base + local, surfaceTangent, -1);
     }
     vertexCount = startsSection ? vertexCount + 12 : vertexCount + 6;
-    previousMiddleTop[0] = currentMiddleTop[0];
-    previousMiddleTop[1] = currentMiddleTop[1];
-    previousMiddleTop[2] = currentMiddleTop[2];
     previousHasGeometry = true;
   }
 
@@ -4412,15 +4412,37 @@ function writeThickStripVertex(
   color: Rgba,
   opacity: number,
 ): void {
-  writePosition(out.positions, vertex, [
-    center[0] + right[0] * rightOffset + surface[0] * surfaceOffset,
-    center[1] + right[1] * rightOffset + surface[1] * surfaceOffset,
-    center[2] + right[2] * rightOffset + surface[2] * surfaceOffset,
-  ]);
+  const rightOffsetSource = Math.fround(
+    rightOffset * OPEN_BRUSH_UNITS_PER_METER,
+  );
+  const surfaceOffsetSource = Math.fround(
+    surfaceOffset * OPEN_BRUSH_UNITS_PER_METER,
+  );
+  const positionOffset = vertex * 3;
+  for (let axis = 0; axis < 3; axis += 1) {
+    const sourcePosition = Math.fround(
+      Math.fround(
+        Math.fround(center[axis] * OPEN_BRUSH_UNITS_PER_METER) +
+          Math.fround(right[axis] * rightOffsetSource),
+      ) + Math.fround(surface[axis] * surfaceOffsetSource),
+    );
+    out.packedUvs[positionOffset + axis] = sourcePosition;
+    out.positions[positionOffset + axis] =
+      sourcePosition / OPEN_BRUSH_UNITS_PER_METER;
+  }
   writeNormal(out.normals, vertex, [
-    right[0] * rightNormal + surface[0] * surfaceNormal,
-    right[1] * rightNormal + surface[1] * surfaceNormal,
-    right[2] * rightNormal + surface[2] * surfaceNormal,
+    Math.fround(
+      Math.fround(right[0] * Math.fround(rightNormal)) +
+        Math.fround(surface[0] * Math.fround(surfaceNormal)),
+    ),
+    Math.fround(
+      Math.fround(right[1] * Math.fround(rightNormal)) +
+        Math.fround(surface[1] * Math.fround(surfaceNormal)),
+    ),
+    Math.fround(
+      Math.fround(right[2] * Math.fround(rightNormal)) +
+        Math.fround(surface[2] * Math.fround(surfaceNormal)),
+    ),
   ]);
   writeColor(out.colors, vertex, color, opacity);
 }
