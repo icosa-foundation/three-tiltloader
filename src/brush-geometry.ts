@@ -544,13 +544,14 @@ function generateRibbonGeometry(
         Math.fround(
           Math.fround(localBrushSize * OPEN_BRUSH_UNITS_PER_METER) *
             Math.fround(
-              getPressureSizeMultiplier(
+              getPressureSizeMultiplierUnityFloat(
                 ribbonSmoothedPressures[index],
                 pressureSizeMin,
               ),
             ),
         ) / OPEN_BRUSH_UNITS_PER_METER;
     }
+    const flatUvSize = size;
 
     if (usesFlatGeometrySmoothing) {
       const tangentStart =
@@ -639,9 +640,16 @@ function generateRibbonGeometry(
     previousTangent[2] = tangent[2];
     if (flatHalfRights) {
       const offset = index * 3;
-      flatHalfRights[offset] = right[0] * width;
-      flatHalfRights[offset + 1] = right[1] * width;
-      flatHalfRights[offset + 2] = right[2] * width;
+      const sizeSource = Math.fround(size * OPEN_BRUSH_UNITS_PER_METER);
+      flatHalfRights[offset] =
+        Math.fround(Math.fround(right[0] * sizeSource) * 0.5) /
+        OPEN_BRUSH_UNITS_PER_METER;
+      flatHalfRights[offset + 1] =
+        Math.fround(Math.fround(right[1] * sizeSource) * 0.5) /
+        OPEN_BRUSH_UNITS_PER_METER;
+      flatHalfRights[offset + 2] =
+        Math.fround(Math.fround(right[2] * sizeSource) * 0.5) /
+        OPEN_BRUSH_UNITS_PER_METER;
     }
 
     if (startsFlatSection) {
@@ -674,8 +682,8 @@ function generateRibbonGeometry(
     const leftVertex = index * 2;
     const rightVertex = leftVertex + 1;
     if (usesFlatGeometrySmoothing) {
-      writeOpenBrushOffsetPosition(positions, leftVertex, center, right, -width);
-      writeOpenBrushOffsetPosition(positions, rightVertex, center, right, width);
+      writeOpenBrushOffsetPosition(positions, leftVertex, center, right, -width, out.packedUvs);
+      writeOpenBrushOffsetPosition(positions, rightVertex, center, right, width, out.packedUvs);
     } else {
       writePosition(positions, leftVertex, [
         center[0] - right[0] * width,
@@ -720,7 +728,7 @@ function generateRibbonGeometry(
         point.position,
       );
       const sizeSource = Math.max(
-        Math.fround(size * OPEN_BRUSH_UNITS_PER_METER),
+        Math.fround(flatUvSize * OPEN_BRUSH_UNITS_PER_METER),
         EPSILON,
       );
       flatDistanceU = Math.fround(
@@ -799,15 +807,17 @@ function generateRibbonGeometry(
         pressureSizeMin,
         bounds,
         renderPointCount,
+        out.packedUvs,
       );
     }
     updateFlatGeometryTangents(
-      positions,
+      out.packedUvs,
       normals,
       tangents,
       uvs,
       ribbonBreakBefore,
       renderPointCount,
+      true,
     );
   }
 
@@ -2372,7 +2382,7 @@ function updateQuadStripSectionTangents(
       normal[2] = out.normals[normalOffset + 2];
       cross(normal, surfaceTangent, normalCrossTangent);
       // Unity-to-Three reflection reverses tangent-space handedness.
-      handedness = dot(normalCrossTangent, surfaceBitangent) < 0 ? 1 : -1;
+      handedness = dot(normalCrossTangent, surfaceBitangent) < 0 ? -1 : 1;
     } else {
       handedness = out.tangents[(vertex - 6) * 4 + 3];
     }
@@ -2644,6 +2654,7 @@ function smoothFlatGeometryEdges(
   pressureSizeMin: number,
   bounds: BrushGeometryBounds,
   pointCount: number,
+  sourcePositions: Float32Array,
 ): void {
   resetBounds(bounds);
   for (let index = 1; index < pointCount; index += 1) {
@@ -2660,9 +2671,9 @@ function smoothFlatGeometryEdges(
     const previous = stroke.controlPoints[previousIndex].position;
     const next = stroke.controlPoints[nextIndex].position;
     const center: Vec3 = [
-      previous[0] * 0.3 + point[0] * 0.4 + next[0] * 0.3,
-      previous[1] * 0.3 + point[1] * 0.4 + next[1] * 0.3,
-      previous[2] * 0.3 + point[2] * 0.4 + next[2] * 0.3,
+      openBrushWeightedPosition(previous[0], point[0], next[0]),
+      openBrushWeightedPosition(previous[1], point[1], next[1]),
+      openBrushWeightedPosition(previous[2], point[2], next[2]),
     ];
     const currentOffset = index * 3;
     let rightX = halfRights[currentOffset];
@@ -2680,18 +2691,21 @@ function smoothFlatGeometryEdges(
       const previousRightZ = previousIndex === 0
         ? halfRights[currentOffset + 2]
         : halfRights[previousOffset + 2];
-      rightX =
-        previousRightX * 0.3 +
-        halfRights[currentOffset] * 0.4 +
-        halfRights[nextOffset] * 0.3;
-      rightY =
-        previousRightY * 0.3 +
-        halfRights[currentOffset + 1] * 0.4 +
-        halfRights[nextOffset + 1] * 0.3;
-      rightZ =
-        previousRightZ * 0.3 +
-        halfRights[currentOffset + 2] * 0.4 +
-        halfRights[nextOffset + 2] * 0.3;
+      rightX = openBrushWeightedOffset(
+        previousRightX,
+        halfRights[currentOffset],
+        halfRights[nextOffset],
+      );
+      rightY = openBrushWeightedOffset(
+        previousRightY,
+        halfRights[currentOffset + 1],
+        halfRights[nextOffset + 1],
+      );
+      rightZ = openBrushWeightedOffset(
+        previousRightZ,
+        halfRights[currentOffset + 2],
+        halfRights[nextOffset + 2],
+      );
     }
     if (startsSection) {
       const currentLength = Math.hypot(
@@ -2719,6 +2733,7 @@ function smoothFlatGeometryEdges(
         -previousRightX,
         -previousRightY,
         -previousRightZ,
+        sourcePositions,
       );
       writeOpenBrushComponentOffsetPosition(
         positions,
@@ -2727,6 +2742,7 @@ function smoothFlatGeometryEdges(
         previousRightX,
         previousRightY,
         previousRightZ,
+        sourcePositions,
       );
       includeBounds(bounds, positions, previousLeftVertex);
       includeBounds(bounds, positions, previousRightVertex);
@@ -2740,6 +2756,7 @@ function smoothFlatGeometryEdges(
       -rightX,
       -rightY,
       -rightZ,
+      sourcePositions,
     );
     writeOpenBrushComponentOffsetPosition(
       positions,
@@ -2748,6 +2765,7 @@ function smoothFlatGeometryEdges(
       rightX,
       rightY,
       rightZ,
+      sourcePositions,
     );
     includeBounds(bounds, positions, leftVertex);
     includeBounds(bounds, positions, rightVertex);
@@ -2761,6 +2779,7 @@ function updateFlatGeometryTangents(
   uvs: Float32Array,
   breakBefore: Uint8Array,
   pointCount: number,
+  positionsAreOpenBrushUnits = false,
 ): void {
   const firstTriangle: Vec3 = [0, 0, 0];
   const secondTriangle: Vec3 = [0, 0, 0];
@@ -2787,6 +2806,7 @@ function updateFlatGeometryTangents(
       leftPrevious,
       leftCurrent,
       firstTriangle,
+      positionsAreOpenBrushUnits,
     );
     computeTriangleSurfaceTangent(
       positions,
@@ -2795,6 +2815,7 @@ function updateFlatGeometryTangents(
       leftCurrent,
       rightCurrent,
       secondTriangle,
+      positionsAreOpenBrushUnits,
     );
     combined[0] = Math.fround(firstTriangle[0] + secondTriangle[0]);
     combined[1] = Math.fround(firstTriangle[1] + secondTriangle[1]);
@@ -2849,8 +2870,9 @@ function computeTriangleSurfaceTangent(
   const z2 = openBrushStoredPositionDifference(positions, thirdPosition + 2, firstPosition + 2, scale);
   const s1 = Math.fround(uvs[secondUv] - uvs[firstUv]);
   const s2 = Math.fround(uvs[thirdUv] - uvs[firstUv]);
-  const t1 = Math.fround(uvs[secondUv + 1] - uvs[firstUv + 1]);
-  const t2 = Math.fround(uvs[thirdUv + 1] - uvs[firstUv + 1]);
+  const firstV = Math.fround(1 - uvs[firstUv + 1]);
+  const t1 = Math.fround(Math.fround(1 - uvs[secondUv + 1]) - firstV);
+  const t2 = Math.fround(Math.fround(1 - uvs[thirdUv + 1]) - firstV);
   const determinant = Math.fround(
     Math.fround(s1 * t2) - Math.fround(s2 * t1),
   );
@@ -2896,8 +2918,9 @@ function computeTriangleSurfaceBitangent(
   const z2 = openBrushStoredPositionDifference(positions, thirdPosition + 2, firstPosition + 2, scale);
   const s1 = Math.fround(uvs[secondUv] - uvs[firstUv]);
   const s2 = Math.fround(uvs[thirdUv] - uvs[firstUv]);
-  const t1 = Math.fround(uvs[secondUv + 1] - uvs[firstUv + 1]);
-  const t2 = Math.fround(uvs[thirdUv + 1] - uvs[firstUv + 1]);
+  const firstV = Math.fround(1 - uvs[firstUv + 1]);
+  const t1 = Math.fround(Math.fround(1 - uvs[secondUv + 1]) - firstV);
+  const t2 = Math.fround(Math.fround(1 - uvs[thirdUv + 1]) - firstV);
   const determinant = Math.fround(
     Math.fround(s1 * t2) - Math.fround(s2 * t1),
   );
@@ -6378,6 +6401,19 @@ function getPressureSizeMultiplier(
   return pressureSizeMin + (1 - pressureSizeMin) * clampedPressure;
 }
 
+function getPressureSizeMultiplierUnityFloat(
+  pressure: number,
+  pressureSizeMin: number,
+): number {
+  const minimum = Math.fround(pressureSizeMin);
+  return Math.fround(
+    minimum +
+      Math.fround(
+        Math.fround(1 - minimum) * Math.fround(clamp01(pressure)),
+      ),
+  );
+}
+
 function getPressureOpacityMultiplier(
   pressure: number,
   pressureOpacityMin: number,
@@ -6782,11 +6818,14 @@ function prepareFlatGeometrySections(
 
   let lastRetainedPoint = 0;
   for (let pointIndex = 1; pointIndex < pointCount; pointIndex += 1) {
-    const length = distanceBetweenControlPoints(
-      stroke.controlPoints[lastRetainedPoint],
-      stroke.controlPoints[pointIndex],
+    const length = distanceBetweenOpenBrushPoints(
+      stroke.controlPoints[lastRetainedPoint].position,
+      stroke.controlPoints[pointIndex].position,
     );
-    if (length < OPEN_BRUSH_RIBBON_MINIMUM_MOVE_METERS) {
+    if (
+      length <
+      OPEN_BRUSH_RIBBON_MINIMUM_MOVE_METERS * OPEN_BRUSH_UNITS_PER_METER
+    ) {
       ribbonBreakBefore[pointIndex] = 2;
       continue;
     }
@@ -6805,14 +6844,26 @@ function prepareFlatGeometrySections(
       smoothedPressures[pointIndex] = smoothedPressures[lastRetainedPoint];
       continue;
     }
-    const distance = distanceBetweenControlPoints(
-      stroke.controlPoints[lastRetainedPoint],
-      stroke.controlPoints[pointIndex],
+    const distanceSource = distanceBetweenOpenBrushPoints(
+      stroke.controlPoints[lastRetainedPoint].position,
+      stroke.controlPoints[pointIndex].position,
     );
-    const retained = Math.pow(0.1, distance / pressureWindow);
-    smoothedPressures[pointIndex] =
-      retained * smoothedPressures[lastRetainedPoint] +
-      (1 - retained) * clamp01(stroke.controlPoints[pointIndex].pressure);
+    const retained = Math.fround(
+      Math.pow(
+        Math.fround(0.1),
+        Math.fround(
+          distanceSource /
+            Math.fround(pressureWindow * OPEN_BRUSH_UNITS_PER_METER),
+        ),
+      ),
+    );
+    smoothedPressures[pointIndex] = Math.fround(
+      Math.fround(retained * smoothedPressures[lastRetainedPoint]) +
+        Math.fround(
+          Math.fround(1 - retained) *
+            Math.fround(clamp01(stroke.controlPoints[pointIndex].pressure)),
+        ),
+    );
     lastRetainedPoint = pointIndex;
   }
 
@@ -6873,9 +6924,9 @@ function prepareFlatGeometrySections(
       ribbonRunningLengths[pointIndex] = runningLength;
       continue;
     }
-    const length = distanceBetweenControlPoints(
-      stroke.controlPoints[lastRetainedPoint],
-      stroke.controlPoints[pointIndex],
+    const length = distanceBetweenOpenBrushPoints(
+      stroke.controlPoints[lastRetainedPoint].position,
+      stroke.controlPoints[pointIndex].position,
     );
     if (state === 1) {
       for (let index = sectionStart; index < pointIndex; index += 1) {
@@ -6884,7 +6935,7 @@ function prepareFlatGeometrySections(
       sectionStart = pointIndex;
       runningLength = 0;
     } else {
-      runningLength += length;
+      runningLength = Math.fround(runningLength + length);
     }
     ribbonRunningLengths[pointIndex] = runningLength;
     lastRetainedPoint = pointIndex;
@@ -7897,6 +7948,42 @@ function distanceBetweenOpenBrushPoints(from: Vec3, to: Vec3): number {
   return Math.fround(Math.sqrt(lengthSquared));
 }
 
+function openBrushWeightedOffset(
+  previous: number,
+  current: number,
+  next: number,
+): number {
+  const previousSource = Math.fround(previous * OPEN_BRUSH_UNITS_PER_METER);
+  const currentSource = Math.fround(current * OPEN_BRUSH_UNITS_PER_METER);
+  const nextSource = Math.fround(next * OPEN_BRUSH_UNITS_PER_METER);
+  return (
+    Math.fround(
+      Math.fround(
+        Math.fround(previousSource * Math.fround(0.3)) +
+          Math.fround(currentSource * Math.fround(0.4)),
+      ) + Math.fround(nextSource * Math.fround(0.3)),
+    ) / OPEN_BRUSH_UNITS_PER_METER
+  );
+}
+
+function openBrushWeightedPosition(
+  previous: number,
+  current: number,
+  next: number,
+): number {
+  const previousSource = Math.fround(previous * OPEN_BRUSH_UNITS_PER_METER);
+  const currentSource = Math.fround(current * OPEN_BRUSH_UNITS_PER_METER);
+  const nextSource = Math.fround(next * OPEN_BRUSH_UNITS_PER_METER);
+  return (
+    Math.fround(
+      Math.fround(
+        Math.fround(previousSource * Math.fround(0.3)) +
+          Math.fround(currentSource * Math.fround(0.4)),
+      ) + Math.fround(nextSource * Math.fround(0.3)),
+    ) / OPEN_BRUSH_UNITS_PER_METER
+  );
+}
+
 function rotateByUnityQuaternionFloat(
   q: readonly number[],
   v: Vec3,
@@ -8375,6 +8462,7 @@ function writeOpenBrushOffsetPosition(
   center: Vec3,
   direction: Vec3,
   distance: number,
+  sourceTarget?: Float32Array,
 ): void {
   writeOpenBrushComponentOffsetPosition(
     target,
@@ -8383,6 +8471,7 @@ function writeOpenBrushOffsetPosition(
     direction[0] * distance,
     direction[1] * distance,
     direction[2] * distance,
+    sourceTarget,
   );
 }
 
@@ -8393,23 +8482,29 @@ function writeOpenBrushComponentOffsetPosition(
   offsetX: number,
   offsetY: number,
   offsetZ: number,
+  sourceTarget?: Float32Array,
 ): void {
   const targetOffset = vertex * 3;
-  target[targetOffset] =
-    Math.fround(
+  const x = Math.fround(
       Math.fround(center[0] * OPEN_BRUSH_UNITS_PER_METER) +
         Math.fround(offsetX * OPEN_BRUSH_UNITS_PER_METER),
-    ) / OPEN_BRUSH_UNITS_PER_METER;
-  target[targetOffset + 1] =
-    Math.fround(
+    );
+  const y = Math.fround(
       Math.fround(center[1] * OPEN_BRUSH_UNITS_PER_METER) +
         Math.fround(offsetY * OPEN_BRUSH_UNITS_PER_METER),
-    ) / OPEN_BRUSH_UNITS_PER_METER;
-  target[targetOffset + 2] =
-    Math.fround(
+    );
+  const z = Math.fround(
       Math.fround(center[2] * OPEN_BRUSH_UNITS_PER_METER) +
         Math.fround(offsetZ * OPEN_BRUSH_UNITS_PER_METER),
-    ) / OPEN_BRUSH_UNITS_PER_METER;
+    );
+  target[targetOffset] = x / OPEN_BRUSH_UNITS_PER_METER;
+  target[targetOffset + 1] = y / OPEN_BRUSH_UNITS_PER_METER;
+  target[targetOffset + 2] = z / OPEN_BRUSH_UNITS_PER_METER;
+  if (sourceTarget) {
+    sourceTarget[targetOffset] = x;
+    sourceTarget[targetOffset + 1] = y;
+    sourceTarget[targetOffset + 2] = z;
+  }
 }
 
 function writeNormal(target: Float32Array, vertex: number, value: Vec3): void {

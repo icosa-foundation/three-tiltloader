@@ -1896,7 +1896,7 @@ export const OPEN_BRUSH_GEOMETRY_DEFAULTS = {
       "tileRate": 0.1,
       "textureAtlasV": 4,
       "renderBackfaces": true,
-      "backfaceHueShift": 0.5,
+      "backfaceHueShift": 0,
       "tubeStoreRadiusInTexcoord0Z": false,
       "opacity": 1,
       "solidMinLengthMeters": 0.002,

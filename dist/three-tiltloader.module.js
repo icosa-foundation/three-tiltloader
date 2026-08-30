@@ -1904,7 +1904,7 @@ const $08377cc0b05604b7$export$8024ed36c08440c = {
             "tileRate": 0.1,
             "textureAtlasV": 4,
             "renderBackfaces": true,
-            "backfaceHueShift": 0.5,
+            "backfaceHueShift": 0,
             "tubeStoreRadiusInTexcoord0Z": false,
             "opacity": 1,
             "solidMinLengthMeters": 0.002,
@@ -5656,7 +5656,8 @@ function $6fafcf15f6b61d60$var$generateRibbonGeometry(stroke, family, options, o
             ]);
         }
         let size = localBrushSize * $6fafcf15f6b61d60$var$getPressureSizeMultiplier(ribbonSmoothedPressures[index], pressureSizeMin);
-        if (usesFlatGeometrySmoothing) size = Math.fround(Math.fround(localBrushSize * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER) * Math.fround($6fafcf15f6b61d60$var$getPressureSizeMultiplier(ribbonSmoothedPressures[index], pressureSizeMin))) / $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER;
+        if (usesFlatGeometrySmoothing) size = Math.fround(Math.fround(localBrushSize * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER) * Math.fround($6fafcf15f6b61d60$var$getPressureSizeMultiplierUnityFloat(ribbonSmoothedPressures[index], pressureSizeMin))) / $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER;
+        const flatUvSize = size;
         if (usesFlatGeometrySmoothing) {
             const tangentStart = index === 0 ? point.position : previousPoint.position;
             const tangentEnd = (index === 0 || options.geometryParams?.m11Compatibility !== true) && nextPointIndex !== index ? nextPoint.position : point.position;
@@ -5702,9 +5703,10 @@ function $6fafcf15f6b61d60$var$generateRibbonGeometry(stroke, family, options, o
         previousTangent[2] = tangent[2];
         if (flatHalfRights) {
             const offset = index * 3;
-            flatHalfRights[offset] = right[0] * width;
-            flatHalfRights[offset + 1] = right[1] * width;
-            flatHalfRights[offset + 2] = right[2] * width;
+            const sizeSource = Math.fround(size * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER);
+            flatHalfRights[offset] = Math.fround(Math.fround(right[0] * sizeSource) * 0.5) / $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER;
+            flatHalfRights[offset + 1] = Math.fround(Math.fround(right[1] * sizeSource) * 0.5) / $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER;
+            flatHalfRights[offset + 2] = Math.fround(Math.fround(right[2] * sizeSource) * 0.5) / $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER;
         }
         if (startsFlatSection) {
             // A GeometryBrush section's trailing knot has no frame of its own.
@@ -5729,8 +5731,8 @@ function $6fafcf15f6b61d60$var$generateRibbonGeometry(stroke, family, options, o
         const leftVertex = index * 2;
         const rightVertex = leftVertex + 1;
         if (usesFlatGeometrySmoothing) {
-            $6fafcf15f6b61d60$var$writeOpenBrushOffsetPosition(positions, leftVertex, center, right, -width);
-            $6fafcf15f6b61d60$var$writeOpenBrushOffsetPosition(positions, rightVertex, center, right, width);
+            $6fafcf15f6b61d60$var$writeOpenBrushOffsetPosition(positions, leftVertex, center, right, -width, out.packedUvs);
+            $6fafcf15f6b61d60$var$writeOpenBrushOffsetPosition(positions, rightVertex, center, right, width, out.packedUvs);
         } else {
             $6fafcf15f6b61d60$var$writePosition(positions, leftVertex, [
                 center[0] - right[0] * width,
@@ -5757,7 +5759,7 @@ function $6fafcf15f6b61d60$var$generateRibbonGeometry(stroke, family, options, o
         let u = usesDistanceUvs ? sectionRandom + runningLength / Math.max(localBrushSize, $6fafcf15f6b61d60$var$EPSILON) * tileRate : sectionLength > $6fafcf15f6b61d60$var$EPSILON ? runningLength / sectionLength : 0;
         if (usesFlatGeometrySmoothing && usesDistanceUvs && index > 0 && ribbonBreakBefore[index] === 0) {
             const distanceSource = $6fafcf15f6b61d60$var$distanceBetweenOpenBrushPoints(previousPoint.position, point.position);
-            const sizeSource = Math.max(Math.fround(size * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER), $6fafcf15f6b61d60$var$EPSILON);
+            const sizeSource = Math.max(Math.fround(flatUvSize * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER), $6fafcf15f6b61d60$var$EPSILON);
             flatDistanceU = Math.fround(Math.fround(flatDistanceU) + Math.fround(Math.fround(tileRate) * Math.fround(distanceSource / sizeSource)));
             u = flatDistanceU;
         }
@@ -5819,8 +5821,8 @@ function $6fafcf15f6b61d60$var$generateRibbonGeometry(stroke, family, options, o
         }
     }
     if (flatHalfRights) {
-        if (options.geometryParams?.m11Compatibility !== true) $6fafcf15f6b61d60$var$smoothFlatGeometryEdges(stroke, positions, flatHalfRights, ribbonBreakBefore, ribbonSmoothedPressures, out.ribbonPreviousRetained, out.ribbonNextRetained, localBrushSize, pressureSizeMin, bounds, renderPointCount);
-        $6fafcf15f6b61d60$var$updateFlatGeometryTangents(positions, normals, tangents, uvs, ribbonBreakBefore, renderPointCount);
+        if (options.geometryParams?.m11Compatibility !== true) $6fafcf15f6b61d60$var$smoothFlatGeometryEdges(stroke, positions, flatHalfRights, ribbonBreakBefore, ribbonSmoothedPressures, out.ribbonPreviousRetained, out.ribbonNextRetained, localBrushSize, pressureSizeMin, bounds, renderPointCount, out.packedUvs);
+        $6fafcf15f6b61d60$var$updateFlatGeometryTangents(out.packedUvs, normals, tangents, uvs, ribbonBreakBefore, renderPointCount, true);
     }
     let indexOffset = 0;
     for(let segment = 0; segment < segmentCount; segment += 1){
@@ -6681,7 +6683,7 @@ function $6fafcf15f6b61d60$var$updateQuadStripTangents(out, breakBefore, pointCo
             normal[2] = out.normals[normalOffset + 2];
             $6fafcf15f6b61d60$var$cross(normal, surfaceTangent, normalCrossTangent);
             // Unity-to-Three reflection reverses tangent-space handedness.
-            handedness = $6fafcf15f6b61d60$var$dot(normalCrossTangent, surfaceBitangent) < 0 ? 1 : -1;
+            handedness = $6fafcf15f6b61d60$var$dot(normalCrossTangent, surfaceBitangent) < 0 ? -1 : 1;
         } else handedness = out.tangents[(vertex - 6) * 4 + 3];
         $6fafcf15f6b61d60$var$writeOrthonormalTangent(out.tangents, out.normals, vertex, surfaceTangent, handedness);
         $6fafcf15f6b61d60$var$writeOrthonormalTangent(out.tangents, out.normals, vertex + 1, surfaceTangent, handedness);
@@ -6791,7 +6793,7 @@ function $6fafcf15f6b61d60$var$writeQuadStripFusedCorner(out, vertex, x, y, z, n
     out.normals[offset + 1] = ny;
     out.normals[offset + 2] = nz;
 }
-function $6fafcf15f6b61d60$var$smoothFlatGeometryEdges(stroke, positions, halfRights, breakBefore, smoothedPressures, previousRetained, nextRetained, localBrushSize, pressureSizeMin, bounds, pointCount) {
+function $6fafcf15f6b61d60$var$smoothFlatGeometryEdges(stroke, positions, halfRights, breakBefore, smoothedPressures, previousRetained, nextRetained, localBrushSize, pressureSizeMin, bounds, pointCount, sourcePositions) {
     $6fafcf15f6b61d60$var$resetBounds(bounds);
     for(let index = 1; index < pointCount; index += 1){
         if (breakBefore[index] !== 0) continue;
@@ -6803,9 +6805,9 @@ function $6fafcf15f6b61d60$var$smoothFlatGeometryEdges(stroke, positions, halfRi
         const previous = stroke.controlPoints[previousIndex].position;
         const next = stroke.controlPoints[nextIndex].position;
         const center = [
-            previous[0] * 0.3 + point[0] * 0.4 + next[0] * 0.3,
-            previous[1] * 0.3 + point[1] * 0.4 + next[1] * 0.3,
-            previous[2] * 0.3 + point[2] * 0.4 + next[2] * 0.3
+            $6fafcf15f6b61d60$var$openBrushWeightedPosition(previous[0], point[0], next[0]),
+            $6fafcf15f6b61d60$var$openBrushWeightedPosition(previous[1], point[1], next[1]),
+            $6fafcf15f6b61d60$var$openBrushWeightedPosition(previous[2], point[2], next[2])
         ];
         const currentOffset = index * 3;
         let rightX = halfRights[currentOffset];
@@ -6817,9 +6819,9 @@ function $6fafcf15f6b61d60$var$smoothFlatGeometryEdges(stroke, positions, halfRi
             const previousRightX = previousIndex === 0 ? halfRights[currentOffset] : halfRights[previousOffset];
             const previousRightY = previousIndex === 0 ? halfRights[currentOffset + 1] : halfRights[previousOffset + 1];
             const previousRightZ = previousIndex === 0 ? halfRights[currentOffset + 2] : halfRights[previousOffset + 2];
-            rightX = previousRightX * 0.3 + halfRights[currentOffset] * 0.4 + halfRights[nextOffset] * 0.3;
-            rightY = previousRightY * 0.3 + halfRights[currentOffset + 1] * 0.4 + halfRights[nextOffset + 1] * 0.3;
-            rightZ = previousRightZ * 0.3 + halfRights[currentOffset + 2] * 0.4 + halfRights[nextOffset + 2] * 0.3;
+            rightX = $6fafcf15f6b61d60$var$openBrushWeightedOffset(previousRightX, halfRights[currentOffset], halfRights[nextOffset]);
+            rightY = $6fafcf15f6b61d60$var$openBrushWeightedOffset(previousRightY, halfRights[currentOffset + 1], halfRights[nextOffset + 1]);
+            rightZ = $6fafcf15f6b61d60$var$openBrushWeightedOffset(previousRightZ, halfRights[currentOffset + 2], halfRights[nextOffset + 2]);
         }
         if (startsSection) {
             const currentLength = Math.hypot(halfRights[currentOffset], halfRights[currentOffset + 1], halfRights[currentOffset + 2]);
@@ -6830,20 +6832,20 @@ function $6fafcf15f6b61d60$var$smoothFlatGeometryEdges(stroke, positions, halfRi
             const previousRightZ = halfRights[currentOffset + 2] * scale;
             const previousLeftVertex = previousIndex * 2;
             const previousRightVertex = previousLeftVertex + 1;
-            $6fafcf15f6b61d60$var$writeOpenBrushComponentOffsetPosition(positions, previousLeftVertex, previous, -previousRightX, -previousRightY, -previousRightZ);
-            $6fafcf15f6b61d60$var$writeOpenBrushComponentOffsetPosition(positions, previousRightVertex, previous, previousRightX, previousRightY, previousRightZ);
+            $6fafcf15f6b61d60$var$writeOpenBrushComponentOffsetPosition(positions, previousLeftVertex, previous, -previousRightX, -previousRightY, -previousRightZ, sourcePositions);
+            $6fafcf15f6b61d60$var$writeOpenBrushComponentOffsetPosition(positions, previousRightVertex, previous, previousRightX, previousRightY, previousRightZ, sourcePositions);
             $6fafcf15f6b61d60$var$includeBounds(bounds, positions, previousLeftVertex);
             $6fafcf15f6b61d60$var$includeBounds(bounds, positions, previousRightVertex);
         }
         const leftVertex = index * 2;
         const rightVertex = leftVertex + 1;
-        $6fafcf15f6b61d60$var$writeOpenBrushComponentOffsetPosition(positions, leftVertex, center, -rightX, -rightY, -rightZ);
-        $6fafcf15f6b61d60$var$writeOpenBrushComponentOffsetPosition(positions, rightVertex, center, rightX, rightY, rightZ);
+        $6fafcf15f6b61d60$var$writeOpenBrushComponentOffsetPosition(positions, leftVertex, center, -rightX, -rightY, -rightZ, sourcePositions);
+        $6fafcf15f6b61d60$var$writeOpenBrushComponentOffsetPosition(positions, rightVertex, center, rightX, rightY, rightZ, sourcePositions);
         $6fafcf15f6b61d60$var$includeBounds(bounds, positions, leftVertex);
         $6fafcf15f6b61d60$var$includeBounds(bounds, positions, rightVertex);
     }
 }
-function $6fafcf15f6b61d60$var$updateFlatGeometryTangents(positions, normals, tangents, uvs, breakBefore, pointCount) {
+function $6fafcf15f6b61d60$var$updateFlatGeometryTangents(positions, normals, tangents, uvs, breakBefore, pointCount, positionsAreOpenBrushUnits = false) {
     const firstTriangle = [
         0,
         0,
@@ -6872,8 +6874,8 @@ function $6fafcf15f6b61d60$var$updateFlatGeometryTangents(positions, normals, ta
         const rightPrevious = leftPrevious + 1;
         const leftCurrent = currentPoint * 2;
         const rightCurrent = leftCurrent + 1;
-        $6fafcf15f6b61d60$var$computeTriangleSurfaceTangent(positions, uvs, rightPrevious, leftPrevious, leftCurrent, firstTriangle);
-        $6fafcf15f6b61d60$var$computeTriangleSurfaceTangent(positions, uvs, rightPrevious, leftCurrent, rightCurrent, secondTriangle);
+        $6fafcf15f6b61d60$var$computeTriangleSurfaceTangent(positions, uvs, rightPrevious, leftPrevious, leftCurrent, firstTriangle, positionsAreOpenBrushUnits);
+        $6fafcf15f6b61d60$var$computeTriangleSurfaceTangent(positions, uvs, rightPrevious, leftCurrent, rightCurrent, secondTriangle, positionsAreOpenBrushUnits);
         combined[0] = Math.fround(firstTriangle[0] + secondTriangle[0]);
         combined[1] = Math.fround(firstTriangle[1] + secondTriangle[1]);
         combined[2] = Math.fround(firstTriangle[2] + secondTriangle[2]);
@@ -6903,8 +6905,9 @@ function $6fafcf15f6b61d60$var$computeTriangleSurfaceTangent(positions, uvs, fir
     const z2 = $6fafcf15f6b61d60$var$openBrushStoredPositionDifference(positions, thirdPosition + 2, firstPosition + 2, scale);
     const s1 = Math.fround(uvs[secondUv] - uvs[firstUv]);
     const s2 = Math.fround(uvs[thirdUv] - uvs[firstUv]);
-    const t1 = Math.fround(uvs[secondUv + 1] - uvs[firstUv + 1]);
-    const t2 = Math.fround(uvs[thirdUv + 1] - uvs[firstUv + 1]);
+    const firstV = Math.fround(1 - uvs[firstUv + 1]);
+    const t1 = Math.fround(Math.fround(1 - uvs[secondUv + 1]) - firstV);
+    const t2 = Math.fround(Math.fround(1 - uvs[thirdUv + 1]) - firstV);
     const determinant = Math.fround(Math.fround(s1 * t2) - Math.fround(s2 * t1));
     if (Math.abs(determinant) <= $6fafcf15f6b61d60$var$EPSILON) {
         out[0] = x2;
@@ -6933,8 +6936,9 @@ function $6fafcf15f6b61d60$var$computeTriangleSurfaceBitangent(positions, uvs, f
     const z2 = $6fafcf15f6b61d60$var$openBrushStoredPositionDifference(positions, thirdPosition + 2, firstPosition + 2, scale);
     const s1 = Math.fround(uvs[secondUv] - uvs[firstUv]);
     const s2 = Math.fround(uvs[thirdUv] - uvs[firstUv]);
-    const t1 = Math.fround(uvs[secondUv + 1] - uvs[firstUv + 1]);
-    const t2 = Math.fround(uvs[thirdUv + 1] - uvs[firstUv + 1]);
+    const firstV = Math.fround(1 - uvs[firstUv + 1]);
+    const t1 = Math.fround(Math.fround(1 - uvs[secondUv + 1]) - firstV);
+    const t2 = Math.fround(Math.fround(1 - uvs[thirdUv + 1]) - firstV);
     const determinant = Math.fround(Math.fround(s1 * t2) - Math.fround(s2 * t1));
     if (Math.abs(determinant) <= $6fafcf15f6b61d60$var$EPSILON) {
         out[0] = x1;
@@ -9502,6 +9506,10 @@ function $6fafcf15f6b61d60$var$getPressureSizeMultiplier(pressure, pressureSizeM
     const clampedPressure = $6fafcf15f6b61d60$var$clamp01(pressure);
     return pressureSizeMin + (1 - pressureSizeMin) * clampedPressure;
 }
+function $6fafcf15f6b61d60$var$getPressureSizeMultiplierUnityFloat(pressure, pressureSizeMin) {
+    const minimum = Math.fround(pressureSizeMin);
+    return Math.fround(minimum + Math.fround(Math.fround(1 - minimum) * Math.fround($6fafcf15f6b61d60$var$clamp01(pressure))));
+}
 function $6fafcf15f6b61d60$var$getPressureOpacityMultiplier(pressure, pressureOpacityMin, pressureOpacityMax) {
     return pressureOpacityMin + (pressureOpacityMax - pressureOpacityMin) * $6fafcf15f6b61d60$var$clamp01(pressure);
 }
@@ -9746,8 +9754,8 @@ function $6fafcf15f6b61d60$var$prepareRibbonSections(stroke, out) {
     const { ribbonBreakBefore: ribbonBreakBefore, ribbonRunningLengths: ribbonRunningLengths, ribbonSectionLengths: ribbonSectionLengths } = out;
     let lastRetainedPoint = 0;
     for(let pointIndex = 1; pointIndex < pointCount; pointIndex += 1){
-        const length = $6fafcf15f6b61d60$var$distanceBetweenControlPoints(stroke.controlPoints[lastRetainedPoint], stroke.controlPoints[pointIndex]);
-        if (length < $6fafcf15f6b61d60$var$OPEN_BRUSH_RIBBON_MINIMUM_MOVE_METERS) {
+        const length = $6fafcf15f6b61d60$var$distanceBetweenOpenBrushPoints(stroke.controlPoints[lastRetainedPoint].position, stroke.controlPoints[pointIndex].position);
+        if (length < $6fafcf15f6b61d60$var$OPEN_BRUSH_RIBBON_MINIMUM_MOVE_METERS * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER) {
             ribbonBreakBefore[pointIndex] = 2;
             continue;
         }
@@ -9763,9 +9771,9 @@ function $6fafcf15f6b61d60$var$prepareRibbonSections(stroke, out) {
             smoothedPressures[pointIndex] = smoothedPressures[lastRetainedPoint];
             continue;
         }
-        const distance = $6fafcf15f6b61d60$var$distanceBetweenControlPoints(stroke.controlPoints[lastRetainedPoint], stroke.controlPoints[pointIndex]);
-        const retained = Math.pow(0.1, distance / pressureWindow);
-        smoothedPressures[pointIndex] = retained * smoothedPressures[lastRetainedPoint] + (1 - retained) * $6fafcf15f6b61d60$var$clamp01(stroke.controlPoints[pointIndex].pressure);
+        const distanceSource = $6fafcf15f6b61d60$var$distanceBetweenOpenBrushPoints(stroke.controlPoints[lastRetainedPoint].position, stroke.controlPoints[pointIndex].position);
+        const retained = Math.fround(Math.pow(Math.fround(0.1), Math.fround(distanceSource / Math.fround(pressureWindow * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER))));
+        smoothedPressures[pointIndex] = Math.fround(Math.fround(retained * smoothedPressures[lastRetainedPoint]) + Math.fround(Math.fround(1 - retained) * Math.fround($6fafcf15f6b61d60$var$clamp01(stroke.controlPoints[pointIndex].pressure))));
         lastRetainedPoint = pointIndex;
     }
     lastRetainedPoint = 0;
@@ -9810,12 +9818,12 @@ function $6fafcf15f6b61d60$var$prepareRibbonSections(stroke, out) {
             ribbonRunningLengths[pointIndex] = runningLength;
             continue;
         }
-        const length = $6fafcf15f6b61d60$var$distanceBetweenControlPoints(stroke.controlPoints[lastRetainedPoint], stroke.controlPoints[pointIndex]);
+        const length = $6fafcf15f6b61d60$var$distanceBetweenOpenBrushPoints(stroke.controlPoints[lastRetainedPoint].position, stroke.controlPoints[pointIndex].position);
         if (state === 1) {
             for(let index = sectionStart; index < pointIndex; index += 1)ribbonSectionLengths[index] = runningLength;
             sectionStart = pointIndex;
             runningLength = 0;
-        } else runningLength += length;
+        } else runningLength = Math.fround(runningLength + length);
         ribbonRunningLengths[pointIndex] = runningLength;
         lastRetainedPoint = pointIndex;
     }
@@ -10342,6 +10350,18 @@ function $6fafcf15f6b61d60$var$distanceBetweenOpenBrushPoints(from, to) {
     }
     return Math.fround(Math.sqrt(lengthSquared));
 }
+function $6fafcf15f6b61d60$var$openBrushWeightedOffset(previous, current, next) {
+    const previousSource = Math.fround(previous * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER);
+    const currentSource = Math.fround(current * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER);
+    const nextSource = Math.fround(next * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER);
+    return Math.fround(Math.fround(Math.fround(previousSource * Math.fround(0.3)) + Math.fround(currentSource * Math.fround(0.4))) + Math.fround(nextSource * Math.fround(0.3))) / $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER;
+}
+function $6fafcf15f6b61d60$var$openBrushWeightedPosition(previous, current, next) {
+    const previousSource = Math.fround(previous * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER);
+    const currentSource = Math.fround(current * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER);
+    const nextSource = Math.fround(next * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER);
+    return Math.fround(Math.fround(Math.fround(previousSource * Math.fround(0.3)) + Math.fround(currentSource * Math.fround(0.4))) + Math.fround(nextSource * Math.fround(0.3))) / $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER;
+}
 function $6fafcf15f6b61d60$var$rotateByUnityQuaternionFloat(q, v, out) {
     const x = Math.fround(q[0]);
     const y = Math.fround(q[1]);
@@ -10625,14 +10645,22 @@ function $6fafcf15f6b61d60$var$writePosition(target, vertex, value) {
     target[offset + 1] = value[1];
     target[offset + 2] = value[2];
 }
-function $6fafcf15f6b61d60$var$writeOpenBrushOffsetPosition(target, vertex, center, direction, distance) {
-    $6fafcf15f6b61d60$var$writeOpenBrushComponentOffsetPosition(target, vertex, center, direction[0] * distance, direction[1] * distance, direction[2] * distance);
+function $6fafcf15f6b61d60$var$writeOpenBrushOffsetPosition(target, vertex, center, direction, distance, sourceTarget) {
+    $6fafcf15f6b61d60$var$writeOpenBrushComponentOffsetPosition(target, vertex, center, direction[0] * distance, direction[1] * distance, direction[2] * distance, sourceTarget);
 }
-function $6fafcf15f6b61d60$var$writeOpenBrushComponentOffsetPosition(target, vertex, center, offsetX, offsetY, offsetZ) {
+function $6fafcf15f6b61d60$var$writeOpenBrushComponentOffsetPosition(target, vertex, center, offsetX, offsetY, offsetZ, sourceTarget) {
     const targetOffset = vertex * 3;
-    target[targetOffset] = Math.fround(Math.fround(center[0] * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER) + Math.fround(offsetX * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER)) / $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER;
-    target[targetOffset + 1] = Math.fround(Math.fround(center[1] * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER) + Math.fround(offsetY * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER)) / $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER;
-    target[targetOffset + 2] = Math.fround(Math.fround(center[2] * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER) + Math.fround(offsetZ * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER)) / $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER;
+    const x = Math.fround(Math.fround(center[0] * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER) + Math.fround(offsetX * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER));
+    const y = Math.fround(Math.fround(center[1] * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER) + Math.fround(offsetY * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER));
+    const z = Math.fround(Math.fround(center[2] * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER) + Math.fround(offsetZ * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER));
+    target[targetOffset] = x / $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER;
+    target[targetOffset + 1] = y / $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER;
+    target[targetOffset + 2] = z / $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER;
+    if (sourceTarget) {
+        sourceTarget[targetOffset] = x;
+        sourceTarget[targetOffset + 1] = y;
+        sourceTarget[targetOffset + 2] = z;
+    }
 }
 function $6fafcf15f6b61d60$var$writeNormal(target, vertex, value) {
     $6fafcf15f6b61d60$var$writePosition(target, vertex, value);
