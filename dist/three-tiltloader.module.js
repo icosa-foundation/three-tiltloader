@@ -7542,20 +7542,29 @@ function $6fafcf15f6b61d60$var$generateConcaveHullGeometry(stroke, options, out)
     ];
     for(let knotIndex = 0; knotIndex < stroke.controlPoints.length; knotIndex += 1){
         const controlPoint = stroke.controlPoints[knotIndex];
-        $6fafcf15f6b61d60$var$rotateByQuaternion(controlPoint.orientation, $6fafcf15f6b61d60$var$VEC_RIGHT, right);
+        $6fafcf15f6b61d60$var$rotateByUnityQuaternionFloat(controlPoint.orientation, $6fafcf15f6b61d60$var$VEC_RIGHT, right);
         const sourcePressure = knotIndex < 2 ? 0 : controlPoint.pressure;
-        const halfSize = localBrushSize * $6fafcf15f6b61d60$var$getPressureSizeMultiplier(sourcePressure, pressureSizeMin) * 0.5;
+        const halfSizeSource = Math.fround(Math.fround(Math.fround(localBrushSize * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER) * $6fafcf15f6b61d60$var$getPressureSizeMultiplierUnityFloat(sourcePressure, pressureSizeMin)) * Math.fround(0.5));
+        const centerSource = [
+            Math.fround(controlPoint.position[0] * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER),
+            Math.fround(controlPoint.position[1] * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER),
+            Math.fround(controlPoint.position[2] * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER)
+        ];
         const extent = [
-            right[0] * halfSize,
-            right[1] * halfSize,
-            right[2] * halfSize
+            Math.fround(right[0] * halfSizeSource),
+            Math.fround(right[1] * halfSizeSource),
+            Math.fround(right[2] * halfSizeSource)
         ];
         knotPoints.push([
-            $6fafcf15f6b61d60$var$subtractVec3(controlPoint.position, extent),
             [
-                controlPoint.position[0] + extent[0],
-                controlPoint.position[1] + extent[1],
-                controlPoint.position[2] + extent[2]
+                Math.fround(centerSource[0] - extent[0]) / $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER,
+                Math.fround(centerSource[1] - extent[1]) / $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER,
+                Math.fround(centerSource[2] - extent[2]) / $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER
+            ],
+            [
+                Math.fround(centerSource[0] + extent[0]) / $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER,
+                Math.fround(centerSource[1] + extent[1]) / $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER,
+                Math.fround(centerSource[2] + extent[2]) / $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER
             ]
         ]);
     }
