@@ -7782,40 +7782,35 @@ function $6fafcf15f6b61d60$var$createTetrahedronHullInputPoints(stroke) {
         0,
         0
     ];
-    const ringAngle = Math.PI / 4;
-    const aroundRingAngle = Math.PI / 2;
     for(let retainedIndex = 1; retainedIndex < retainedPoints.length; retainedIndex += 1){
         const pointIndex = retainedPoints[retainedIndex];
         const previousPointIndex = retainedPoints[retainedIndex - 1];
         const controlPoint = stroke.controlPoints[pointIndex];
         const previousPoint = stroke.controlPoints[previousPointIndex];
-        direction[0] = controlPoint.position[0] - previousPoint.position[0];
-        direction[1] = controlPoint.position[1] - previousPoint.position[1];
-        direction[2] = controlPoint.position[2] - previousPoint.position[2];
-        if (!$6fafcf15f6b61d60$var$normalizeInPlace(direction)) continue;
-        $6fafcf15f6b61d60$var$rotateByQuaternion(controlPoint.orientation, $6fafcf15f6b61d60$var$VEC_FORWARD, pointerForward);
-        $6fafcf15f6b61d60$var$rotateByQuaternion(controlPoint.orientation, $6fafcf15f6b61d60$var$VEC_UP, pointerUp);
-        $6fafcf15f6b61d60$var$computeSurfaceFrame(previousRight, direction, pointerForward, pointerUp, retainedIndex === 1, right, normal);
+        $6fafcf15f6b61d60$var$writeOpenBrushFloatDirection(previousPoint.position, controlPoint.position, direction);
+        $6fafcf15f6b61d60$var$rotateByUnityQuaternionFloat(controlPoint.orientation, $6fafcf15f6b61d60$var$VEC_FORWARD, pointerForward);
+        $6fafcf15f6b61d60$var$rotateByUnityQuaternionFloat(controlPoint.orientation, $6fafcf15f6b61d60$var$VEC_UP, pointerUp);
+        $6fafcf15f6b61d60$var$computeSurfaceFrameUnityFloat(previousRight, direction, pointerForward, pointerUp, retainedIndex === 1, right, normal);
         $6fafcf15f6b61d60$var$copyVec3(right, previousRight);
-        const radius = localBrushSize * $6fafcf15f6b61d60$var$getPressureSizeMultiplier(controlPoint.pressure, pressureSizeMin) * 0.5;
-        ringPoint[0] = direction[0] * radius;
-        ringPoint[1] = direction[1] * radius;
-        ringPoint[2] = direction[2] * radius;
+        const radiusSource = Math.fround(Math.fround(Math.fround(localBrushSize * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER) * $6fafcf15f6b61d60$var$getPressureSizeMultiplierUnityFloat(controlPoint.pressure, pressureSizeMin)) * Math.fround(0.5));
+        ringPoint[0] = Math.fround(direction[0] * radiusSource);
+        ringPoint[1] = Math.fround(direction[1] * radiusSource);
+        ringPoint[2] = Math.fround(direction[2] * radiusSource);
         points.push([
-            controlPoint.position[0] + ringPoint[0],
-            controlPoint.position[1] + ringPoint[1],
-            controlPoint.position[2] + ringPoint[2]
+            Math.fround(Math.fround(controlPoint.position[0] * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER) + ringPoint[0]) / $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER,
+            Math.fround(Math.fround(controlPoint.position[1] * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER) + ringPoint[1]) / $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER,
+            Math.fround(Math.fround(controlPoint.position[2] * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER) + ringPoint[2]) / $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER
         ]);
         for(let ring = 0; ring < 2; ring += 1){
-            $6fafcf15f6b61d60$var$rotateAroundAxis(ringPoint, right, ringAngle, rotated);
+            $6fafcf15f6b61d60$var$rotateAroundUnityAxisFloat(ringPoint, right, 45, rotated);
             $6fafcf15f6b61d60$var$copyVec3(rotated, ringPoint);
             for(let point = 0; point < 4; point += 1){
                 points.push([
-                    controlPoint.position[0] + ringPoint[0],
-                    controlPoint.position[1] + ringPoint[1],
-                    controlPoint.position[2] + ringPoint[2]
+                    Math.fround(Math.fround(controlPoint.position[0] * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER) + ringPoint[0]) / $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER,
+                    Math.fround(Math.fround(controlPoint.position[1] * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER) + ringPoint[1]) / $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER,
+                    Math.fround(Math.fround(controlPoint.position[2] * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER) + ringPoint[2]) / $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER
                 ]);
-                $6fafcf15f6b61d60$var$rotateAroundAxis(ringPoint, direction, aroundRingAngle, rotated);
+                $6fafcf15f6b61d60$var$rotateAroundUnityAxisFloat(ringPoint, direction, 90, rotated);
                 $6fafcf15f6b61d60$var$copyVec3(rotated, ringPoint);
             }
         }
