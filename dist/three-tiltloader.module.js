@@ -8231,7 +8231,7 @@ function $6fafcf15f6b61d60$var$generateTubeGeometry(stroke, options, out) {
     const breakAngleMultiplier = $6fafcf15f6b61d60$var$normalizeTubeBreakAngleMultiplier(options.geometryParams?.tubeBreakAngleMultiplier);
     const totalStrokeLength = $6fafcf15f6b61d60$var$measureScratchPathLength(geometrySmoothedPositions, pointCount);
     let runningDistance = 0;
-    let u = random01;
+    let u = Math.fround(random01);
     let sectionStartPoint = 0;
     let completedOpenBrushVertexCount = 0;
     // Frame state: right/up transported along the stroke by the tangent-to-
@@ -8295,8 +8295,11 @@ function $6fafcf15f6b61d60$var$generateTubeGeometry(stroke, options, out) {
         if (pointIndex > 0) {
             segmentLength = $6fafcf15f6b61d60$var$distanceBetweenScratchPoints(geometrySmoothedPositions, pointIndex - 1, pointIndex);
             runningDistance += segmentLength;
-            const circumference = Math.max(2 * Math.PI * radius, $6fafcf15f6b61d60$var$EPSILON);
-            u += segmentLength * tileRate / circumference;
+            const radiusSource = Math.fround(radius * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER);
+            const circumferenceSource = Math.max(Math.fround($6fafcf15f6b61d60$var$OPEN_BRUSH_TWO_PI_FLOAT * radiusSource), $6fafcf15f6b61d60$var$EPSILON);
+            const uRate = Math.fround(Math.fround(tileRate) / circumferenceSource);
+            const segmentLengthSource = $6fafcf15f6b61d60$var$distanceBetweenOpenBrushSmoothedPoints(stroke, pointIndex - 1, pointIndex);
+            u = Math.fround(u + Math.fround(segmentLengthSource * uRate));
         }
         const progress = totalStrokeLength > $6fafcf15f6b61d60$var$EPSILON ? runningDistance / totalStrokeLength : 0;
         const shapeScale = $6fafcf15f6b61d60$var$getTubeShapeScale(shapeModifier, progress, pointIndex, pointCount, options.geometryParams?.tubeTaperScalar, 0);
@@ -8516,9 +8519,11 @@ function $6fafcf15f6b61d60$var$generateTubeGeometry(stroke, options, out) {
                 capTip[0] = center[0] + capTangent[0] * radius * capAspect * direction;
                 capTip[1] = center[1] + capTangent[1] * radius * capAspect * direction;
                 capTip[2] = center[2] + capTangent[2] * radius * capAspect * direction;
-                const diagonal = radius * Math.hypot(1, capAspect);
-                const uRate = tileRate / Math.max(2 * Math.PI * radius, $6fafcf15f6b61d60$var$EPSILON);
-                const capU = usesStretchUvs ? ringU : ringU + direction * uRate * diagonal;
+                const radiusSource = Math.fround(radius * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER);
+                const circumferenceSource = Math.max(Math.fround($6fafcf15f6b61d60$var$OPEN_BRUSH_TWO_PI_FLOAT * radiusSource), $6fafcf15f6b61d60$var$EPSILON);
+                const uRate = Math.fround(Math.fround(tileRate) / circumferenceSource);
+                const diagonalSource = $6fafcf15f6b61d60$var$getOpenBrushTubeCapDiagonal(center, capUp, capTangent, radiusSource, capAspect, direction);
+                const capU = usesStretchUvs ? ringU : Math.fround(ringU + Math.fround(Math.fround(direction * uRate) * diagonalSource));
                 // TubeBrush derives this from Mathf.Sign(dot(tip - center, fwd)).
                 // Unity's Mathf.Sign(0) is +1, so a zero-aspect start cap has the
                 // same forward normal as the coincident end cap.
@@ -10242,6 +10247,7 @@ function $6fafcf15f6b61d60$var$normalizeInPlace(v) {
 // operations. Particle frames recover those source-scale floats from the
 // metre-based shared API before reproducing the frame calculation.
 const $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER = 10;
+const $6fafcf15f6b61d60$var$OPEN_BRUSH_TWO_PI_FLOAT = Math.fround(2 * Math.fround(Math.PI));
 function $6fafcf15f6b61d60$var$writeOpenBrushFloatDirection(from, to, out) {
     out[0] = Math.fround(Math.fround(to[0] * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER) - Math.fround(from[0] * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER));
     out[1] = Math.fround(Math.fround(to[1] * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER) - Math.fround(from[1] * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER));
@@ -10384,6 +10390,27 @@ function $6fafcf15f6b61d60$var$getOpenBrushSmoothedPositionComponent(stroke, ind
     const previous = Math.fround(points[index - 1].position[axis] * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER);
     const next = Math.fround(points[index + 1].position[axis] * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER);
     return Math.fround(Math.fround(Math.fround(previous + Math.fround(2 * current)) + next) * 0.25);
+}
+function $6fafcf15f6b61d60$var$distanceBetweenOpenBrushSmoothedPoints(stroke, startIndex, endIndex) {
+    let lengthSquared = 0;
+    for(let axis = 0; axis < 3; axis += 1){
+        const delta = Math.fround($6fafcf15f6b61d60$var$getOpenBrushSmoothedPositionComponent(stroke, endIndex, axis) - $6fafcf15f6b61d60$var$getOpenBrushSmoothedPositionComponent(stroke, startIndex, axis));
+        lengthSquared = Math.fround(lengthSquared + Math.fround(delta * delta));
+    }
+    return Math.fround(Math.sqrt(lengthSquared));
+}
+function $6fafcf15f6b61d60$var$getOpenBrushTubeCapDiagonal(center, up, tangent, radiusSource, capAspect, direction) {
+    const aspect = Math.fround(capAspect);
+    let lengthSquared = 0;
+    for(let axis = 0; axis < 3; axis += 1){
+        const centerSource = Math.fround(center[axis] * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER);
+        const circlePoint = Math.fround(centerSource + Math.fround(up[axis] * radiusSource));
+        const tipOffset = Math.fround(Math.fround(Math.fround(tangent[axis] * radiusSource) * aspect) * direction);
+        const tip = Math.fround(centerSource + tipOffset);
+        const delta = Math.fround(circlePoint - tip);
+        lengthSquared = Math.fround(lengthSquared + Math.fround(delta * delta));
+    }
+    return Math.fround(Math.sqrt(lengthSquared));
 }
 const $6fafcf15f6b61d60$var$surfaceFrameRight1 = [
     0,

@@ -950,6 +950,52 @@ test( 'uses Open Brush float-smoothed positions for tube tangents', () => {
 
 } );
 
+test( 'uses Open Brush float accumulation for tube cap and distance UVs', () => {
+
+	const stroke = createStroke();
+	stroke.seed = 0;
+	stroke.brushSize = 0.01125;
+	stroke.controlPoints = [
+		{
+			position: [ -0.125, 10, -0.4 ],
+			orientation: [ 0, 0, 0, 1 ],
+			pressure: 0.25,
+			timestampMs: 0
+		},
+		{
+			position: [ -0.124999, 10.0000023, -0.40000124 ],
+			orientation: [ 0, 0, 0, 1 ],
+			pressure: 0.25,
+			timestampMs: 16
+		},
+		{
+			position: [ -0.12, 10.0130547, -0.4062461 ],
+			orientation: [ 0, 0, 0, 1 ],
+			pressure: 0.25,
+			timestampMs: 32
+		}
+	];
+	const geometry = generateBrushGeometry( stroke, 'tube', {
+		pressureSizeRange: [ 0.1, 1 ],
+		generatorClass: 'TubeBrush',
+		geometryParams: {
+			solidMinLengthMeters: 0.002,
+			textureAtlasV: 4,
+			tileRate: 1,
+			tubeCapAspect: 0.8,
+			tubeEndCaps: true,
+			tubeSideCount: 8,
+			tubeStoreRadiusInTexcoord0Z: true,
+			tubeUvStyle: 'distance'
+		}
+	} );
+
+	assertClose( geometry.packedUvs[ 0 ], 0.200152144, 1e-6 );
+	assertClose( geometry.packedUvs[ 8 * 3 ], 0.403938442, 2e-7 );
+	assertClose( geometry.packedUvs[ 17 * 3 ], 1.73693168, 2e-7 );
+
+} );
+
 test( 'uses flat SquareBrush caps without tube tip vertices', () => {
 
 	const stroke = createStroke();

@@ -4304,7 +4304,7 @@ function generateTubeGeometry(
     pointCount,
   );
   let runningDistance = 0;
-  let u = random01;
+  let u = Math.fround(random01);
   let sectionStartPoint = 0;
   let completedOpenBrushVertexCount = 0;
 
@@ -4337,8 +4337,18 @@ function generateTubeGeometry(
         pointIndex,
       );
       runningDistance += segmentLength;
-      const circumference = Math.max(2 * Math.PI * radius, EPSILON);
-      u += (segmentLength * tileRate) / circumference;
+      const radiusSource = Math.fround(radius * OPEN_BRUSH_UNITS_PER_METER);
+      const circumferenceSource = Math.max(
+        Math.fround(OPEN_BRUSH_TWO_PI_FLOAT * radiusSource),
+        EPSILON,
+      );
+      const uRate = Math.fround(Math.fround(tileRate) / circumferenceSource);
+      const segmentLengthSource = distanceBetweenOpenBrushSmoothedPoints(
+        stroke,
+        pointIndex - 1,
+        pointIndex,
+      );
+      u = Math.fround(u + Math.fround(segmentLengthSource * uRate));
     }
     const progress =
       totalStrokeLength > EPSILON ? runningDistance / totalStrokeLength : 0;
@@ -4692,11 +4702,30 @@ function generateTubeGeometry(
           capTip[2] =
             center[2] +
             capTangent[2] * radius * capAspect * direction;
-          const diagonal = radius * Math.hypot(1, capAspect);
-          const uRate = tileRate / Math.max(2 * Math.PI * radius, EPSILON);
+          const radiusSource = Math.fround(
+            radius * OPEN_BRUSH_UNITS_PER_METER,
+          );
+          const circumferenceSource = Math.max(
+            Math.fround(OPEN_BRUSH_TWO_PI_FLOAT * radiusSource),
+            EPSILON,
+          );
+          const uRate = Math.fround(
+            Math.fround(tileRate) / circumferenceSource,
+          );
+          const diagonalSource = getOpenBrushTubeCapDiagonal(
+            center,
+            capUp,
+            capTangent,
+            radiusSource,
+            capAspect,
+            direction,
+          );
           const capU = usesStretchUvs
             ? ringU
-            : ringU + direction * uRate * diagonal;
+            : Math.fround(
+                ringU +
+                  Math.fround(Math.fround(direction * uRate) * diagonalSource),
+              );
           // TubeBrush derives this from Mathf.Sign(dot(tip - center, fwd)).
           // Unity's Mathf.Sign(0) is +1, so a zero-aspect start cap has the
           // same forward normal as the coincident end cap.
@@ -7573,6 +7602,7 @@ function rotateByQuaternion(
 // operations. Particle frames recover those source-scale floats from the
 // metre-based shared API before reproducing the frame calculation.
 const OPEN_BRUSH_UNITS_PER_METER = 10;
+const OPEN_BRUSH_TWO_PI_FLOAT = Math.fround(2 * Math.fround(Math.PI));
 
 function writeOpenBrushFloatDirection(from: Vec3, to: Vec3, out: Vec3): void {
   out[0] = Math.fround(
@@ -7802,6 +7832,54 @@ function getOpenBrushSmoothedPositionComponent(
     Math.fround(Math.fround(previous + Math.fround(2 * current)) + next) *
       0.25,
   );
+}
+
+function distanceBetweenOpenBrushSmoothedPoints(
+  stroke: StrokeData,
+  startIndex: number,
+  endIndex: number,
+): number {
+  let lengthSquared = 0;
+  for (let axis = 0; axis < 3; axis += 1) {
+    const delta = Math.fround(
+      getOpenBrushSmoothedPositionComponent(stroke, endIndex, axis) -
+        getOpenBrushSmoothedPositionComponent(stroke, startIndex, axis),
+    );
+    lengthSquared = Math.fround(
+      lengthSquared + Math.fround(delta * delta),
+    );
+  }
+  return Math.fround(Math.sqrt(lengthSquared));
+}
+
+function getOpenBrushTubeCapDiagonal(
+  center: Vec3,
+  up: Vec3,
+  tangent: Vec3,
+  radiusSource: number,
+  capAspect: number,
+  direction: number,
+): number {
+  const aspect = Math.fround(capAspect);
+  let lengthSquared = 0;
+  for (let axis = 0; axis < 3; axis += 1) {
+    const centerSource = Math.fround(
+      center[axis] * OPEN_BRUSH_UNITS_PER_METER,
+    );
+    const circlePoint = Math.fround(
+      centerSource + Math.fround(up[axis] * radiusSource),
+    );
+    const tipOffset = Math.fround(
+      Math.fround(Math.fround(tangent[axis] * radiusSource) * aspect) *
+        direction,
+    );
+    const tip = Math.fround(centerSource + tipOffset);
+    const delta = Math.fround(circlePoint - tip);
+    lengthSquared = Math.fround(
+      lengthSquared + Math.fround(delta * delta),
+    );
+  }
+  return Math.fround(Math.sqrt(lengthSquared));
 }
 
 const surfaceFrameRight1: Vec3 = [0, 0, 0];
