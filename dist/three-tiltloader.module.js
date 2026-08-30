@@ -8210,7 +8210,7 @@ function $6fafcf15f6b61d60$var$generateTubeGeometry(stroke, options, out) {
     $6fafcf15f6b61d60$var$ensureTubeScratchCapacity(out, pointCount);
     $6fafcf15f6b61d60$var$ensureGeometryPressureCapacity(out, pointCount);
     $6fafcf15f6b61d60$var$prepareTubeSmoothedPressures(stroke, options, out);
-    $6fafcf15f6b61d60$var$prepareGeometrySmoothedPositions(stroke, out);
+    $6fafcf15f6b61d60$var$prepareGeometrySmoothedPositions(stroke, out, true);
     if (isSquareBrush) // SquareBrush frames and emits from point.m_Pos. Unlike TubeBrush, it does
     // not apply GeometryBrush's finalized three-point center smoothing.
     for(let pointIndex = 0; pointIndex < pointCount; pointIndex += 1)$6fafcf15f6b61d60$var$writeScratchVec3(out.geometrySmoothedPositions, pointIndex, stroke.controlPoints[pointIndex].position);
@@ -8304,7 +8304,7 @@ function $6fafcf15f6b61d60$var$generateTubeGeometry(stroke, options, out) {
         // TubeBrush writes m_Color directly and does not apply the descriptor's
         // pressure-opacity range while constructing its live mesh.
         const opacity = 1;
-        $6fafcf15f6b61d60$var$writeScratchIncomingTangent(geometrySmoothedPositions, pointCount, pointIndex, previousTangent, tangent);
+        $6fafcf15f6b61d60$var$writeOpenBrushIncomingTangent(stroke, pointIndex, previousTangent, tangent);
         if (pointIndex === 0) $6fafcf15f6b61d60$var$initializeTubeFrame(point.orientation, tangent, bootstrapUp, frameRight, frameUp);
         else {
             $6fafcf15f6b61d60$var$copyVec3(frameRight, priorFrameRight);
@@ -8906,14 +8906,12 @@ function $6fafcf15f6b61d60$var$rewriteSquareBrushFrames(out, stroke, pointCount,
         }
         const previous = stroke.controlPoints[pointIndex - 1].position;
         const point = stroke.controlPoints[pointIndex];
-        tangent[0] = point.position[0] - previous[0];
-        tangent[1] = point.position[1] - previous[1];
-        tangent[2] = point.position[2] - previous[2];
-        if (!$6fafcf15f6b61d60$var$normalizeInPlace(tangent)) continue;
-        $6fafcf15f6b61d60$var$rotateByQuaternion(point.orientation, $6fafcf15f6b61d60$var$VEC_FORWARD, pointerForward);
-        $6fafcf15f6b61d60$var$rotateByQuaternion(point.orientation, $6fafcf15f6b61d60$var$VEC_UP, pointerUp);
+        $6fafcf15f6b61d60$var$writeOpenBrushFloatDirection(previous, point.position, tangent);
+        if (Math.hypot(tangent[0], tangent[1], tangent[2]) < $6fafcf15f6b61d60$var$EPSILON) continue;
+        $6fafcf15f6b61d60$var$rotateByUnityQuaternionFloat(point.orientation, $6fafcf15f6b61d60$var$VEC_FORWARD, pointerForward);
+        $6fafcf15f6b61d60$var$rotateByUnityQuaternionFloat(point.orientation, $6fafcf15f6b61d60$var$VEC_UP, pointerUp);
         const startsSection = pointIndex === 1 || out.tubeBreakBefore[pointIndex - 1] === 1;
-        $6fafcf15f6b61d60$var$computeSurfaceFrame(preferredRight, tangent, pointerForward, pointerUp, startsSection, right, surface, true);
+        $6fafcf15f6b61d60$var$computeSurfaceFrameUnityFloat(preferredRight, tangent, pointerForward, pointerUp, startsSection, right, surface, true);
         $6fafcf15f6b61d60$var$writeScratchVec3(out.tubeFrameRights, pointIndex, right);
         $6fafcf15f6b61d60$var$writeScratchVec3(out.tubeFrameUps, pointIndex, surface);
         $6fafcf15f6b61d60$var$writeScratchVec3(out.tubeTangents, pointIndex, tangent);
@@ -9882,12 +9880,13 @@ function $6fafcf15f6b61d60$var$prepareGeometrySmoothedPressures(stroke, options,
         pressures[index] = retained * pressures[index - 1] + (1 - retained) * $6fafcf15f6b61d60$var$clamp01(stroke.controlPoints[index].pressure);
     }
 }
-function $6fafcf15f6b61d60$var$prepareGeometrySmoothedPositions(stroke, out) {
+function $6fafcf15f6b61d60$var$prepareGeometrySmoothedPositions(stroke, out, useOpenBrushFloatMath = false) {
     const pointCount = stroke.controlPoints.length;
     for(let index = 0; index < pointCount; index += 1){
         const current = stroke.controlPoints[index].position;
         const offset = index * 3;
-        if (index === 0 || index === pointCount - 1) {
+        if (useOpenBrushFloatMath) for(let axis = 0; axis < 3; axis += 1)out.geometrySmoothedPositions[offset + axis] = $6fafcf15f6b61d60$var$getOpenBrushSmoothedPositionComponent(stroke, index, axis) / $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER;
+        else if (index === 0 || index === pointCount - 1) {
             out.geometrySmoothedPositions[offset] = current[0];
             out.geometrySmoothedPositions[offset + 1] = current[1];
             out.geometrySmoothedPositions[offset + 2] = current[2];
@@ -10118,12 +10117,12 @@ function $6fafcf15f6b61d60$var$getLocalBrushSize(stroke) {
 function $6fafcf15f6b61d60$var$initializeTubeFrame(orientation, tangent, bootstrapUp, frameRight, frameUp) {
     // ComputeMinimalRotationFrame uses the pointer orientation to choose the
     // roll around a new section's tangent.
-    $6fafcf15f6b61d60$var$rotateByQuaternion(orientation, $6fafcf15f6b61d60$var$VEC_UP, bootstrapUp);
-    if (Math.abs($6fafcf15f6b61d60$var$dot(bootstrapUp, tangent)) > 0.99) $6fafcf15f6b61d60$var$rotateByQuaternion(orientation, $6fafcf15f6b61d60$var$VEC_RIGHT, bootstrapUp);
-    $6fafcf15f6b61d60$var$cross(bootstrapUp, tangent, frameRight);
-    if (!$6fafcf15f6b61d60$var$normalizeInPlace(frameRight)) $6fafcf15f6b61d60$var$anyPerpendicular(tangent, frameRight);
-    $6fafcf15f6b61d60$var$cross(tangent, frameRight, frameUp);
-    $6fafcf15f6b61d60$var$normalizeInPlace(frameUp);
+    $6fafcf15f6b61d60$var$rotateByUnityQuaternionFloat(orientation, $6fafcf15f6b61d60$var$VEC_UP, bootstrapUp);
+    if (Math.abs($6fafcf15f6b61d60$var$dot(bootstrapUp, tangent)) > 0.99) $6fafcf15f6b61d60$var$rotateByUnityQuaternionFloat(orientation, $6fafcf15f6b61d60$var$VEC_RIGHT, bootstrapUp);
+    $6fafcf15f6b61d60$var$crossUnityFloat(bootstrapUp, tangent, frameRight);
+    if (!$6fafcf15f6b61d60$var$normalizeUnityFloatVector(frameRight)) $6fafcf15f6b61d60$var$anyPerpendicular(tangent, frameRight);
+    $6fafcf15f6b61d60$var$crossUnityFloat(tangent, frameRight, frameUp);
+    $6fafcf15f6b61d60$var$normalizeUnityFloatVector(frameUp);
 }
 function $6fafcf15f6b61d60$var$getFrameRotationAngle(previousRight, previousUp, previousTangent, right, up, tangent) {
     const trace = $6fafcf15f6b61d60$var$dot(previousRight, right) + $6fafcf15f6b61d60$var$dot(previousUp, up) + $6fafcf15f6b61d60$var$dot(previousTangent, tangent);
@@ -10362,24 +10361,29 @@ function $6fafcf15f6b61d60$var$normalizeUnityFloatVector(value) {
         }
     }
 }
-function $6fafcf15f6b61d60$var$writeScratchIncomingTangent(positions, pointCount, index, previousTangent, out) {
+function $6fafcf15f6b61d60$var$writeOpenBrushIncomingTangent(stroke, index, previousTangent, out) {
+    const pointCount = stroke.controlPoints.length;
     const startIndex = index === 0 ? 0 : index - 1;
     const endIndex = index === 0 ? Math.min(1, pointCount - 1) : index;
-    const startOffset = startIndex * 3;
-    const endOffset = endIndex * 3;
-    out[0] = positions[endOffset] - positions[startOffset];
-    out[1] = positions[endOffset + 1] - positions[startOffset + 1];
-    out[2] = positions[endOffset + 2] - positions[startOffset + 2];
-    if (!$6fafcf15f6b61d60$var$normalizeInPlace(out)) {
+    for(let axis = 0; axis < 3; axis += 1)out[axis] = Math.fround($6fafcf15f6b61d60$var$getOpenBrushSmoothedPositionComponent(stroke, endIndex, axis) - $6fafcf15f6b61d60$var$getOpenBrushSmoothedPositionComponent(stroke, startIndex, axis));
+    if (!$6fafcf15f6b61d60$var$normalizeUnityFloatVector(out)) {
         out[0] = previousTangent[0];
         out[1] = previousTangent[1];
         out[2] = previousTangent[2];
-        if (!$6fafcf15f6b61d60$var$normalizeInPlace(out)) {
+        if (!$6fafcf15f6b61d60$var$normalizeUnityFloatVector(out)) {
             out[0] = $6fafcf15f6b61d60$var$VEC_FORWARD[0];
             out[1] = $6fafcf15f6b61d60$var$VEC_FORWARD[1];
             out[2] = $6fafcf15f6b61d60$var$VEC_FORWARD[2];
         }
     }
+}
+function $6fafcf15f6b61d60$var$getOpenBrushSmoothedPositionComponent(stroke, index, axis) {
+    const points = stroke.controlPoints;
+    const current = Math.fround(points[index].position[axis] * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER);
+    if (index === 0 || index + 1 === points.length) return current;
+    const previous = Math.fround(points[index - 1].position[axis] * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER);
+    const next = Math.fround(points[index + 1].position[axis] * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER);
+    return Math.fround(Math.fround(Math.fround(previous + Math.fround(2 * current)) + next) * 0.25);
 }
 const $6fafcf15f6b61d60$var$surfaceFrameRight1 = [
     0,
@@ -10430,14 +10434,33 @@ const $6fafcf15f6b61d60$var$surfaceFrameRight2 = [
     }
     $6fafcf15f6b61d60$var$normalizeInPlace(outNormal);
 }
+function $6fafcf15f6b61d60$var$computeSurfaceFrameUnityFloat(preferredRight, tangent, pointerForward, pointerUp, isFirst, outRight, outNormal, mirrored = false) {
+    $6fafcf15f6b61d60$var$crossUnityFloat(pointerForward, tangent, $6fafcf15f6b61d60$var$surfaceFrameRight1);
+    $6fafcf15f6b61d60$var$crossUnityFloat(pointerUp, tangent, $6fafcf15f6b61d60$var$surfaceFrameRight2);
+    if (mirrored) for(let axis = 0; axis < 3; axis += 1){
+        $6fafcf15f6b61d60$var$surfaceFrameRight1[axis] = Math.fround(-$6fafcf15f6b61d60$var$surfaceFrameRight1[axis]);
+        $6fafcf15f6b61d60$var$surfaceFrameRight2[axis] = Math.fround(-$6fafcf15f6b61d60$var$surfaceFrameRight2[axis]);
+    }
+    const hasPreferredRight = !isFirst && $6fafcf15f6b61d60$var$dotUnityFloat(preferredRight, preferredRight) >= $6fafcf15f6b61d60$var$EPSILON * $6fafcf15f6b61d60$var$EPSILON;
+    const flip1 = hasPreferredRight && $6fafcf15f6b61d60$var$dotUnityFloat($6fafcf15f6b61d60$var$surfaceFrameRight1, preferredRight) < 0 ? -1 : 1;
+    const flip2 = hasPreferredRight && $6fafcf15f6b61d60$var$dotUnityFloat($6fafcf15f6b61d60$var$surfaceFrameRight2, preferredRight) < 0 ? -1 : 1;
+    const upWeight = Math.fround(Math.abs($6fafcf15f6b61d60$var$dotUnityFloat(pointerForward, tangent)) * flip2);
+    for(let axis = 0; axis < 3; axis += 1)outRight[axis] = Math.fround(Math.fround($6fafcf15f6b61d60$var$surfaceFrameRight1[axis] * flip1) + Math.fround($6fafcf15f6b61d60$var$surfaceFrameRight2[axis] * upWeight));
+    if (!$6fafcf15f6b61d60$var$normalizeUnityFloatVector(outRight)) {
+        $6fafcf15f6b61d60$var$copyVec3(hasPreferredRight ? preferredRight : $6fafcf15f6b61d60$var$surfaceFrameRight1, outRight);
+        if (!$6fafcf15f6b61d60$var$normalizeUnityFloatVector(outRight)) $6fafcf15f6b61d60$var$anyPerpendicular(tangent, outRight);
+    }
+    $6fafcf15f6b61d60$var$crossUnityFloat(tangent, outRight, outNormal);
+    if (mirrored) for(let axis = 0; axis < 3; axis += 1)outNormal[axis] = Math.fround(-outNormal[axis]);
+}
 /**
  * Rotates a vector in place by the minimal rotation taking the previous unit
  * tangent to the current one (parallel transport step).
  */ function $6fafcf15f6b61d60$var$rotateBetweenTangents(previousTangent, tangent, v) {
-    const cx = previousTangent[1] * tangent[2] - previousTangent[2] * tangent[1];
-    const cy = previousTangent[2] * tangent[0] - previousTangent[0] * tangent[2];
-    const cz = previousTangent[0] * tangent[1] - previousTangent[1] * tangent[0];
-    const d = $6fafcf15f6b61d60$var$dot(previousTangent, tangent);
+    const cx = Math.fround(Math.fround(previousTangent[1] * tangent[2]) - Math.fround(previousTangent[2] * tangent[1]));
+    const cy = Math.fround(Math.fround(previousTangent[2] * tangent[0]) - Math.fround(previousTangent[0] * tangent[2]));
+    const cz = Math.fround(Math.fround(previousTangent[0] * tangent[1]) - Math.fround(previousTangent[1] * tangent[0]));
+    const d = $6fafcf15f6b61d60$var$dotUnityFloat(previousTangent, tangent);
     if (d < -0.999999) {
         // 180° reversal: rotate around any axis perpendicular to the tangent.
         const axis = [
@@ -10446,17 +10469,20 @@ const $6fafcf15f6b61d60$var$surfaceFrameRight2 = [
             0
         ];
         $6fafcf15f6b61d60$var$anyPerpendicular(previousTangent, axis);
-        const projection = 2 * $6fafcf15f6b61d60$var$dot(axis, v);
-        v[0] = axis[0] * projection - v[0];
-        v[1] = axis[1] * projection - v[1];
-        v[2] = axis[2] * projection - v[2];
+        const projection = Math.fround(2 * $6fafcf15f6b61d60$var$dotUnityFloat(axis, v));
+        v[0] = Math.fround(Math.fround(axis[0] * projection) - v[0]);
+        v[1] = Math.fround(Math.fround(axis[1] * projection) - v[1]);
+        v[2] = Math.fround(Math.fround(axis[2] * projection) - v[2]);
         return;
     }
     // Rodrigues form of the from-to rotation applied to v.
-    const cDotV = (cx * v[0] + cy * v[1] + cz * v[2]) / (1 + d);
-    const x = v[0] * d + (cy * v[2] - cz * v[1]) + cx * cDotV;
-    const y = v[1] * d + (cz * v[0] - cx * v[2]) + cy * cDotV;
-    const z = v[2] * d + (cx * v[1] - cy * v[0]) + cz * cDotV;
+    const cDotV = Math.fround(Math.fround(Math.fround(Math.fround(cx * v[0]) + Math.fround(cy * v[1])) + Math.fround(cz * v[2])) / Math.fround(1 + d));
+    const crossX = Math.fround(Math.fround(cy * v[2]) - Math.fround(cz * v[1]));
+    const crossY = Math.fround(Math.fround(cz * v[0]) - Math.fround(cx * v[2]));
+    const crossZ = Math.fround(Math.fround(cx * v[1]) - Math.fround(cy * v[0]));
+    const x = Math.fround(Math.fround(Math.fround(v[0] * d) + crossX) + Math.fround(cx * cDotV));
+    const y = Math.fround(Math.fround(Math.fround(v[1] * d) + crossY) + Math.fround(cy * cDotV));
+    const z = Math.fround(Math.fround(Math.fround(v[2] * d) + crossZ) + Math.fround(cz * cDotV));
     v[0] = x;
     v[1] = y;
     v[2] = z;

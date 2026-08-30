@@ -893,6 +893,63 @@ test( 'overwrites short GeometryBrush updates but retains the trailing knot', ()
 
 } );
 
+test( 'uses Open Brush float-smoothed positions for tube tangents', () => {
+
+	const stroke = createStroke();
+	stroke.brushSize = 0.01125;
+	stroke.controlPoints = [
+		{
+			position: [ -0.0349999964, 9.962076, -0.421186972 ],
+			orientation: [ -0.2376579, -0.0897149146, 0.192411035, 0.94786495 ],
+			pressure: 0.9933639,
+			timestampMs: 0
+		},
+		{
+			position: [ -0.0149999976, 9.963859, -0.399822545 ],
+			orientation: [ -0.174040556, -0.139572263, 0.198110074, 0.954453766 ],
+			pressure: 0.849666238,
+			timestampMs: 16
+		},
+		{
+			position: [ -0.00499999523, 9.981414, -0.390025735 ],
+			orientation: [ -0.136477634, -0.162363976, 0.239124268, 0.9475396 ],
+			pressure: 0.7258874,
+			timestampMs: 32
+		},
+		{
+			position: [ 0.005000007, 10.0061226, -0.3822094 ],
+			orientation: [ -0.1010537, -0.18645592, 0.3053968, 0.9283077 ],
+			pressure: 0.588453948,
+			timestampMs: 48
+		},
+		{
+			position: [ 0.0149999976, 10.0328865, -0.3772045 ],
+			orientation: [ -0.0720155761, -0.213882953, 0.390042365, 0.892712 ],
+			pressure: 0.4559668,
+			timestampMs: 64
+		}
+	];
+	const geometry = generateBrushGeometry( stroke, 'tube', {
+		pressureSizeRange: [ 0.25, 1 ],
+		generatorClass: 'TubeBrush',
+		geometryParams: {
+			solidMinLengthMeters: 0.002,
+			tubeSideCount: 8,
+			tubeEndCaps: false
+		}
+	} );
+	const expectedTangent = [ 0.5368761, 0.6614283, 0.523715854, -1 ];
+	const middleRingVertex = 18;
+	for ( let axis = 0; axis < expectedTangent.length; axis += 1 ) {
+		assertClose(
+			geometry.tangents[ middleRingVertex * 4 + axis ],
+			expectedTangent[ axis ],
+			2e-6
+		);
+	}
+
+} );
+
 test( 'uses flat SquareBrush caps without tube tip vertices', () => {
 
 	const stroke = createStroke();

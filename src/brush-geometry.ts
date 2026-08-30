@@ -4250,7 +4250,7 @@ function generateTubeGeometry(
   ensureTubeScratchCapacity(out, pointCount);
   ensureGeometryPressureCapacity(out, pointCount);
   prepareTubeSmoothedPressures(stroke, options, out);
-  prepareGeometrySmoothedPositions(stroke, out);
+  prepareGeometrySmoothedPositions(stroke, out, true);
   if (isSquareBrush) {
     // SquareBrush frames and emits from point.m_Pos. Unlike TubeBrush, it does
     // not apply GeometryBrush's finalized three-point center smoothing.
@@ -4368,9 +4368,8 @@ function generateTubeGeometry(
     // pressure-opacity range while constructing its live mesh.
     const opacity = 1;
 
-    writeScratchIncomingTangent(
-      geometrySmoothedPositions,
-      pointCount,
+    writeOpenBrushIncomingTangent(
+      stroke,
       pointIndex,
       previousTangent,
       tangent,
@@ -5139,17 +5138,15 @@ function rewriteSquareBrushFrames(
     }
     const previous = stroke.controlPoints[pointIndex - 1].position;
     const point = stroke.controlPoints[pointIndex];
-    tangent[0] = point.position[0] - previous[0];
-    tangent[1] = point.position[1] - previous[1];
-    tangent[2] = point.position[2] - previous[2];
-    if (!normalizeInPlace(tangent)) {
+    writeOpenBrushFloatDirection(previous, point.position, tangent);
+    if (Math.hypot(tangent[0], tangent[1], tangent[2]) < EPSILON) {
       continue;
     }
-    rotateByQuaternion(point.orientation, VEC_FORWARD, pointerForward);
-    rotateByQuaternion(point.orientation, VEC_UP, pointerUp);
+    rotateByUnityQuaternionFloat(point.orientation, VEC_FORWARD, pointerForward);
+    rotateByUnityQuaternionFloat(point.orientation, VEC_UP, pointerUp);
     const startsSection =
       pointIndex === 1 || out.tubeBreakBefore[pointIndex - 1] === 1;
-    computeSurfaceFrame(
+    computeSurfaceFrameUnityFloat(
       preferredRight,
       tangent,
       pointerForward,
@@ -6894,12 +6891,19 @@ function prepareGeometrySmoothedPressures(
 function prepareGeometrySmoothedPositions(
   stroke: StrokeData,
   out: BrushGeometryArrays,
+  useOpenBrushFloatMath = false,
 ): void {
   const pointCount = stroke.controlPoints.length;
   for (let index = 0; index < pointCount; index += 1) {
     const current = stroke.controlPoints[index].position;
     const offset = index * 3;
-    if (index === 0 || index === pointCount - 1) {
+    if (useOpenBrushFloatMath) {
+      for (let axis = 0; axis < 3; axis += 1) {
+        out.geometrySmoothedPositions[offset + axis] =
+          getOpenBrushSmoothedPositionComponent(stroke, index, axis) /
+          OPEN_BRUSH_UNITS_PER_METER;
+      }
+    } else if (index === 0 || index === pointCount - 1) {
       out.geometrySmoothedPositions[offset] = current[0];
       out.geometrySmoothedPositions[offset + 1] = current[1];
       out.geometrySmoothedPositions[offset + 2] = current[2];
@@ -7376,16 +7380,16 @@ function initializeTubeFrame(
 ): void {
   // ComputeMinimalRotationFrame uses the pointer orientation to choose the
   // roll around a new section's tangent.
-  rotateByQuaternion(orientation, VEC_UP, bootstrapUp);
+  rotateByUnityQuaternionFloat(orientation, VEC_UP, bootstrapUp);
   if (Math.abs(dot(bootstrapUp, tangent)) > 0.99) {
-    rotateByQuaternion(orientation, VEC_RIGHT, bootstrapUp);
+    rotateByUnityQuaternionFloat(orientation, VEC_RIGHT, bootstrapUp);
   }
-  cross(bootstrapUp, tangent, frameRight);
-  if (!normalizeInPlace(frameRight)) {
+  crossUnityFloat(bootstrapUp, tangent, frameRight);
+  if (!normalizeUnityFloatVector(frameRight)) {
     anyPerpendicular(tangent, frameRight);
   }
-  cross(tangent, frameRight, frameUp);
-  normalizeInPlace(frameUp);
+  crossUnityFloat(tangent, frameRight, frameUp);
+  normalizeUnityFloatVector(frameUp);
 }
 
 function getFrameRotationAngle(
@@ -7751,30 +7755,53 @@ function writeCentralDifferenceTangent(
   }
 }
 
-function writeScratchIncomingTangent(
-  positions: Float32Array,
-  pointCount: number,
+function writeOpenBrushIncomingTangent(
+  stroke: StrokeData,
   index: number,
   previousTangent: Vec3,
   out: Vec3,
 ): void {
+  const pointCount = stroke.controlPoints.length;
   const startIndex = index === 0 ? 0 : index - 1;
   const endIndex = index === 0 ? Math.min(1, pointCount - 1) : index;
-  const startOffset = startIndex * 3;
-  const endOffset = endIndex * 3;
-  out[0] = positions[endOffset] - positions[startOffset];
-  out[1] = positions[endOffset + 1] - positions[startOffset + 1];
-  out[2] = positions[endOffset + 2] - positions[startOffset + 2];
-  if (!normalizeInPlace(out)) {
+  for (let axis = 0; axis < 3; axis += 1) {
+    out[axis] = Math.fround(
+      getOpenBrushSmoothedPositionComponent(stroke, endIndex, axis) -
+        getOpenBrushSmoothedPositionComponent(stroke, startIndex, axis),
+    );
+  }
+  if (!normalizeUnityFloatVector(out)) {
     out[0] = previousTangent[0];
     out[1] = previousTangent[1];
     out[2] = previousTangent[2];
-    if (!normalizeInPlace(out)) {
+    if (!normalizeUnityFloatVector(out)) {
       out[0] = VEC_FORWARD[0];
       out[1] = VEC_FORWARD[1];
       out[2] = VEC_FORWARD[2];
     }
   }
+}
+
+function getOpenBrushSmoothedPositionComponent(
+  stroke: StrokeData,
+  index: number,
+  axis: number,
+): number {
+  const points = stroke.controlPoints;
+  const current = Math.fround(
+    points[index].position[axis] * OPEN_BRUSH_UNITS_PER_METER,
+  );
+  if (index === 0 || index + 1 === points.length) return current;
+  const previous = Math.fround(
+    points[index - 1].position[axis] * OPEN_BRUSH_UNITS_PER_METER,
+  );
+  const next = Math.fround(
+    points[index + 1].position[axis] * OPEN_BRUSH_UNITS_PER_METER,
+  );
+  return Math.fround(
+    Math.fround(Math.fround(previous + Math.fround(2 * current)) + next) *
+      0.25,
+  );
 }
 
 const surfaceFrameRight1: Vec3 = [0, 0, 0];
@@ -7839,6 +7866,56 @@ function computeSurfaceFrame(
   normalizeInPlace(outNormal);
 }
 
+function computeSurfaceFrameUnityFloat(
+  preferredRight: Vec3,
+  tangent: Vec3,
+  pointerForward: Vec3,
+  pointerUp: Vec3,
+  isFirst: boolean,
+  outRight: Vec3,
+  outNormal: Vec3,
+  mirrored = false,
+): void {
+  crossUnityFloat(pointerForward, tangent, surfaceFrameRight1);
+  crossUnityFloat(pointerUp, tangent, surfaceFrameRight2);
+  if (mirrored) {
+    for (let axis = 0; axis < 3; axis += 1) {
+      surfaceFrameRight1[axis] = Math.fround(-surfaceFrameRight1[axis]);
+      surfaceFrameRight2[axis] = Math.fround(-surfaceFrameRight2[axis]);
+    }
+  }
+  const hasPreferredRight =
+    !isFirst &&
+    dotUnityFloat(preferredRight, preferredRight) >= EPSILON * EPSILON;
+  const flip1 =
+    hasPreferredRight && dotUnityFloat(surfaceFrameRight1, preferredRight) < 0
+      ? -1
+      : 1;
+  const flip2 =
+    hasPreferredRight && dotUnityFloat(surfaceFrameRight2, preferredRight) < 0
+      ? -1
+      : 1;
+  const upWeight = Math.fround(
+    Math.abs(dotUnityFloat(pointerForward, tangent)) * flip2,
+  );
+  for (let axis = 0; axis < 3; axis += 1) {
+    outRight[axis] = Math.fround(
+      Math.fround(surfaceFrameRight1[axis] * flip1) +
+        Math.fround(surfaceFrameRight2[axis] * upWeight),
+    );
+  }
+  if (!normalizeUnityFloatVector(outRight)) {
+    copyVec3(hasPreferredRight ? preferredRight : surfaceFrameRight1, outRight);
+    if (!normalizeUnityFloatVector(outRight)) anyPerpendicular(tangent, outRight);
+  }
+  crossUnityFloat(tangent, outRight, outNormal);
+  if (mirrored) {
+    for (let axis = 0; axis < 3; axis += 1) {
+      outNormal[axis] = Math.fround(-outNormal[axis]);
+    }
+  }
+}
+
 /**
  * Rotates a vector in place by the minimal rotation taking the previous unit
  * tangent to the current one (parallel transport step).
@@ -7848,25 +7925,57 @@ function rotateBetweenTangents(
   tangent: Vec3,
   v: Vec3,
 ): void {
-  const cx = previousTangent[1] * tangent[2] - previousTangent[2] * tangent[1];
-  const cy = previousTangent[2] * tangent[0] - previousTangent[0] * tangent[2];
-  const cz = previousTangent[0] * tangent[1] - previousTangent[1] * tangent[0];
-  const d = dot(previousTangent, tangent);
+  const cx = Math.fround(
+    Math.fround(previousTangent[1] * tangent[2]) -
+      Math.fround(previousTangent[2] * tangent[1]),
+  );
+  const cy = Math.fround(
+    Math.fround(previousTangent[2] * tangent[0]) -
+      Math.fround(previousTangent[0] * tangent[2]),
+  );
+  const cz = Math.fround(
+    Math.fround(previousTangent[0] * tangent[1]) -
+      Math.fround(previousTangent[1] * tangent[0]),
+  );
+  const d = dotUnityFloat(previousTangent, tangent);
   if (d < -0.999999) {
     // 180° reversal: rotate around any axis perpendicular to the tangent.
     const axis: Vec3 = [0, 0, 0];
     anyPerpendicular(previousTangent, axis);
-    const projection = 2 * dot(axis, v);
-    v[0] = axis[0] * projection - v[0];
-    v[1] = axis[1] * projection - v[1];
-    v[2] = axis[2] * projection - v[2];
+    const projection = Math.fround(2 * dotUnityFloat(axis, v));
+    v[0] = Math.fround(Math.fround(axis[0] * projection) - v[0]);
+    v[1] = Math.fround(Math.fround(axis[1] * projection) - v[1]);
+    v[2] = Math.fround(Math.fround(axis[2] * projection) - v[2]);
     return;
   }
   // Rodrigues form of the from-to rotation applied to v.
-  const cDotV = (cx * v[0] + cy * v[1] + cz * v[2]) / (1 + d);
-  const x = v[0] * d + (cy * v[2] - cz * v[1]) + cx * cDotV;
-  const y = v[1] * d + (cz * v[0] - cx * v[2]) + cy * cDotV;
-  const z = v[2] * d + (cx * v[1] - cy * v[0]) + cz * cDotV;
+  const cDotV = Math.fround(
+    Math.fround(
+      Math.fround(Math.fround(cx * v[0]) + Math.fround(cy * v[1])) +
+        Math.fround(cz * v[2]),
+    ) / Math.fround(1 + d),
+  );
+  const crossX = Math.fround(
+    Math.fround(cy * v[2]) - Math.fround(cz * v[1]),
+  );
+  const crossY = Math.fround(
+    Math.fround(cz * v[0]) - Math.fround(cx * v[2]),
+  );
+  const crossZ = Math.fround(
+    Math.fround(cx * v[1]) - Math.fround(cy * v[0]),
+  );
+  const x = Math.fround(
+    Math.fround(Math.fround(v[0] * d) + crossX) +
+      Math.fround(cx * cDotV),
+  );
+  const y = Math.fround(
+    Math.fround(Math.fround(v[1] * d) + crossY) +
+      Math.fround(cy * cDotV),
+  );
+  const z = Math.fround(
+    Math.fround(Math.fround(v[2] * d) + crossZ) +
+      Math.fround(cz * cDotV),
+  );
   v[0] = x;
   v[1] = y;
   v[2] = z;
