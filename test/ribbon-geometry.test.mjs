@@ -1289,6 +1289,41 @@ test( 'shares ThickGeometry rings between adjacent solids', () => {
 
 } );
 
+test( 'matches ThickGeometry Unity-float frames at distant origins', () => {
+
+	const stroke = createStroke();
+	const orientation = [ 0.102597835, 0.20519567, 0.307793505, 0.9233805 ];
+	stroke.brushSize = 0.1;
+	stroke.controlPoints = [
+		[ 123.4567, -54.321, 78.901 ],
+		[ 123.8, -53.9, 79.2 ],
+		[ 124.2, -53.4, 79.8 ]
+	].map( ( position, index ) => ( {
+		position,
+		orientation,
+		pressure: 0.37 + index * 0.21,
+		timestampMs: index * 16
+	} ) );
+	const geometry = generateBrushGeometry( stroke, 'thick-strip', {
+		generatorClass: 'ThickGeometryBrush',
+		pressureSizeRange: [ 0.2, 1 ],
+		geometryParams: { solidMinLengthMeters: 0.002 }
+	} );
+
+	const frontRightTop = 6;
+	const normalOffset = frontRightTop * 3;
+	const tangentOffset = frontRightTop * 4;
+	const expectedNormal = [ -0.58177704, 0.72964025, -0.35938925 ];
+	const expectedTangent = [ 0.55413306, 0.67901772, 0.48153022, -1 ];
+	for ( let axis = 0; axis < 3; axis++ ) {
+		assertClose( geometry.normals[ normalOffset + axis ], expectedNormal[ axis ], 1e-7 );
+	}
+	for ( let component = 0; component < 4; component++ ) {
+		assertClose( geometry.tangents[ tangentOffset + component ], expectedTangent[ component ], 1e-7 );
+	}
+
+} );
+
 test( 'ends and restarts ThickGeometry around a rejected turn knot', () => {
 
 	const stroke = createStroke();
