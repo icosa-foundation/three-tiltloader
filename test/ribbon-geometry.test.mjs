@@ -1390,6 +1390,39 @@ test( 'builds directed-sphere hull inputs with Unity-float rotations', () => {
 
 } );
 
+test( 'builds ConcaveHull Quill extents with Unity floats', () => {
+
+	const stroke = createStroke();
+	const orientation = [ 0.102597835, 0.20519567, 0.307793505, 0.9233805 ];
+	stroke.brushSize = 0.1125;
+	stroke.controlPoints = [
+		[ 123.4567, -54.321, 78.901 ],
+		[ 123.8, -53.9, 79.2 ],
+		[ 124.2, -53.4, 79.8 ],
+		[ 124.55, -52.8, 80.1 ],
+		[ 124.9, -52.2, 80.5 ]
+	].map( ( position, index ) => ( {
+		position,
+		orientation,
+		pressure: 0.25 + index * 0.15,
+		timestampMs: index * 16
+	} ) );
+	const geometry = generateBrushGeometry( stroke, 'concave-hull', {
+		generatorClass: 'ConcaveHullBrush',
+		pressureSizeRange: [ 0.1, 1 ]
+	} );
+
+	assert.equal( getGeneratedVertexCount( geometry ), 90 );
+	assert.equal( getGeneratedIndexCount( geometry ), 90 );
+	const expectedMin = [ 123.45261383, -54.32444, 78.89922333 ];
+	const expectedMax = [ 124.93534088, -52.17029572, 80.5153656 ];
+	for ( let axis = 0; axis < 3; axis++ ) {
+		assertClose( geometry.bounds.min[ axis ], expectedMin[ axis ], 1e-6 );
+		assertClose( geometry.bounds.max[ axis ], expectedMax[ axis ], 1e-6 );
+	}
+
+} );
+
 test( 'generates outward-facing 3D-print triangles for Three.js', () => {
 
 	const stroke = createStroke();
