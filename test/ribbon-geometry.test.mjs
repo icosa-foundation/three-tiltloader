@@ -1478,6 +1478,49 @@ test( 'accumulates Spray updates and interleaves reflected backfaces', () => {
 
 } );
 
+test( 'matches Spray float-buffer normals and tangents far from the origin', () => {
+
+	const stroke = createStroke();
+	stroke.seed = 0;
+	stroke.brushSize = 0.01125;
+	stroke.controlPoints = [
+		{
+			position: [ 0.05, 10.0643654, -0.450956726 ],
+			orientation: [ 0, 0, 0, 1 ],
+			pressure: 0.847614944,
+			timestampMs: 0
+		},
+		{
+			position: [ 0.0425000072, 10.0828766, -0.442105961 ],
+			orientation: [ -0.407237053, -0.210368335, 0.677611649, 0.5751049 ],
+			pressure: 0.723423839,
+			timestampMs: 16
+		}
+	];
+	const geometry = generateBrushGeometry( stroke, 'particle', {
+		generatorClass: 'SprayBrush',
+		particleKnotIndexOffset: 28,
+		pressureSizeRange: [ 0.2, 1 ],
+		geometryParams: {
+			renderBackfaces: true,
+			sprayRateMultiplier: 3,
+			particleSizeVariance: 0.5,
+			particlePositionVariance: 0.05,
+			particleRotationVariance: 180
+		}
+	} );
+
+	const expectedNormal = [ 0.112367786, 0.465316981, -0.8779826 ];
+	const expectedTangent = [ 0.9837409, 0.0724814, 0.164317176, -1 ];
+	for ( let axis = 0; axis < expectedNormal.length; axis += 1 ) {
+		assertClose( geometry.normals[ axis ], expectedNormal[ axis ], 2e-6 );
+	}
+	for ( let axis = 0; axis < expectedTangent.length; axis += 1 ) {
+		assertClose( geometry.tangents[ axis ], expectedTangent[ axis ], 2e-6 );
+	}
+
+} );
+
 test( 'restarts Midpoint particle salts with each preview rebuild', () => {
 
 	const stroke = createStroke();

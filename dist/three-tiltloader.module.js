@@ -9161,7 +9161,7 @@ function $6fafcf15f6b61d60$var$generateSprayParticleGeometry(stroke, options, ou
     const descriptorOpacity = $6fafcf15f6b61d60$var$normalizeDescriptorOpacity(options.geometryParams?.opacity);
     const sizeVariance = $6fafcf15f6b61d60$var$normalizeNonNegative(options.geometryParams?.particleSizeVariance);
     const positionVariance = $6fafcf15f6b61d60$var$normalizeNonNegative(options.geometryParams?.particlePositionVariance);
-    const rotationVarianceRadians = $6fafcf15f6b61d60$var$normalizeNonNegative(options.geometryParams?.particleRotationVariance) * Math.PI / 180;
+    const rotationVarianceDegrees = Math.fround($6fafcf15f6b61d60$var$normalizeNonNegative(options.geometryParams?.particleRotationVariance));
     const sizeRatioX = $6fafcf15f6b61d60$var$normalizePositive(options.geometryParams?.particleSizeRatio?.[0], 1);
     const sizeRatioY = $6fafcf15f6b61d60$var$normalizePositive(options.geometryParams?.particleSizeRatio?.[1], 1);
     const randomizeAlpha = options.geometryParams?.particleRandomizeAlpha === true;
@@ -9172,11 +9172,6 @@ function $6fafcf15f6b61d60$var$generateSprayParticleGeometry(stroke, options, ou
         0
     ];
     const pointerUp = [
-        0,
-        0,
-        0
-    ];
-    const preferredRight = [
         0,
         0,
         0
@@ -9206,12 +9201,17 @@ function $6fafcf15f6b61d60$var$generateSprayParticleGeometry(stroke, options, ou
         0,
         0
     ];
-    const randomOffset = [
+    const sourceLastSpawn = [
         0,
         0,
         0
     ];
-    const center = [
+    const sourceCenter = [
+        0,
+        0,
+        0
+    ];
+    const sourceRandomOffset = [
         0,
         0,
         0
@@ -9226,43 +9226,51 @@ function $6fafcf15f6b61d60$var$generateSprayParticleGeometry(stroke, options, ou
         const previousPoint = stroke.controlPoints[pointIndex - 1];
         const point = stroke.controlPoints[pointIndex];
         const pressure = hasLifetime ? out.geometrySmoothedPressures[pointIndex] : point.pressure;
-        segmentDirection[0] = point.position[0] - previousPoint.position[0];
-        segmentDirection[1] = point.position[1] - previousPoint.position[1];
-        segmentDirection[2] = point.position[2] - previousPoint.position[2];
-        const segmentLength = Math.hypot(segmentDirection[0], segmentDirection[1], segmentDirection[2]);
+        $6fafcf15f6b61d60$var$writeOpenBrushFloatDirection(previousPoint.position, point.position, segmentDirection);
+        const segmentLength = Math.hypot(point.position[0] - previousPoint.position[0], point.position[1] - previousPoint.position[1], point.position[2] - previousPoint.position[2]);
         if (segmentLength <= $6fafcf15f6b61d60$var$EPSILON) continue;
-        segmentDirection[0] /= segmentLength;
-        segmentDirection[1] /= segmentLength;
-        segmentDirection[2] /= segmentLength;
         const pressuredSize = localBrushSize * $6fafcf15f6b61d60$var$getPressureSizeMultiplier(pressure, pressureSizeMin);
         const spawnInterval = pressuredSize / particleRate;
+        const sourcePressureSizeMin = Math.fround(pressureSizeMin);
+        const sourcePressure = Math.fround($6fafcf15f6b61d60$var$clamp01(pressure));
+        const sourcePressureMultiplier = Math.fround(sourcePressureSizeMin + Math.fround(Math.fround(1 - sourcePressureSizeMin) * sourcePressure));
+        const sourcePressuredSize = Math.fround(Math.fround(localBrushSize * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER) * sourcePressureMultiplier);
+        const sourceSpawnInterval = Math.fround(sourcePressuredSize / Math.fround(particleRate));
         const segmentQuadCount = spawnInterval > $6fafcf15f6b61d60$var$EPSILON ? Math.min(500, Math.floor(segmentLength / spawnInterval)) : 0;
         if (segmentQuadCount === 0) continue;
-        $6fafcf15f6b61d60$var$rotateByQuaternion(point.orientation, $6fafcf15f6b61d60$var$VEC_FORWARD, pointerForward);
-        $6fafcf15f6b61d60$var$rotateByQuaternion(point.orientation, $6fafcf15f6b61d60$var$VEC_UP, pointerUp);
-        preferredRight[0] = 0;
-        preferredRight[1] = 0;
-        preferredRight[2] = 0;
-        $6fafcf15f6b61d60$var$computeSurfaceFrame(preferredRight, segmentDirection, pointerForward, pointerUp, true, frameRight, frameNormal, true);
+        $6fafcf15f6b61d60$var$rotateByUnityQuaternionFloat(point.orientation, $6fafcf15f6b61d60$var$VEC_FORWARD, pointerForward);
+        $6fafcf15f6b61d60$var$rotateByUnityQuaternionFloat(point.orientation, $6fafcf15f6b61d60$var$VEC_UP, pointerUp);
+        $6fafcf15f6b61d60$var$computeOpenBrushSprayFrame(segmentDirection, pointerForward, pointerUp, frameRight, frameNormal);
         const baseOpacity = $6fafcf15f6b61d60$var$getPressureOpacityMultiplier(pressure, pressureOpacityMin, pressureOpacityMax) * descriptorOpacity;
+        sourceLastSpawn[0] = Math.fround(previousPoint.position[0] * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER);
+        sourceLastSpawn[1] = Math.fround(previousPoint.position[1] * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER);
+        sourceLastSpawn[2] = Math.fround(previousPoint.position[2] * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER);
         for(let segmentQuad = 0; segmentQuad < segmentQuadCount; segmentQuad += 1){
             const salt = hasLifetime ? 10 * ((pointIndex + knotIndexOffset) * 5 + segmentQuad) : 10 * ((pointIndex + knotIndexOffset) * 12 + segmentQuad % 12);
-            const rotation = -($6fafcf15f6b61d60$var$statelessRandom01(stroke.seed, salt + 1) * 2 - 1) * rotationVarianceRadians;
-            $6fafcf15f6b61d60$var$rotateAroundAxis(frameRight, frameNormal, rotation, rotatedRight);
-            $6fafcf15f6b61d60$var$rotateAroundAxis(segmentDirection, frameNormal, rotation, rotatedFacing);
-            const size = pressuredSize * (1 + $6fafcf15f6b61d60$var$statelessRandom01(stroke.seed, salt) * sizeVariance);
-            center[0] = previousPoint.position[0] + segmentDirection[0] * spawnInterval * segmentQuad;
-            center[1] = previousPoint.position[1] + segmentDirection[1] * spawnInterval * segmentQuad;
-            center[2] = previousPoint.position[2] + segmentDirection[2] * spawnInterval * segmentQuad;
-            $6fafcf15f6b61d60$var$writeRandomInsideSphere(stroke.seed, salt + 2, randomOffset);
-            randomOffset[2] = -randomOffset[2];
-            center[0] += randomOffset[0] * size * positionVariance;
-            center[1] += randomOffset[1] * size * positionVariance;
-            center[2] += randomOffset[2] * size * positionVariance;
+            let rotation = Math.fround(-Math.fround(-rotationVarianceDegrees + Math.fround(Math.fround(rotationVarianceDegrees * 2) * $6fafcf15f6b61d60$var$statelessRandom01(stroke.seed, salt + 1))));
+            // Unity's native Quaternion.AngleAxis path advances this float-range
+            // result by one representable value before converting degrees. That bit
+            // matters when the rotated quad is written beside a large world offset:
+            // it can move FL - BL across a source-buffer rounding boundary.
+            rotation = $6fafcf15f6b61d60$var$nextFloatAwayFromZero(rotation);
+            $6fafcf15f6b61d60$var$rotateAroundUnityAxisFloat(frameRight, frameNormal, rotation, rotatedRight);
+            $6fafcf15f6b61d60$var$rotateAroundUnityAxisFloat(segmentDirection, frameNormal, rotation, rotatedFacing);
+            const sourceRandomSize = Math.fround(1 + Math.fround($6fafcf15f6b61d60$var$statelessRandom01(stroke.seed, salt) * Math.fround(sizeVariance)));
+            const sourceSize = Math.fround(sourcePressuredSize * sourceRandomSize);
+            $6fafcf15f6b61d60$var$writeRandomInsideSphereUnityFloat(stroke.seed, salt + 2, sourceRandomOffset);
+            const sourcePositionScale = Math.fround(sourceSize * Math.fround(positionVariance));
+            sourceCenter[0] = Math.fround(sourceLastSpawn[0] + Math.fround(sourceRandomOffset[0] * sourcePositionScale));
+            sourceCenter[1] = Math.fround(sourceLastSpawn[1] + Math.fround(sourceRandomOffset[1] * sourcePositionScale));
+            sourceCenter[2] = Math.fround(sourceLastSpawn[2] + Math.fround(sourceRandomOffset[2] * sourcePositionScale));
+            const sourceForwardScale = Math.fround(Math.fround(sourceSize * Math.fround(sizeRatioX)) * 0.5);
+            const sourceRightScale = Math.fround(Math.fround(sourceSize * Math.fround(sizeRatioY)) * 0.5);
             const opacity = randomizeAlpha ? $6fafcf15f6b61d60$var$statelessRandom01(stroke.seed, salt + 5) : baseOpacity;
             const atlasCell = usesAtlas ? Math.min(3, Math.floor($6fafcf15f6b61d60$var$statelessRandom01(stroke.seed, salt + 6) * 4)) : 0;
-            $6fafcf15f6b61d60$var$writeSprayParticleQuad(positions, normals, tangents, colors, uvs, out.uv1s, indices, bounds, quadIndex, center, rotatedFacing, rotatedRight, frameNormal, size * sizeRatioX * 0.5, size * sizeRatioY * 0.5, stroke.color, opacity, usesAtlas, atlasCell, hasLifetime, hasBackfaces, options.deterministicBirthTime === true ? 0 : point.timestampMs * 0.001 + $6fafcf15f6b61d60$var$normalizeFinite(options.particleBirthTimeOffsetSeconds));
+            $6fafcf15f6b61d60$var$writeSprayParticleQuad(positions, normals, tangents, colors, uvs, out.uv1s, indices, bounds, quadIndex, rotatedFacing, rotatedRight, frameNormal, stroke.color, opacity, usesAtlas, atlasCell, hasLifetime, hasBackfaces, sourceCenter, sourceForwardScale, sourceRightScale, options.deterministicBirthTime === true ? 0 : point.timestampMs * 0.001 + $6fafcf15f6b61d60$var$normalizeFinite(options.particleBirthTimeOffsetSeconds));
             quadIndex += 1;
+            sourceLastSpawn[0] = Math.fround(sourceLastSpawn[0] + Math.fround(segmentDirection[0] * sourceSpawnInterval));
+            sourceLastSpawn[1] = Math.fround(sourceLastSpawn[1] + Math.fround(segmentDirection[1] * sourceSpawnInterval));
+            sourceLastSpawn[2] = Math.fround(sourceLastSpawn[2] + Math.fround(segmentDirection[2] * sourceSpawnInterval));
         }
     }
     out.family = "particle";
@@ -9530,12 +9538,18 @@ function $6fafcf15f6b61d60$var$writeRandomUnitSphere(seed, salt, out) {
     out[1] = radius * Math.sin(angle);
     out[2] = z;
 }
-function $6fafcf15f6b61d60$var$writeRandomInsideSphere(seed, salt, out) {
-    $6fafcf15f6b61d60$var$writeRandomUnitSphere(seed, salt, out);
-    const radius = Math.cbrt($6fafcf15f6b61d60$var$statelessRandom01(seed, salt + 2));
-    out[0] *= radius;
-    out[1] *= radius;
-    out[2] *= radius;
+function $6fafcf15f6b61d60$var$writeRandomInsideSphereUnityFloat(seed, salt, out) {
+    const u = Math.fround(-1 + Math.fround(2 * $6fafcf15f6b61d60$var$statelessRandom01(seed, salt)));
+    const twoPi = Math.fround(2 * Math.fround(Math.PI));
+    const theta = Math.fround(twoPi * $6fafcf15f6b61d60$var$statelessRandom01(seed, salt + 1));
+    const circleRadius = Math.fround(Math.sqrt(Math.fround(1 - Math.fround(u * u))));
+    const sphereX = Math.fround(circleRadius * Math.fround(Math.cos(theta)));
+    const sphereY = Math.fround(circleRadius * Math.fround(Math.sin(theta)));
+    const volumeRadius = Math.fround(Math.pow($6fafcf15f6b61d60$var$statelessRandom01(seed, salt + 2), Math.fround(1 / Math.fround(3))));
+    out[0] = Math.fround(volumeRadius * sphereX);
+    out[1] = Math.fround(volumeRadius * sphereY);
+    // Convert the Unity-space random vector to the reflected Three.js basis.
+    out[2] = Math.fround(-Math.fround(volumeRadius * u));
 }
 function $6fafcf15f6b61d60$var$rotateAroundAxis(input, axis, angle, out) {
     const cosine = Math.cos(angle);
@@ -9905,16 +9919,17 @@ function $6fafcf15f6b61d60$var$clamp01(value) {
     if (value > 1) return 1;
     return value;
 }
-function $6fafcf15f6b61d60$var$writeSprayParticleQuad(positions, normals, tangents, colors, uvs, uv1s, indices, bounds, quadIndex, center, facing, right, normal, forwardScale, rightScale, color, opacity, usesAtlas, atlasCell, hasLifetime, hasBackfaces, birthTimeSeconds) {
+function $6fafcf15f6b61d60$var$writeSprayParticleQuad(positions, normals, tangents, colors, uvs, uv1s, indices, bounds, quadIndex, facing, right, normal, color, opacity, usesAtlas, atlasCell, hasLifetime, hasBackfaces, sourceCenter, sourceForwardScale, sourceRightScale, birthTimeSeconds) {
     const vertexStride = hasBackfaces ? 2 : 1;
     const vertex = quadIndex * 4 * vertexStride;
     const atlasScale = usesAtlas ? 0.5 : 1;
     const atlasU = usesAtlas ? atlasCell % 2 * 0.5 : 0;
     const atlasV = usesAtlas ? Math.floor(atlasCell / 2) * 0.5 : 0;
-    $6fafcf15f6b61d60$var$writeSprayParticleVertex(positions, normals, tangents, colors, uvs, uv1s, bounds, vertex, center, facing, right, normal, -forwardScale, rightScale, color, opacity, atlasU, atlasV + atlasScale, hasLifetime, birthTimeSeconds);
-    $6fafcf15f6b61d60$var$writeSprayParticleVertex(positions, normals, tangents, colors, uvs, uv1s, bounds, vertex + vertexStride, center, facing, right, normal, -forwardScale, -rightScale, color, opacity, atlasU, atlasV, hasLifetime, birthTimeSeconds);
-    $6fafcf15f6b61d60$var$writeSprayParticleVertex(positions, normals, tangents, colors, uvs, uv1s, bounds, vertex + vertexStride * 2, center, facing, right, normal, forwardScale, rightScale, color, opacity, atlasU + atlasScale, atlasV + atlasScale, hasLifetime, birthTimeSeconds);
-    $6fafcf15f6b61d60$var$writeSprayParticleVertex(positions, normals, tangents, colors, uvs, uv1s, bounds, vertex + vertexStride * 3, center, facing, right, normal, forwardScale, -rightScale, color, opacity, atlasU + atlasScale, atlasV, hasLifetime, birthTimeSeconds);
+    $6fafcf15f6b61d60$var$writeSprayParticleVertex(positions, normals, tangents, colors, uvs, uv1s, bounds, vertex, facing, right, normal, sourceCenter, -sourceForwardScale, sourceRightScale, color, opacity, atlasU, atlasV + atlasScale, hasLifetime, birthTimeSeconds);
+    $6fafcf15f6b61d60$var$writeSprayParticleVertex(positions, normals, tangents, colors, uvs, uv1s, bounds, vertex + vertexStride, facing, right, normal, sourceCenter, -sourceForwardScale, -sourceRightScale, color, opacity, atlasU, atlasV, hasLifetime, birthTimeSeconds);
+    $6fafcf15f6b61d60$var$writeSprayParticleVertex(positions, normals, tangents, colors, uvs, uv1s, bounds, vertex + vertexStride * 2, facing, right, normal, sourceCenter, sourceForwardScale, sourceRightScale, color, opacity, atlasU + atlasScale, atlasV + atlasScale, hasLifetime, birthTimeSeconds);
+    $6fafcf15f6b61d60$var$writeSprayParticleVertex(positions, normals, tangents, colors, uvs, uv1s, bounds, vertex + vertexStride * 3, facing, right, normal, sourceCenter, sourceForwardScale, -sourceRightScale, color, opacity, atlasU + atlasScale, atlasV, hasLifetime, birthTimeSeconds);
+    $6fafcf15f6b61d60$var$writeOpenBrushSprayTangents(tangents, normals, vertex, vertexStride, facing, right, sourceCenter, sourceForwardScale, sourceRightScale);
     if (hasBackfaces) for(let local = 0; local < 4; local += 1){
         const frontVertex = vertex + local * 2;
         const backVertex = frontVertex + 1;
@@ -9944,11 +9959,51 @@ function $6fafcf15f6b61d60$var$writeSprayParticleQuad(positions, normals, tangen
         indices[indexOffset + 5] = vertex + 3;
     }
 }
-function $6fafcf15f6b61d60$var$writeSprayParticleVertex(positions, normals, tangents, colors, uvs, uv1s, bounds, vertex, center, facing, right, normal, forwardScale, rightScale, color, opacity, u, v, hasLifetime, birthTimeSeconds) {
+function $6fafcf15f6b61d60$var$writeOpenBrushSprayTangents(tangents, normals, vertex, vertexStride, facing, right, centerSource, forwardScale, rightScale) {
+    const forwardOffset = [
+        Math.fround(facing[0] * forwardScale),
+        Math.fround(facing[1] * forwardScale),
+        Math.fround(facing[2] * forwardScale)
+    ];
+    const rightOffset = [
+        Math.fround(right[0] * rightScale),
+        Math.fround(right[1] * rightScale),
+        Math.fround(right[2] * rightScale)
+    ];
+    const tangentSource = [
+        0,
+        0,
+        0
+    ];
+    for(let axis = 0; axis < 3; axis += 1){
+        const backLeft = Math.fround(Math.fround(centerSource[axis] - forwardOffset[axis]) - rightOffset[axis]);
+        const frontLeft = Math.fround(Math.fround(centerSource[axis] + forwardOffset[axis]) - rightOffset[axis]);
+        tangentSource[axis] = Math.fround(frontLeft - backLeft);
+    }
+    for(let local = 0; local < 4; local += 1)$6fafcf15f6b61d60$var$writeUnityFloatOrthonormalTangent(tangents, normals, vertex + local * vertexStride, tangentSource, -1);
+}
+function $6fafcf15f6b61d60$var$writeUnityFloatOrthonormalTangent(tangents, normals, vertex, source, handedness) {
+    const normalOffset = vertex * 3;
+    const normal = [
+        normals[normalOffset],
+        normals[normalOffset + 1],
+        normals[normalOffset + 2]
+    ];
+    const projection = $6fafcf15f6b61d60$var$dotUnityFloat(source, normal);
+    const tangent = [
+        Math.fround(source[0] - Math.fround(projection * normal[0])),
+        Math.fround(source[1] - Math.fround(projection * normal[1])),
+        Math.fround(source[2] - Math.fround(projection * normal[2]))
+    ];
+    $6fafcf15f6b61d60$var$normalizeUnityFloatVector(tangent);
+    $6fafcf15f6b61d60$var$writeTangent(tangents, vertex, tangent, handedness);
+}
+function $6fafcf15f6b61d60$var$writeSprayParticleVertex(positions, normals, tangents, colors, uvs, uv1s, bounds, vertex, facing, right, normal, sourceCenter, sourceForwardScale, sourceRightScale, color, opacity, u, v, hasLifetime, birthTimeSeconds) {
     const positionOffset = vertex * 3;
-    positions[positionOffset] = center[0] + facing[0] * forwardScale + right[0] * rightScale;
-    positions[positionOffset + 1] = center[1] + facing[1] * forwardScale + right[1] * rightScale;
-    positions[positionOffset + 2] = center[2] + facing[2] * forwardScale + right[2] * rightScale;
+    for(let axis = 0; axis < 3; axis += 1){
+        const sourcePosition = Math.fround(Math.fround(sourceCenter[axis] + Math.fround(facing[axis] * sourceForwardScale)) + Math.fround(right[axis] * sourceRightScale));
+        positions[positionOffset + axis] = sourcePosition / $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER;
+    }
     normals[positionOffset] = normal[0];
     normals[positionOffset + 1] = normal[1];
     normals[positionOffset + 2] = normal[2];
@@ -9959,9 +10014,9 @@ function $6fafcf15f6b61d60$var$writeSprayParticleVertex(positions, normals, tang
     uvs[uvOffset + 1] = 1 - v;
     if (hasLifetime) {
         const uv1Offset = vertex * 4;
-        uv1s[uv1Offset] = facing[0] * forwardScale + right[0] * rightScale;
-        uv1s[uv1Offset + 1] = facing[1] * forwardScale + right[1] * rightScale;
-        uv1s[uv1Offset + 2] = facing[2] * forwardScale + right[2] * rightScale;
+        uv1s[uv1Offset] = Math.fround(Math.fround(facing[0] * sourceForwardScale) + Math.fround(right[0] * sourceRightScale)) / $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER;
+        uv1s[uv1Offset + 1] = Math.fround(Math.fround(facing[1] * sourceForwardScale) + Math.fround(right[1] * sourceRightScale)) / $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER;
+        uv1s[uv1Offset + 2] = Math.fround(Math.fround(facing[2] * sourceForwardScale) + Math.fround(right[2] * sourceRightScale)) / $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER;
         uv1s[uv1Offset + 3] = birthTimeSeconds;
     }
     $6fafcf15f6b61d60$var$includeBounds(bounds, positions, vertex);
@@ -10183,6 +10238,108 @@ function $6fafcf15f6b61d60$var$normalizeInPlace(v) {
     out[0] *= invLength;
     out[1] *= invLength;
     out[2] *= invLength;
+}
+// Open Brush generates in decimetres with Unity's single-precision vector
+// operations. Particle frames recover those source-scale floats from the
+// metre-based shared API before reproducing the frame calculation.
+const $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER = 10;
+function $6fafcf15f6b61d60$var$writeOpenBrushFloatDirection(from, to, out) {
+    out[0] = Math.fround(Math.fround(to[0] * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER) - Math.fround(from[0] * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER));
+    out[1] = Math.fround(Math.fround(to[1] * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER) - Math.fround(from[1] * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER));
+    out[2] = Math.fround(Math.fround(to[2] * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER) - Math.fround(from[2] * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER));
+    $6fafcf15f6b61d60$var$normalizeUnityFloatVector(out);
+}
+function $6fafcf15f6b61d60$var$rotateByUnityQuaternionFloat(q, v, out) {
+    const x = Math.fround(q[0]);
+    const y = Math.fround(q[1]);
+    const z = Math.fround(q[2]);
+    const w = Math.fround(q[3]);
+    const x2 = Math.fround(x * 2);
+    const y2 = Math.fround(y * 2);
+    const z2 = Math.fround(z * 2);
+    const xx = Math.fround(x * x2);
+    const yy = Math.fround(y * y2);
+    const zz = Math.fround(z * z2);
+    const xy = Math.fround(x * y2);
+    const xz = Math.fround(x * z2);
+    const yz = Math.fround(y * z2);
+    const wx = Math.fround(w * x2);
+    const wy = Math.fround(w * y2);
+    const wz = Math.fround(w * z2);
+    out[0] = Math.fround(Math.fround(Math.fround(1 - Math.fround(yy + zz)) * v[0]) + Math.fround(Math.fround(xy - wz) * v[1]) + Math.fround(Math.fround(xz + wy) * v[2]));
+    out[1] = Math.fround(Math.fround(Math.fround(xy + wz) * v[0]) + Math.fround(Math.fround(1 - Math.fround(xx + zz)) * v[1]) + Math.fround(Math.fround(yz - wx) * v[2]));
+    out[2] = Math.fround(Math.fround(Math.fround(xz - wy) * v[0]) + Math.fround(Math.fround(yz + wx) * v[1]) + Math.fround(Math.fround(1 - Math.fround(xx + yy)) * v[2]));
+}
+function $6fafcf15f6b61d60$var$rotateAroundUnityAxisFloat(input, axis, angleDegrees, out) {
+    const normalizedAxis = [
+        axis[0],
+        axis[1],
+        axis[2]
+    ];
+    $6fafcf15f6b61d60$var$normalizeUnityFloatVector(normalizedAxis);
+    const halfRadians = Math.fround(Math.fround(angleDegrees * Math.fround(Math.PI / 180)) * 0.5);
+    const sine = Math.fround(Math.sin(halfRadians));
+    const rotation = [
+        Math.fround(normalizedAxis[0] * sine),
+        Math.fround(normalizedAxis[1] * sine),
+        Math.fround(normalizedAxis[2] * sine),
+        Math.fround(Math.cos(halfRadians))
+    ];
+    $6fafcf15f6b61d60$var$rotateByUnityQuaternionFloat(rotation, input, out);
+}
+function $6fafcf15f6b61d60$var$nextFloatAwayFromZero(value) {
+    if (value === 0 || !Number.isFinite(value)) return value;
+    const magnitude = Math.abs(value);
+    if (magnitude < 2 ** -126) return Math.fround(value + Math.sign(value) * 2 ** -149);
+    const ulp = 2 ** (Math.floor(Math.log2(magnitude)) - 23);
+    return Math.fround(value + Math.sign(value) * ulp);
+}
+function $6fafcf15f6b61d60$var$computeOpenBrushSprayFrame(tangent, pointerForward, pointerUp, outRight, outNormal) {
+    const rightFromForward = [
+        0,
+        0,
+        0
+    ];
+    const rightFromUp = [
+        0,
+        0,
+        0
+    ];
+    $6fafcf15f6b61d60$var$crossUnityFloat(pointerForward, tangent, rightFromForward);
+    $6fafcf15f6b61d60$var$crossUnityFloat(pointerUp, tangent, rightFromUp);
+    // A cross product changes sign under the Unity-to-Three reflection.
+    rightFromForward[0] = Math.fround(-rightFromForward[0]);
+    rightFromForward[1] = Math.fround(-rightFromForward[1]);
+    rightFromForward[2] = Math.fround(-rightFromForward[2]);
+    rightFromUp[0] = Math.fround(-rightFromUp[0]);
+    rightFromUp[1] = Math.fround(-rightFromUp[1]);
+    rightFromUp[2] = Math.fround(-rightFromUp[2]);
+    const upWeight = Math.fround(Math.abs($6fafcf15f6b61d60$var$dotUnityFloat(pointerForward, tangent)));
+    outRight[0] = Math.fround(rightFromForward[0] + Math.fround(rightFromUp[0] * upWeight));
+    outRight[1] = Math.fround(rightFromForward[1] + Math.fround(rightFromUp[1] * upWeight));
+    outRight[2] = Math.fround(rightFromForward[2] + Math.fround(rightFromUp[2] * upWeight));
+    $6fafcf15f6b61d60$var$normalizeUnityFloatVector(outRight);
+    $6fafcf15f6b61d60$var$crossUnityFloat(tangent, outRight, outNormal);
+    outNormal[0] = Math.fround(-outNormal[0]);
+    outNormal[1] = Math.fround(-outNormal[1]);
+    outNormal[2] = Math.fround(-outNormal[2]);
+}
+function $6fafcf15f6b61d60$var$crossUnityFloat(a, b, out) {
+    out[0] = Math.fround(Math.fround(a[1] * b[2]) - Math.fround(a[2] * b[1]));
+    out[1] = Math.fround(Math.fround(a[2] * b[0]) - Math.fround(a[0] * b[2]));
+    out[2] = Math.fround(Math.fround(a[0] * b[1]) - Math.fround(a[1] * b[0]));
+}
+function $6fafcf15f6b61d60$var$dotUnityFloat(a, b) {
+    return Math.fround(Math.fround(Math.fround(a[0] * b[0]) + Math.fround(a[1] * b[1])) + Math.fround(a[2] * b[2]));
+}
+function $6fafcf15f6b61d60$var$normalizeUnityFloatVector(value) {
+    const lengthSquared = Math.fround(Math.fround(Math.fround(value[0] * value[0]) + Math.fround(value[1] * value[1])) + Math.fround(value[2] * value[2]));
+    const length = Math.fround(Math.sqrt(lengthSquared));
+    if (length < $6fafcf15f6b61d60$var$EPSILON) return false;
+    value[0] = Math.fround(value[0] / length);
+    value[1] = Math.fround(value[1] / length);
+    value[2] = Math.fround(value[2] / length);
+    return true;
 }
 /**
  * Writes the unit central-difference tangent at a control point, falling back
