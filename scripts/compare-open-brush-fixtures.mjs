@@ -637,7 +637,12 @@ function compareFloatArray( actual, expected, tolerance ) {
 	let maximumErrorIndex = 0;
 	let firstMismatch = -1;
 	for ( let index = 0; index < actual.length; index += 1 ) {
-		const error = Math.abs( actual[ index ] - expected[ index ] );
+		// Unity mesh attributes are Float32 values. JsonUtility writes their
+		// shortest round-trippable decimal representation, which JavaScript
+		// otherwise parses as a Float64 value and can move a comparison across
+		// the tolerance boundary at larger magnitudes.
+		const expectedFloat = Math.fround( expected[ index ] );
+		const error = Math.abs( actual[ index ] - expectedFloat );
 		if ( ! Number.isFinite( error ) ) {
 			return {
 				status: 'non-finite',
@@ -662,12 +667,12 @@ function compareFloatArray( actual, expected, tolerance ) {
 		maximumError,
 		maximumErrorIndex,
 		actual: actual[ maximumErrorIndex ],
-		expected: expected[ maximumErrorIndex ]
+		expected: Math.fround( expected[ maximumErrorIndex ] )
 	};
 	if ( firstMismatch !== -1 ) {
 		result.firstMismatch = firstMismatch;
 		result.firstMismatchActual = actual[ firstMismatch ];
-		result.firstMismatchExpected = expected[ firstMismatch ];
+		result.firstMismatchExpected = Math.fround( expected[ firstMismatch ] );
 	}
 	return result;
 }
