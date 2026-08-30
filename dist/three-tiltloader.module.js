@@ -4470,6 +4470,7 @@ const $08377cc0b05604b7$export$8024ed36c08440c = {
             "renderBackfaces": true,
             "backfaceHueShift": 0,
             "tubeStoreRadiusInTexcoord0Z": false,
+            "ribbonStoreWidthInTexcoord0Z": true,
             "opacity": 1,
             "solidMinLengthMeters": 0.002,
             "audioReactive": true,
@@ -5514,7 +5515,8 @@ function $6fafcf15f6b61d60$export$96e734d2eaa5b48d(geometry) {
     return geometry.indices.length;
 }
 function $6fafcf15f6b61d60$var$generateRibbonGeometry(stroke, family, options, out) {
-    out.uv0Size = 2;
+    const storesRibbonWidth = options.geometryParams?.ribbonStoreWidthInTexcoord0Z === true;
+    out.uv0Size = storesRibbonWidth ? 3 : 2;
     const hasVectorOffset = options.geometryParams?.ribbonOffsetInTexcoord1 === true;
     const usesFlatGeometrySmoothing = options.generatorClass === "FlatGeometryBrush";
     out.uv1Size = hasVectorOffset ? 3 : 0;
@@ -5654,17 +5656,16 @@ function $6fafcf15f6b61d60$var$generateRibbonGeometry(stroke, family, options, o
             ]);
         }
         let size = localBrushSize * $6fafcf15f6b61d60$var$getPressureSizeMultiplier(ribbonSmoothedPressures[index], pressureSizeMin);
+        if (usesFlatGeometrySmoothing) size = Math.fround(Math.fround(localBrushSize * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER) * Math.fround($6fafcf15f6b61d60$var$getPressureSizeMultiplier(ribbonSmoothedPressures[index], pressureSizeMin))) / $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER;
         if (usesFlatGeometrySmoothing) {
             const tangentStart = index === 0 ? point.position : previousPoint.position;
             const tangentEnd = (index === 0 || options.geometryParams?.m11Compatibility !== true) && nextPointIndex !== index ? nextPoint.position : point.position;
-            tangent[0] = tangentEnd[0] - tangentStart[0];
-            tangent[1] = tangentEnd[1] - tangentStart[1];
-            tangent[2] = tangentEnd[2] - tangentStart[2];
-            if (!$6fafcf15f6b61d60$var$normalizeInPlace(tangent)) $6fafcf15f6b61d60$var$copyVec3(previousTangent, tangent);
-        } else $6fafcf15f6b61d60$var$writeCentralDifferenceTangent(stroke, index, previousTangent, tangent);
-        $6fafcf15f6b61d60$var$rotateByQuaternion(point.orientation, $6fafcf15f6b61d60$var$VEC_FORWARD, pointerForward);
-        $6fafcf15f6b61d60$var$rotateByQuaternion(point.orientation, $6fafcf15f6b61d60$var$VEC_UP, pointerUp);
-        $6fafcf15f6b61d60$var$computeSurfaceFrame(previousRight, tangent, pointerForward, pointerUp, index === 0 || startsFlatSection, right, normal);
+            $6fafcf15f6b61d60$var$writeOpenBrushFloatDirection(tangentStart, tangentEnd, tangent);
+            if (Math.hypot(tangent[0], tangent[1], tangent[2]) < $6fafcf15f6b61d60$var$EPSILON) $6fafcf15f6b61d60$var$copyVec3(previousTangent, tangent);
+        } else $6fafcf15f6b61d60$var$writeOpenBrushCentralDifferenceTangent(stroke, index, previousTangent, tangent);
+        $6fafcf15f6b61d60$var$rotateByUnityQuaternionFloat(point.orientation, $6fafcf15f6b61d60$var$VEC_FORWARD, pointerForward);
+        $6fafcf15f6b61d60$var$rotateByUnityQuaternionFloat(point.orientation, $6fafcf15f6b61d60$var$VEC_UP, pointerUp);
+        $6fafcf15f6b61d60$var$computeSurfaceFrameUnityFloat(previousRight, tangent, pointerForward, pointerUp, index === 0 || startsFlatSection, right, normal);
         if (usesFlatGeometrySmoothing && options.geometryParams?.m11Compatibility !== true && index > 0 && ribbonBreakBefore[index] === 0) {
             $6fafcf15f6b61d60$var$cross(previousRight, previousFlatNormal, previousFlatForward);
             flatEdge[0] = point.position[0] + 0.5 * size * right[0] - previousFlatCenter[0];
@@ -5727,16 +5728,21 @@ function $6fafcf15f6b61d60$var$generateRibbonGeometry(stroke, family, options, o
         }
         const leftVertex = index * 2;
         const rightVertex = leftVertex + 1;
-        $6fafcf15f6b61d60$var$writePosition(positions, leftVertex, [
-            center[0] - right[0] * width,
-            center[1] - right[1] * width,
-            center[2] - right[2] * width
-        ]);
-        $6fafcf15f6b61d60$var$writePosition(positions, rightVertex, [
-            center[0] + right[0] * width,
-            center[1] + right[1] * width,
-            center[2] + right[2] * width
-        ]);
+        if (usesFlatGeometrySmoothing) {
+            $6fafcf15f6b61d60$var$writeOpenBrushOffsetPosition(positions, leftVertex, center, right, -width);
+            $6fafcf15f6b61d60$var$writeOpenBrushOffsetPosition(positions, rightVertex, center, right, width);
+        } else {
+            $6fafcf15f6b61d60$var$writePosition(positions, leftVertex, [
+                center[0] - right[0] * width,
+                center[1] - right[1] * width,
+                center[2] - right[2] * width
+            ]);
+            $6fafcf15f6b61d60$var$writePosition(positions, rightVertex, [
+                center[0] + right[0] * width,
+                center[1] + right[1] * width,
+                center[2] + right[2] * width
+            ]);
+        }
         $6fafcf15f6b61d60$var$writeNormal(normals, leftVertex, normal);
         $6fafcf15f6b61d60$var$writeNormal(normals, rightVertex, normal);
         $6fafcf15f6b61d60$var$writeTangent(tangents, leftVertex, tangent, 1);
@@ -5750,7 +5756,9 @@ function $6fafcf15f6b61d60$var$generateRibbonGeometry(stroke, family, options, o
         const sectionLength = ribbonSectionLengths[index];
         let u = usesDistanceUvs ? sectionRandom + runningLength / Math.max(localBrushSize, $6fafcf15f6b61d60$var$EPSILON) * tileRate : sectionLength > $6fafcf15f6b61d60$var$EPSILON ? runningLength / sectionLength : 0;
         if (usesFlatGeometrySmoothing && usesDistanceUvs && index > 0 && ribbonBreakBefore[index] === 0) {
-            flatDistanceU += tileRate * $6fafcf15f6b61d60$var$distanceBetweenControlPoints(previousPoint, point) / Math.max(size, $6fafcf15f6b61d60$var$EPSILON);
+            const distanceSource = $6fafcf15f6b61d60$var$distanceBetweenOpenBrushPoints(previousPoint.position, point.position);
+            const sizeSource = Math.max(Math.fround(size * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER), $6fafcf15f6b61d60$var$EPSILON);
+            flatDistanceU = Math.fround(Math.fround(flatDistanceU) + Math.fround(Math.fround(tileRate) * Math.fround(distanceSource / sizeSource)));
             u = flatDistanceU;
         }
         if (usesFlatGeometrySmoothing) {
@@ -5870,10 +5878,25 @@ function $6fafcf15f6b61d60$var$generateRibbonGeometry(stroke, family, options, o
         finalVertexCount = compacted.vertexCount;
         finalIndexCount = compacted.indexCount;
     }
+    if (storesRibbonWidth && usesQuadStripTriangleSoup) $6fafcf15f6b61d60$var$writeQuadStripPackedWidthUvs(out, finalVertexCount, hasBackfaces);
     out.family = family;
     out.vertexCount = finalVertexCount;
     out.indexCount = finalIndexCount;
     return reallocated;
+}
+function $6fafcf15f6b61d60$var$writeQuadStripPackedWidthUvs(out, vertexCount, hasBackfaces) {
+    const verticesPerSolid = hasBackfaces ? 12 : 6;
+    for(let solidVertex = 0; solidVertex < vertexCount; solidVertex += verticesPerSolid){
+        const width = $6fafcf15f6b61d60$var$distanceBetweenPositionVertices(out.positions, solidVertex, solidVertex + 1);
+        for(let corner = 0; corner < verticesPerSolid; corner += 1){
+            const vertex = solidVertex + corner;
+            const uvOffset = vertex * 2;
+            const packedOffset = vertex * 3;
+            out.packedUvs[packedOffset] = out.uvs[uvOffset];
+            out.packedUvs[packedOffset + 1] = out.uvs[uvOffset + 1];
+            out.packedUvs[packedOffset + 2] = width;
+        }
+    }
 }
 /** Repack point-pair scratch into GeometryBrush's shared indexed strip layout. */ function $6fafcf15f6b61d60$var$compactFlatGeometry(out, breakBefore, pointCount, hasBackfaces, hasVectorOffset) {
     const sourceFrontVertexCount = pointCount * 2;
@@ -6204,6 +6227,46 @@ function $6fafcf15f6b61d60$var$applyQuadStripPositionQuads(out, stroke, options,
         0,
         0
     ];
+    const centerSource = [
+        0,
+        0,
+        0
+    ];
+    const rightSource = [
+        0,
+        0,
+        0
+    ];
+    const previousCenterSource = [
+        0,
+        0,
+        0
+    ];
+    const previousForwardSource = [
+        0,
+        0,
+        0
+    ];
+    const previousRightSource = [
+        0,
+        0,
+        0
+    ];
+    const edgeSource = [
+        0,
+        0,
+        0
+    ];
+    const preferredForwardSource = [
+        0,
+        0,
+        0
+    ];
+    const crossSource = [
+        0,
+        0,
+        0
+    ];
     const pressureSizeMin = $6fafcf15f6b61d60$var$normalizePressureSizeMin(options.pressureSizeRange?.[0]);
     const pressureOpacityMin = $6fafcf15f6b61d60$var$normalizePressureOpacityMin(options.pressureOpacityRange);
     const pressureOpacityMax = $6fafcf15f6b61d60$var$normalizePressureOpacityMax(options.pressureOpacityRange);
@@ -6224,31 +6287,37 @@ function $6fafcf15f6b61d60$var$applyQuadStripPositionQuads(out, stroke, options,
         if (sectionState === 1) sectionSolidCount = 0;
         const previousPoint = stroke.controlPoints[lastSpawnPointIndex];
         const point = stroke.controlPoints[pointIndex];
-        tangent[0] = point.position[0] - previousPoint.position[0];
-        tangent[1] = point.position[1] - previousPoint.position[1];
-        tangent[2] = point.position[2] - previousPoint.position[2];
-        const moveLength = Math.hypot(tangent[0], tangent[1], tangent[2]);
-        if (!$6fafcf15f6b61d60$var$normalizeInPlace(tangent)) continue;
-        $6fafcf15f6b61d60$var$rotateByQuaternion(point.orientation, $6fafcf15f6b61d60$var$VEC_FORWARD, pointerForward);
-        $6fafcf15f6b61d60$var$rotateByQuaternion(point.orientation, $6fafcf15f6b61d60$var$VEC_UP, pointerUp);
-        $6fafcf15f6b61d60$var$computeSurfaceFrame(previousRight, tangent, pointerForward, pointerUp, solid === 0, right, normal, true, options.geometryParams?.backIsInvisible === true);
+        const moveLengthSource = $6fafcf15f6b61d60$var$distanceBetweenOpenBrushPoints(previousPoint.position, point.position);
+        const moveLength = $6fafcf15f6b61d60$var$distanceBetweenControlPoints(previousPoint, point);
+        $6fafcf15f6b61d60$var$writeOpenBrushFloatDirection(previousPoint.position, point.position, tangent);
+        if (Math.hypot(tangent[0], tangent[1], tangent[2]) < $6fafcf15f6b61d60$var$EPSILON) continue;
+        $6fafcf15f6b61d60$var$rotateByUnityQuaternionFloat(point.orientation, $6fafcf15f6b61d60$var$VEC_FORWARD, pointerForward);
+        $6fafcf15f6b61d60$var$rotateByUnityQuaternionFloat(point.orientation, $6fafcf15f6b61d60$var$VEC_UP, pointerUp);
+        $6fafcf15f6b61d60$var$computeSurfaceFrameUnityFloat(previousRight, tangent, pointerForward, pointerUp, solid === 0, right, normal, true, options.geometryParams?.backIsInvisible === true);
         const sourceSize = localBrushSize * $6fafcf15f6b61d60$var$getPressureSizeMultiplier(out.ribbonSmoothedPressures[pointIndex], pressureSizeMin);
-        const spawnInterval = 0.0015 + sourceSize * 0.2;
-        const generatesNewSolid = moveLength >= spawnInterval;
-        if (!generatesNewSolid && $6fafcf15f6b61d60$var$normalizeInPlace(lastGeneratedFacing)) $6fafcf15f6b61d60$var$slerpUnitVectors(lastGeneratedFacing, tangent, moveLength / spawnInterval, positionedFacing);
+        const sourceSizeSource = Math.fround(sourceSize * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER);
+        const spawnIntervalSource = Math.fround(Math.fround(0.0015 * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER) + Math.fround(sourceSizeSource * 0.2));
+        const generatesNewSolid = moveLengthSource >= spawnIntervalSource;
+        if (!generatesNewSolid && $6fafcf15f6b61d60$var$normalizeUnityFloatVector(lastGeneratedFacing)) $6fafcf15f6b61d60$var$slerpUnityFloatUnitVectors(lastGeneratedFacing, tangent, Math.fround(moveLengthSource / spawnIntervalSource), positionedFacing);
         else $6fafcf15f6b61d60$var$copyVec3(tangent, positionedFacing);
-        let size = sourceSize - lastSizeShrink;
-        center[0] = (previousPoint.position[0] + point.position[0]) * 0.5;
-        center[1] = (previousPoint.position[1] + point.position[1]) * 0.5;
-        center[2] = (previousPoint.position[2] + point.position[2]) * 0.5;
-        halfForward[0] = positionedFacing[0] * moveLength * 0.5;
-        halfForward[1] = positionedFacing[1] * moveLength * 0.5;
-        halfForward[2] = positionedFacing[2] * moveLength * 0.5;
-        halfRight[0] = right[0] * size * 0.5;
-        halfRight[1] = right[1] * size * 0.5;
-        halfRight[2] = right[2] * size * 0.5;
+        let size = Math.fround(sourceSizeSource - Math.fround(lastSizeShrink * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER)) / $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER;
+        for(let axis = 0; axis < 3; axis += 1){
+            const previousSource = Math.fround(previousPoint.position[axis] * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER);
+            const pointSource = Math.fround(point.position[axis] * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER);
+            center[axis] = Math.fround(Math.fround(previousSource + pointSource) * 0.5) / $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER;
+            halfForward[axis] = Math.fround(Math.fround(positionedFacing[axis] * moveLengthSource) * 0.5) / $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER;
+            halfRight[axis] = Math.fround(Math.fround(right[axis] * Math.fround(size * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER)) * 0.5) / $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER;
+        }
         let sizeShrink = lastSizeShrink;
-        if (sectionState !== 1 && sectionSolidCount >= 1 && previousHalfForward[0] * (center[0] - previousPoint.position[0]) + previousHalfForward[1] * (center[1] - previousPoint.position[1]) + previousHalfForward[2] * (center[2] - previousPoint.position[2]) <= 0) {
+        for(let axis = 0; axis < 3; axis += 1){
+            centerSource[axis] = Math.fround(center[axis] * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER);
+            rightSource[axis] = Math.fround(halfRight[axis] * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER);
+            previousCenterSource[axis] = Math.fround(previousCenter[axis] * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER);
+            previousForwardSource[axis] = Math.fround(previousHalfForward[axis] * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER);
+            previousRightSource[axis] = Math.fround(previousHalfRight[axis] * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER);
+            preferredForwardSource[axis] = Math.fround(centerSource[axis] - Math.fround(previousPoint.position[axis] * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER));
+        }
+        if (sectionState !== 1 && sectionSolidCount >= 1 && $6fafcf15f6b61d60$var$dotUnityFloat(previousForwardSource, preferredForwardSource) <= 0) {
             // Open Brush tests reversal against the last committed quad forward,
             // which may have been redirected by width clipping. Consecutive control
             // point directions alone miss this break after a tight turn.
@@ -6257,47 +6326,32 @@ function $6fafcf15f6b61d60$var$applyQuadStripPositionQuads(out, stroke, options,
             sectionSolidCount = 0;
         }
         if (sectionSolidCount >= 1) {
-            const rightEdgeX = center[0] + halfRight[0] - previousCenter[0];
-            const rightEdgeY = center[1] + halfRight[1] - previousCenter[1];
-            const rightEdgeZ = center[2] + halfRight[2] - previousCenter[2];
-            const leftEdgeX = center[0] - halfRight[0] - previousCenter[0];
-            const leftEdgeY = center[1] - halfRight[1] - previousCenter[1];
-            const leftEdgeZ = center[2] - halfRight[2] - previousCenter[2];
-            const dotRight = previousHalfForward[0] * rightEdgeX + previousHalfForward[1] * rightEdgeY + previousHalfForward[2] * rightEdgeZ;
-            const dotLeft = previousHalfForward[0] * leftEdgeX + previousHalfForward[1] * leftEdgeY + previousHalfForward[2] * leftEdgeZ;
+            for(let axis = 0; axis < 3; axis += 1)edgeSource[axis] = Math.fround(Math.fround(centerSource[axis] + rightSource[axis]) - previousCenterSource[axis]);
+            const dotRight = $6fafcf15f6b61d60$var$dotUnityFloat(previousForwardSource, edgeSource);
+            for(let axis = 0; axis < 3; axis += 1)edgeSource[axis] = Math.fround(Math.fround(centerSource[axis] - rightSource[axis]) - previousCenterSource[axis]);
+            const dotLeft = $6fafcf15f6b61d60$var$dotUnityFloat(previousForwardSource, edgeSource);
             if (dotLeft < 0 && dotRight > 0 || dotLeft > 0 && dotRight < 0) {
-                const previousLeftX = previousCenter[0] - previousHalfRight[0];
-                const previousLeftY = previousCenter[1] - previousHalfRight[1];
-                const previousLeftZ = previousCenter[2] - previousHalfRight[2];
-                const previousRightX = previousCenter[0] + previousHalfRight[0];
-                const previousRightY = previousCenter[1] + previousHalfRight[1];
-                const previousRightZ = previousCenter[2] + previousHalfRight[2];
-                if (dotLeft < 0) {
-                    halfRight[0] = center[0] - previousLeftX;
-                    halfRight[1] = center[1] - previousLeftY;
-                    halfRight[2] = center[2] - previousLeftZ;
-                } else {
-                    halfRight[0] = previousRightX - center[0];
-                    halfRight[1] = previousRightY - center[1];
-                    halfRight[2] = previousRightZ - center[2];
+                for(let axis = 0; axis < 3; axis += 1){
+                    const endpoint = dotLeft < 0 ? Math.fround(previousCenterSource[axis] - previousRightSource[axis]) : Math.fround(previousCenterSource[axis] + previousRightSource[axis]);
+                    rightSource[axis] = dotLeft < 0 ? Math.fround(centerSource[axis] - endpoint) : Math.fround(endpoint - centerSource[axis]);
+                    halfRight[axis] = rightSource[axis] / $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER;
                 }
-                size = 2 * Math.hypot(halfRight[0], halfRight[1], halfRight[2]);
-                sizeShrink = lastSizeShrink + (sourceSize - lastSizeShrink - size);
-                const preferredForwardX = center[0] - previousPoint.position[0];
-                const preferredForwardY = center[1] - previousPoint.position[1];
-                const preferredForwardZ = center[2] - previousPoint.position[2];
-                const rightLengthSquared = $6fafcf15f6b61d60$var$dotVec3(halfRight, halfRight);
-                const projection = rightLengthSquared > $6fafcf15f6b61d60$var$EPSILON ? (preferredForwardX * halfRight[0] + preferredForwardY * halfRight[1] + preferredForwardZ * halfRight[2]) / rightLengthSquared : 0;
-                halfForward[0] = preferredForwardX - projection * halfRight[0];
-                halfForward[1] = preferredForwardY - projection * halfRight[1];
-                halfForward[2] = preferredForwardZ - projection * halfRight[2];
-                if ($6fafcf15f6b61d60$var$normalizeInPlace(halfForward)) {
-                    const forwardScale = 0.5 * Math.hypot(center[0] - previousCenter[0], center[1] - previousCenter[1], center[2] - previousCenter[2]);
-                    halfForward[0] *= forwardScale;
-                    halfForward[1] *= forwardScale;
-                    halfForward[2] *= forwardScale;
+                const newSizeSource = Math.fround(2 * $6fafcf15f6b61d60$var$unityFloatMagnitude(rightSource));
+                size = newSizeSource / $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER;
+                const lastShrinkSource = Math.fround(lastSizeShrink * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER);
+                const sizeShrinkSource = Math.fround(lastShrinkSource + Math.fround(Math.fround(sourceSizeSource - lastShrinkSource) - newSizeSource));
+                sizeShrink = sizeShrinkSource / $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER;
+                $6fafcf15f6b61d60$var$crossUnityFloat(preferredForwardSource, rightSource, crossSource);
+                $6fafcf15f6b61d60$var$crossUnityFloat(rightSource, crossSource, preferredForwardSource);
+                if ($6fafcf15f6b61d60$var$normalizeUnityFloatVector(preferredForwardSource)) {
+                    for(let axis = 0; axis < 3; axis += 1)edgeSource[axis] = Math.fround(centerSource[axis] - previousCenterSource[axis]);
+                    const forwardScale = Math.fround($6fafcf15f6b61d60$var$unityFloatMagnitude(edgeSource) * 0.5);
+                    for(let axis = 0; axis < 3; axis += 1)halfForward[axis] = Math.fround(preferredForwardSource[axis] * forwardScale) / $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER;
                 }
-            } else sizeShrink = lastSizeShrink - Math.min(lastSizeShrink, moveLength);
+            } else if (generatesNewSolid) {
+                const lastShrinkSource = Math.fround(lastSizeShrink * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER);
+                sizeShrink = Math.fround(lastShrinkSource - Math.min(lastShrinkSource, moveLengthSource)) / $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER;
+            }
         }
         const vertex = solid * 6;
         $6fafcf15f6b61d60$var$writeQuadStripPositionQuad(out.positions, vertex, center, halfForward, halfRight);
@@ -6321,21 +6375,32 @@ function $6fafcf15f6b61d60$var$applyQuadStripPositionQuads(out, stroke, options,
         $6fafcf15f6b61d60$var$copyVec3(halfForward, previousHalfForward);
         $6fafcf15f6b61d60$var$copyVec3(halfRight, previousHalfRight);
         $6fafcf15f6b61d60$var$copyVec3(halfRight, previousRight);
-        $6fafcf15f6b61d60$var$normalizeInPlace(previousRight);
+        $6fafcf15f6b61d60$var$normalizeUnityFloatVector(previousRight);
         lastSizeShrink = sizeShrink;
-        if (generatesNewSolid) $6fafcf15f6b61d60$var$copyVec3(tangent, lastGeneratedFacing);
+        if (generatesNewSolid) {
+            $6fafcf15f6b61d60$var$copyVec3(tangent, lastGeneratedFacing);
+            lastSpawnPointIndex = pointIndex;
+        }
         sectionSolidCount += 1;
-        lastSpawnPointIndex = pointIndex;
         solid += 1;
     }
 }
 function $6fafcf15f6b61d60$var$writeQuadStripPositionQuad(target, vertex, center, halfForward, halfRight) {
-    $6fafcf15f6b61d60$var$writePositionComponents(target, vertex, center[0] - halfForward[0] - halfRight[0], center[1] - halfForward[1] - halfRight[1], center[2] - halfForward[2] - halfRight[2]);
-    $6fafcf15f6b61d60$var$writePositionComponents(target, vertex + 1, center[0] - halfForward[0] + halfRight[0], center[1] - halfForward[1] + halfRight[1], center[2] - halfForward[2] + halfRight[2]);
-    $6fafcf15f6b61d60$var$writePositionComponents(target, vertex + 2, center[0] + halfForward[0] - halfRight[0], center[1] + halfForward[1] - halfRight[1], center[2] + halfForward[2] - halfRight[2]);
+    $6fafcf15f6b61d60$var$writeQuadStripSourcePosition(target, vertex, center, halfForward, halfRight, -1, -1);
+    $6fafcf15f6b61d60$var$writeQuadStripSourcePosition(target, vertex + 1, center, halfForward, halfRight, -1, 1);
+    $6fafcf15f6b61d60$var$writeQuadStripSourcePosition(target, vertex + 2, center, halfForward, halfRight, 1, -1);
     $6fafcf15f6b61d60$var$copyPosition(target, vertex + 1, vertex + 3);
-    $6fafcf15f6b61d60$var$writePositionComponents(target, vertex + 4, center[0] + halfForward[0] + halfRight[0], center[1] + halfForward[1] + halfRight[1], center[2] + halfForward[2] + halfRight[2]);
+    $6fafcf15f6b61d60$var$writeQuadStripSourcePosition(target, vertex + 4, center, halfForward, halfRight, 1, 1);
     $6fafcf15f6b61d60$var$copyPosition(target, vertex + 2, vertex + 5);
+}
+function $6fafcf15f6b61d60$var$writeQuadStripSourcePosition(target, vertex, center, halfForward, halfRight, forwardSign, rightSign) {
+    const offset = vertex * 3;
+    for(let axis = 0; axis < 3; axis += 1){
+        const centerSource = Math.fround(center[axis] * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER);
+        const forwardSource = Math.fround(halfForward[axis] * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER);
+        const rightSource = Math.fround(halfRight[axis] * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER);
+        target[offset + axis] = Math.fround(Math.fround(centerSource + Math.fround(forwardSource * forwardSign)) + Math.fround(rightSource * rightSign));
+    }
 }
 function $6fafcf15f6b61d60$var$writePositionComponents(target, vertex, x, y, z) {
     const offset = vertex * 3;
@@ -6395,9 +6460,10 @@ function $6fafcf15f6b61d60$var$applyQuadStripMidpointFusion(out, stroke, options
         if (sectionState === 2 && !isTransientProvisional) continue;
         const previousPosition = stroke.controlPoints[lastSpawnPointIndex].position;
         const position = stroke.controlPoints[pointIndex].position;
-        const moveLength = Math.hypot(position[0] - previousPosition[0], position[1] - previousPosition[1], position[2] - previousPosition[2]);
-        const sourceSize = localBrushSize * $6fafcf15f6b61d60$var$getPressureSizeMultiplier(out.ribbonSmoothedPressures[pointIndex], pressureSizeMin);
-        const generatesNewSolid = moveLength >= 0.0015 + sourceSize * 0.2;
+        const moveLengthSource = $6fafcf15f6b61d60$var$distanceBetweenOpenBrushPoints(previousPosition, position);
+        const sourceSizeSource = Math.fround(Math.fround(localBrushSize * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER) * Math.fround($6fafcf15f6b61d60$var$getPressureSizeMultiplier(out.ribbonSmoothedPressures[pointIndex], pressureSizeMin)));
+        const spawnIntervalSource = Math.fround(Math.fround(0.0015 * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER) + Math.fround(sourceSizeSource * 0.2));
+        const generatesNewSolid = moveLengthSource >= spawnIntervalSource;
         if (sectionState === 1) {
             if (generatorClass === "QuadStripBrushDistanceUV") {
                 // Open Brush finalizes the old section before AppendLeadingQuad restores
@@ -6467,8 +6533,9 @@ function $6fafcf15f6b61d60$var$applyQuadStripMidpointFusion(out, stroke, options
             }
         }
     }
-    $6fafcf15f6b61d60$var$resetBounds(out.bounds);
     const vertexCount = frontSolidCount * 6 * (hasBackfaces ? 2 : 1);
+    for(let offset = 0; offset < vertexCount * 3; offset += 1)out.positions[offset] = out.positions[offset] / $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER;
+    $6fafcf15f6b61d60$var$resetBounds(out.bounds);
     for(let vertex = 0; vertex < vertexCount; vertex += 1)$6fafcf15f6b61d60$var$includeBounds(out.bounds, out.positions, vertex);
 }
 function $6fafcf15f6b61d60$var$restoreRawQuadStripSolidPositions(positions, rawPositions, solid, pointIndex) {
@@ -6520,7 +6587,9 @@ function $6fafcf15f6b61d60$var$updateQuadStripDistanceUvsForAppend(out, sectionS
             previousV0 = 1 - out.uvs[(previousVertex + 5) * 2 + 1];
             previousV1 = 1 - out.uvs[(previousVertex + 4) * 2 + 1];
         }
-        const nextU = previousU + tileRate * $6fafcf15f6b61d60$var$getQuadStripSolidLength(out.positions, solid) / size;
+        const lengthSource = $6fafcf15f6b61d60$var$getQuadStripSolidLength(out.positions, solid);
+        const sizeSource = Math.fround(size * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER);
+        const nextU = Math.fround(Math.fround(previousU) + Math.fround(Math.fround(tileRate) * Math.fround(lengthSource / sizeSource)));
         $6fafcf15f6b61d60$var$writeQuadStripUvQuad(out.uvs, vertex, previousU, nextU, previousV0, previousV1);
     }
 }
@@ -6603,9 +6672,9 @@ function $6fafcf15f6b61d60$var$updateQuadStripTangents(out, breakBefore, pointCo
         const vertex = solid * 6;
         // Open Brush computes S/T from source corners 0,1,2. After reflecting to
         // Three and canonicalizing winding, those records are corners 0,2,1.
-        $6fafcf15f6b61d60$var$computeTriangleSurfaceTangent(out.positions, out.uvs, vertex, vertex + 2, vertex + 1, surfaceTangent);
+        $6fafcf15f6b61d60$var$computeTriangleSurfaceTangent(out.positions, out.uvs, vertex, vertex + 2, vertex + 1, surfaceTangent, true);
         if (solid === firstSolid) {
-            $6fafcf15f6b61d60$var$computeTriangleSurfaceBitangent(out.positions, out.uvs, vertex, vertex + 2, vertex + 1, surfaceBitangent);
+            $6fafcf15f6b61d60$var$computeTriangleSurfaceBitangent(out.positions, out.uvs, vertex, vertex + 2, vertex + 1, surfaceBitangent, true);
             const normalOffset = vertex * 3;
             normal[0] = out.normals[normalOffset];
             normal[1] = out.normals[normalOffset + 1];
@@ -6634,7 +6703,7 @@ function $6fafcf15f6b61d60$var$applyQuadStripSectionOpacityFade(out, firstSolid,
     let distanceFromLeadingEdge = 0;
     for(let solid = endSolid - 1; solid >= firstSolid; solid -= 1){
         const leadingAlpha = $6fafcf15f6b61d60$var$quantizeColorByte(Math.min(1, distanceFromLeadingEdge / $6fafcf15f6b61d60$var$QUAD_STRIP_OPACITY_FADE_METERS));
-        distanceFromLeadingEdge += $6fafcf15f6b61d60$var$getQuadStripSolidLength(out.positions, solid);
+        distanceFromLeadingEdge += $6fafcf15f6b61d60$var$getQuadStripSolidLength(out.positions, solid) / $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER;
         const trailingAlpha = solid === firstSolid ? 0 : $6fafcf15f6b61d60$var$quantizeColorByte(Math.min(1, distanceFromLeadingEdge / $6fafcf15f6b61d60$var$QUAD_STRIP_OPACITY_FADE_METERS));
         const vertex = solid * 6;
         out.colors[vertex * 4 + 3] = trailingAlpha;
@@ -6647,15 +6716,18 @@ function $6fafcf15f6b61d60$var$applyQuadStripSectionOpacityFade(out, firstSolid,
 }
 function $6fafcf15f6b61d60$var$getQuadStripSolidLength(positions, solid) {
     const vertex = solid * 6;
-    return ($6fafcf15f6b61d60$var$distanceBetweenPositionVertices(positions, vertex, vertex + 2) + $6fafcf15f6b61d60$var$distanceBetweenPositionVertices(positions, vertex + 3, vertex + 4)) * 0.5;
+    return Math.fround(Math.fround($6fafcf15f6b61d60$var$distanceBetweenPositionVertices(positions, vertex, vertex + 2) + $6fafcf15f6b61d60$var$distanceBetweenPositionVertices(positions, vertex + 3, vertex + 4)) * 0.5);
 }
 function $6fafcf15f6b61d60$var$distanceBetweenPositionVertices(positions, firstVertex, secondVertex) {
     const first = firstVertex * 3;
     const second = secondVertex * 3;
-    return Math.hypot(positions[second] - positions[first], positions[second + 1] - positions[first + 1], positions[second + 2] - positions[first + 2]);
+    return $6fafcf15f6b61d60$var$unityFloatMagnitudeComponents(Math.fround(positions[second] - positions[first]), Math.fround(positions[second + 1] - positions[first + 1]), Math.fround(positions[second + 2] - positions[first + 2]));
 }
 function $6fafcf15f6b61d60$var$quantizeColorByte(value) {
     return Math.floor(value * 255) / 255;
+}
+function $6fafcf15f6b61d60$var$quantizeColorByteRounded(value) {
+    return Math.round(value * 255) / 255;
 }
 const $6fafcf15f6b61d60$var$QUAD_STRIP_OPACITY_FADE_METERS = 0.025;
 function $6fafcf15f6b61d60$var$averageQuadStripSolid(out, backSolid, middleSolid, frontSolid) {
@@ -6758,31 +6830,15 @@ function $6fafcf15f6b61d60$var$smoothFlatGeometryEdges(stroke, positions, halfRi
             const previousRightZ = halfRights[currentOffset + 2] * scale;
             const previousLeftVertex = previousIndex * 2;
             const previousRightVertex = previousLeftVertex + 1;
-            $6fafcf15f6b61d60$var$writePosition(positions, previousLeftVertex, [
-                previous[0] - previousRightX,
-                previous[1] - previousRightY,
-                previous[2] - previousRightZ
-            ]);
-            $6fafcf15f6b61d60$var$writePosition(positions, previousRightVertex, [
-                previous[0] + previousRightX,
-                previous[1] + previousRightY,
-                previous[2] + previousRightZ
-            ]);
+            $6fafcf15f6b61d60$var$writeOpenBrushComponentOffsetPosition(positions, previousLeftVertex, previous, -previousRightX, -previousRightY, -previousRightZ);
+            $6fafcf15f6b61d60$var$writeOpenBrushComponentOffsetPosition(positions, previousRightVertex, previous, previousRightX, previousRightY, previousRightZ);
             $6fafcf15f6b61d60$var$includeBounds(bounds, positions, previousLeftVertex);
             $6fafcf15f6b61d60$var$includeBounds(bounds, positions, previousRightVertex);
         }
         const leftVertex = index * 2;
         const rightVertex = leftVertex + 1;
-        $6fafcf15f6b61d60$var$writePosition(positions, leftVertex, [
-            center[0] - rightX,
-            center[1] - rightY,
-            center[2] - rightZ
-        ]);
-        $6fafcf15f6b61d60$var$writePosition(positions, rightVertex, [
-            center[0] + rightX,
-            center[1] + rightY,
-            center[2] + rightZ
-        ]);
+        $6fafcf15f6b61d60$var$writeOpenBrushComponentOffsetPosition(positions, leftVertex, center, -rightX, -rightY, -rightZ);
+        $6fafcf15f6b61d60$var$writeOpenBrushComponentOffsetPosition(positions, rightVertex, center, rightX, rightY, rightZ);
         $6fafcf15f6b61d60$var$includeBounds(bounds, positions, leftVertex);
         $6fafcf15f6b61d60$var$includeBounds(bounds, positions, rightVertex);
     }
@@ -6818,9 +6874,9 @@ function $6fafcf15f6b61d60$var$updateFlatGeometryTangents(positions, normals, ta
         const rightCurrent = leftCurrent + 1;
         $6fafcf15f6b61d60$var$computeTriangleSurfaceTangent(positions, uvs, rightPrevious, leftPrevious, leftCurrent, firstTriangle);
         $6fafcf15f6b61d60$var$computeTriangleSurfaceTangent(positions, uvs, rightPrevious, leftCurrent, rightCurrent, secondTriangle);
-        combined[0] = firstTriangle[0] + secondTriangle[0];
-        combined[1] = firstTriangle[1] + secondTriangle[1];
-        combined[2] = firstTriangle[2] + secondTriangle[2];
+        combined[0] = Math.fround(firstTriangle[0] + secondTriangle[0]);
+        combined[1] = Math.fround(firstTriangle[1] + secondTriangle[1]);
+        combined[2] = Math.fround(firstTriangle[2] + secondTriangle[2]);
         if (!previousHasGeometry) {
             $6fafcf15f6b61d60$var$writeOrthonormalTangent(tangents, normals, leftPrevious, combined);
             $6fafcf15f6b61d60$var$writeOrthonormalTangent(tangents, normals, rightPrevious, secondTriangle);
@@ -6831,75 +6887,83 @@ function $6fafcf15f6b61d60$var$updateFlatGeometryTangents(positions, normals, ta
         previousHasGeometry = true;
     }
 }
-function $6fafcf15f6b61d60$var$computeTriangleSurfaceTangent(positions, uvs, first, second, third, out) {
+function $6fafcf15f6b61d60$var$computeTriangleSurfaceTangent(positions, uvs, first, second, third, out, positionsAreOpenBrushUnits = false) {
     const firstPosition = first * 3;
     const secondPosition = second * 3;
     const thirdPosition = third * 3;
     const firstUv = first * 2;
     const secondUv = second * 2;
     const thirdUv = third * 2;
-    const x1 = positions[secondPosition] - positions[firstPosition];
-    const x2 = positions[thirdPosition] - positions[firstPosition];
-    const y1 = positions[secondPosition + 1] - positions[firstPosition + 1];
-    const y2 = positions[thirdPosition + 1] - positions[firstPosition + 1];
-    const z1 = positions[secondPosition + 2] - positions[firstPosition + 2];
-    const z2 = positions[thirdPosition + 2] - positions[firstPosition + 2];
-    const s1 = uvs[secondUv] - uvs[firstUv];
-    const s2 = uvs[thirdUv] - uvs[firstUv];
-    const t1 = uvs[secondUv + 1] - uvs[firstUv + 1];
-    const t2 = uvs[thirdUv + 1] - uvs[firstUv + 1];
-    const determinant = s1 * t2 - s2 * t1;
+    const scale = positionsAreOpenBrushUnits ? 1 : $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER;
+    const x1 = $6fafcf15f6b61d60$var$openBrushStoredPositionDifference(positions, secondPosition, firstPosition, scale);
+    const x2 = $6fafcf15f6b61d60$var$openBrushStoredPositionDifference(positions, thirdPosition, firstPosition, scale);
+    const y1 = $6fafcf15f6b61d60$var$openBrushStoredPositionDifference(positions, secondPosition + 1, firstPosition + 1, scale);
+    const y2 = $6fafcf15f6b61d60$var$openBrushStoredPositionDifference(positions, thirdPosition + 1, firstPosition + 1, scale);
+    const z1 = $6fafcf15f6b61d60$var$openBrushStoredPositionDifference(positions, secondPosition + 2, firstPosition + 2, scale);
+    const z2 = $6fafcf15f6b61d60$var$openBrushStoredPositionDifference(positions, thirdPosition + 2, firstPosition + 2, scale);
+    const s1 = Math.fround(uvs[secondUv] - uvs[firstUv]);
+    const s2 = Math.fround(uvs[thirdUv] - uvs[firstUv]);
+    const t1 = Math.fround(uvs[secondUv + 1] - uvs[firstUv + 1]);
+    const t2 = Math.fround(uvs[thirdUv + 1] - uvs[firstUv + 1]);
+    const determinant = Math.fround(Math.fround(s1 * t2) - Math.fround(s2 * t1));
     if (Math.abs(determinant) <= $6fafcf15f6b61d60$var$EPSILON) {
         out[0] = x2;
         out[1] = y2;
         out[2] = z2;
         return;
     }
-    const reciprocal = 1 / determinant;
-    out[0] = reciprocal * (t2 * x1 - t1 * x2);
-    out[1] = reciprocal * (t2 * y1 - t1 * y2);
-    out[2] = reciprocal * (t2 * z1 - t1 * z2);
+    const reciprocal = Math.fround(1 / determinant);
+    out[0] = Math.fround(reciprocal * Math.fround(Math.fround(t2 * x1) - Math.fround(t1 * x2)));
+    out[1] = Math.fround(reciprocal * Math.fround(Math.fround(t2 * y1) - Math.fround(t1 * y2)));
+    out[2] = Math.fround(reciprocal * Math.fround(Math.fround(t2 * z1) - Math.fround(t1 * z2)));
 }
-function $6fafcf15f6b61d60$var$computeTriangleSurfaceBitangent(positions, uvs, first, second, third, out) {
+function $6fafcf15f6b61d60$var$computeTriangleSurfaceBitangent(positions, uvs, first, second, third, out, positionsAreOpenBrushUnits = false) {
     const firstPosition = first * 3;
     const secondPosition = second * 3;
     const thirdPosition = third * 3;
     const firstUv = first * 2;
     const secondUv = second * 2;
     const thirdUv = third * 2;
-    const x1 = positions[secondPosition] - positions[firstPosition];
-    const x2 = positions[thirdPosition] - positions[firstPosition];
-    const y1 = positions[secondPosition + 1] - positions[firstPosition + 1];
-    const y2 = positions[thirdPosition + 1] - positions[firstPosition + 1];
-    const z1 = positions[secondPosition + 2] - positions[firstPosition + 2];
-    const z2 = positions[thirdPosition + 2] - positions[firstPosition + 2];
-    const s1 = uvs[secondUv] - uvs[firstUv];
-    const s2 = uvs[thirdUv] - uvs[firstUv];
-    const t1 = uvs[secondUv + 1] - uvs[firstUv + 1];
-    const t2 = uvs[thirdUv + 1] - uvs[firstUv + 1];
-    const determinant = s1 * t2 - s2 * t1;
+    const scale = positionsAreOpenBrushUnits ? 1 : $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER;
+    const x1 = $6fafcf15f6b61d60$var$openBrushStoredPositionDifference(positions, secondPosition, firstPosition, scale);
+    const x2 = $6fafcf15f6b61d60$var$openBrushStoredPositionDifference(positions, thirdPosition, firstPosition, scale);
+    const y1 = $6fafcf15f6b61d60$var$openBrushStoredPositionDifference(positions, secondPosition + 1, firstPosition + 1, scale);
+    const y2 = $6fafcf15f6b61d60$var$openBrushStoredPositionDifference(positions, thirdPosition + 1, firstPosition + 1, scale);
+    const z1 = $6fafcf15f6b61d60$var$openBrushStoredPositionDifference(positions, secondPosition + 2, firstPosition + 2, scale);
+    const z2 = $6fafcf15f6b61d60$var$openBrushStoredPositionDifference(positions, thirdPosition + 2, firstPosition + 2, scale);
+    const s1 = Math.fround(uvs[secondUv] - uvs[firstUv]);
+    const s2 = Math.fround(uvs[thirdUv] - uvs[firstUv]);
+    const t1 = Math.fround(uvs[secondUv + 1] - uvs[firstUv + 1]);
+    const t2 = Math.fround(uvs[thirdUv + 1] - uvs[firstUv + 1]);
+    const determinant = Math.fround(Math.fround(s1 * t2) - Math.fround(s2 * t1));
     if (Math.abs(determinant) <= $6fafcf15f6b61d60$var$EPSILON) {
         out[0] = x1;
         out[1] = y1;
         out[2] = z1;
         return;
     }
-    const reciprocal = 1 / determinant;
-    out[0] = reciprocal * (s1 * x2 - s2 * x1);
-    out[1] = reciprocal * (s1 * y2 - s2 * y1);
-    out[2] = reciprocal * (s1 * z2 - s2 * z1);
+    const reciprocal = Math.fround(1 / determinant);
+    out[0] = Math.fround(reciprocal * Math.fround(Math.fround(s1 * x2) - Math.fround(s2 * x1)));
+    out[1] = Math.fround(reciprocal * Math.fround(Math.fround(s1 * y2) - Math.fround(s2 * y1)));
+    out[2] = Math.fround(reciprocal * Math.fround(Math.fround(s1 * z2) - Math.fround(s2 * z1)));
+}
+function $6fafcf15f6b61d60$var$openBrushStoredPositionDifference(positions, left, right, scale) {
+    return Math.fround(Math.fround(positions[left] * scale) - Math.fround(positions[right] * scale));
 }
 function $6fafcf15f6b61d60$var$writeOrthonormalTangent(tangents, normals, vertex, source, handedness = 1) {
     const normalOffset = vertex * 3;
-    const projection = source[0] * normals[normalOffset] + source[1] * normals[normalOffset + 1] + source[2] * normals[normalOffset + 2];
-    let x = source[0] - projection * normals[normalOffset];
-    let y = source[1] - projection * normals[normalOffset + 1];
-    let z = source[2] - projection * normals[normalOffset + 2];
-    const length = Math.sqrt(x * x + y * y + z * z);
+    const nx = normals[normalOffset];
+    const ny = normals[normalOffset + 1];
+    const nz = normals[normalOffset + 2];
+    const projection = Math.fround(Math.fround(Math.fround(source[0] * nx) + Math.fround(source[1] * ny)) + Math.fround(source[2] * nz));
+    let x = Math.fround(source[0] - Math.fround(projection * nx));
+    let y = Math.fround(source[1] - Math.fround(projection * ny));
+    let z = Math.fround(source[2] - Math.fround(projection * nz));
+    const length = $6fafcf15f6b61d60$var$unityFloatMagnitudeComponents(x, y, z);
     if (length > $6fafcf15f6b61d60$var$EPSILON) {
-        x /= length;
-        y /= length;
-        z /= length;
+        x = Math.fround(x / length);
+        y = Math.fround(y / length);
+        z = Math.fround(z / length);
     } else {
         x = 1;
         y = 0;
@@ -9781,11 +9845,12 @@ function $6fafcf15f6b61d60$var$prepareRibbonSections(stroke, out) {
     for(let index = 1; index < pointCount; index += 1){
         const previous = stroke.controlPoints[lastSpawnIndex].position;
         const current = stroke.controlPoints[index].position;
-        const deltaX = current[0] - previous[0];
-        const deltaY = current[1] - previous[1];
-        const deltaZ = current[2] - previous[2];
-        const segmentLength = Math.hypot(deltaX, deltaY, deltaZ);
-        if (segmentLength < $6fafcf15f6b61d60$var$OPEN_BRUSH_RIBBON_MINIMUM_MOVE_METERS) {
+        const deltaX = Math.fround(Math.fround(current[0] * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER) - Math.fround(previous[0] * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER));
+        const deltaY = Math.fround(Math.fround(current[1] * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER) - Math.fround(previous[1] * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER));
+        const deltaZ = Math.fround(Math.fround(current[2] * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER) - Math.fround(previous[2] * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER));
+        const segmentLengthSource = $6fafcf15f6b61d60$var$unityFloatMagnitudeComponents(deltaX, deltaY, deltaZ);
+        const segmentLength = segmentLengthSource / $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER;
+        if (segmentLengthSource < $6fafcf15f6b61d60$var$OPEN_BRUSH_RIBBON_MINIMUM_MOVE_METERS * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER) {
             ribbonBreakBefore[index] = 2;
             ribbonSmoothedPressures[index] = lastSpawnPressure;
             ribbonRunningLengths[index] = runningLength;
@@ -9794,26 +9859,27 @@ function $6fafcf15f6b61d60$var$prepareRibbonSections(stroke, out) {
         // QuadStripBrush smooths pressure from the last committed spawn. Rejected
         // and provisional samples do not advance either pressure or position
         // state, so every preview replacement must start from the same values.
-        const retainedPressure = Math.pow(0.1, segmentLength / 0.2);
-        const smoothedPressure = retainedPressure * lastSpawnPressure + (1 - retainedPressure) * $6fafcf15f6b61d60$var$clamp01(stroke.controlPoints[index].pressure);
+        const rawPressure = $6fafcf15f6b61d60$var$clamp01(stroke.controlPoints[index].pressure);
+        const retainedPressure = Math.fround(Math.pow(Math.fround(0.1), Math.fround(segmentLengthSource / 2)));
+        const smoothedPressure = Math.fround(Math.fround(retainedPressure * Math.fround(lastSpawnPressure)) + Math.fround(Math.fround(1 - retainedPressure) * Math.fround(rawPressure)));
         ribbonSmoothedPressures[index] = smoothedPressure;
         // QuadStripBrush keeps one mutable leading quad for samples that have moved
         // far enough to update the brush but not far enough to commit a new solid.
         // A later sample overwrites that quad; only the final provisional sample is
         // visible in a live/finalized mesh. GetSpawnInterval is the fixed 1.5 mm
         // floor plus 20% of the pressure-adjusted brush size.
-        const spawnInterval = 0.0015 + localBrushSize * $6fafcf15f6b61d60$var$getPressureSizeMultiplier(smoothedPressure, pressureSizeMin) * 0.2;
+        const pressuredSizeSource = Math.fround(Math.fround(localBrushSize * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER) * Math.fround($6fafcf15f6b61d60$var$getPressureSizeMultiplier(smoothedPressure, pressureSizeMin)));
+        const spawnIntervalSource = Math.fround(Math.fround(0.0015 * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER) + Math.fround(pressuredSizeSource * 0.2));
         const isFinalProvisional = index === pointCount - 1;
-        if (segmentLength < spawnInterval && !isFinalProvisional) {
+        if (segmentLengthSource < spawnIntervalSource && !isFinalProvisional) {
             ribbonBreakBefore[index] = 2;
             out.ribbonProvisionalSamples[index] = 1;
             ribbonRunningLengths[index] = runningLength;
             continue;
         }
-        const inverseLength = 1 / segmentLength;
-        const directionX = deltaX * inverseLength;
-        const directionY = deltaY * inverseLength;
-        const directionZ = deltaZ * inverseLength;
+        const directionX = Math.fround(deltaX / segmentLengthSource);
+        const directionY = Math.fround(deltaY / segmentLengthSource);
+        const directionZ = Math.fround(deltaZ / segmentLengthSource);
         const startsSection = hasPreviousDirection && previousDirectionX * directionX + previousDirectionY * directionY + previousDirectionZ * directionZ <= 0;
         if (startsSection) {
             for(let sectionIndex = sectionStart; sectionIndex < index; sectionIndex += 1)ribbonSectionLengths[sectionIndex] = runningLength;
@@ -9822,7 +9888,7 @@ function $6fafcf15f6b61d60$var$prepareRibbonSections(stroke, out) {
             runningLength = segmentLength;
         } else runningLength += segmentLength;
         ribbonRunningLengths[index] = runningLength;
-        if (segmentLength >= spawnInterval) {
+        if (segmentLengthSource >= spawnIntervalSource) {
             lastSpawnIndex = index;
             lastSpawnPressure = smoothedPressure;
             previousDirectionX = directionX;
@@ -10210,6 +10276,20 @@ function $6fafcf15f6b61d60$var$normalizeInPlace(v) {
     out[1] = from[1] * fromWeight + to[1] * toWeight;
     out[2] = from[2] * fromWeight + to[2] * toWeight;
 }
+function $6fafcf15f6b61d60$var$slerpUnityFloatUnitVectors(from, to, amount, out) {
+    const t = Math.fround($6fafcf15f6b61d60$var$clamp01(amount));
+    const cosine = Math.max(-1, Math.min(1, $6fafcf15f6b61d60$var$dotUnityFloat(from, to)));
+    const angle = Math.fround(Math.acos(cosine));
+    const sine = Math.fround(Math.sin(angle));
+    if (Math.abs(sine) < $6fafcf15f6b61d60$var$EPSILON) {
+        for(let axis = 0; axis < 3; axis += 1)out[axis] = Math.fround(from[axis] + Math.fround(Math.fround(to[axis] - from[axis]) * t));
+        $6fafcf15f6b61d60$var$normalizeUnityFloatVector(out);
+        return;
+    }
+    const fromWeight = Math.fround(Math.fround(Math.sin(Math.fround(Math.fround(1 - t) * angle))) / sine);
+    const toWeight = Math.fround(Math.fround(Math.sin(Math.fround(t * angle))) / sine);
+    for(let axis = 0; axis < 3; axis += 1)out[axis] = Math.fround(Math.fround(from[axis] * fromWeight) + Math.fround(to[axis] * toWeight));
+}
 /** Writes some unit vector perpendicular to the given unit vector. */ function $6fafcf15f6b61d60$var$anyPerpendicular(v, out) {
     if (Math.abs(v[1]) < 0.9) $6fafcf15f6b61d60$var$cross($6fafcf15f6b61d60$var$VEC_UP, v, out);
     else $6fafcf15f6b61d60$var$cross($6fafcf15f6b61d60$var$VEC_RIGHT, v, out);
@@ -10253,6 +10333,14 @@ function $6fafcf15f6b61d60$var$writeOpenBrushFloatDirection(from, to, out) {
     out[1] = Math.fround(Math.fround(to[1] * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER) - Math.fround(from[1] * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER));
     out[2] = Math.fround(Math.fround(to[2] * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER) - Math.fround(from[2] * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER));
     $6fafcf15f6b61d60$var$normalizeUnityFloatVector(out);
+}
+function $6fafcf15f6b61d60$var$distanceBetweenOpenBrushPoints(from, to) {
+    let lengthSquared = 0;
+    for(let axis = 0; axis < 3; axis += 1){
+        const delta = Math.fround(Math.fround(to[axis] * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER) - Math.fround(from[axis] * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER));
+        lengthSquared = Math.fround(lengthSquared + Math.fround(delta * delta));
+    }
+    return Math.fround(Math.sqrt(lengthSquared));
 }
 function $6fafcf15f6b61d60$var$rotateByUnityQuaternionFloat(q, v, out) {
     const x = Math.fround(q[0]);
@@ -10338,13 +10426,19 @@ function $6fafcf15f6b61d60$var$dotUnityFloat(a, b) {
     return Math.fround(Math.fround(Math.fround(a[0] * b[0]) + Math.fround(a[1] * b[1])) + Math.fround(a[2] * b[2]));
 }
 function $6fafcf15f6b61d60$var$normalizeUnityFloatVector(value) {
-    const lengthSquared = Math.fround(Math.fround(Math.fround(value[0] * value[0]) + Math.fround(value[1] * value[1])) + Math.fround(value[2] * value[2]));
-    const length = Math.fround(Math.sqrt(lengthSquared));
+    const length = $6fafcf15f6b61d60$var$unityFloatMagnitude(value);
     if (length < $6fafcf15f6b61d60$var$EPSILON) return false;
     value[0] = Math.fround(value[0] / length);
     value[1] = Math.fround(value[1] / length);
     value[2] = Math.fround(value[2] / length);
     return true;
+}
+function $6fafcf15f6b61d60$var$unityFloatMagnitude(value) {
+    return $6fafcf15f6b61d60$var$unityFloatMagnitudeComponents(value[0], value[1], value[2]);
+}
+function $6fafcf15f6b61d60$var$unityFloatMagnitudeComponents(x, y, z) {
+    const lengthSquared = Math.fround(Math.fround(Math.fround(x * x) + Math.fround(y * y)) + Math.fround(z * z));
+    return Math.fround(Math.sqrt(lengthSquared));
 }
 /**
  * Writes the unit central-difference tangent at a control point, falling back
@@ -10366,6 +10460,15 @@ function $6fafcf15f6b61d60$var$normalizeUnityFloatVector(value) {
             out[2] = $6fafcf15f6b61d60$var$VEC_FORWARD[2];
         }
     }
+}
+function $6fafcf15f6b61d60$var$writeOpenBrushCentralDifferenceTangent(stroke, index, previousTangent, out) {
+    const lastIndex = stroke.controlPoints.length - 1;
+    const previous = stroke.controlPoints[Math.max(0, index - 1)].position;
+    const next = stroke.controlPoints[Math.min(lastIndex, index + 1)].position;
+    $6fafcf15f6b61d60$var$writeOpenBrushFloatDirection(previous, next, out);
+    if (Math.hypot(out[0], out[1], out[2]) >= $6fafcf15f6b61d60$var$EPSILON) return;
+    $6fafcf15f6b61d60$var$copyVec3(previousTangent, out);
+    if (!$6fafcf15f6b61d60$var$normalizeUnityFloatVector(out)) $6fafcf15f6b61d60$var$copyVec3($6fafcf15f6b61d60$var$VEC_FORWARD, out);
 }
 function $6fafcf15f6b61d60$var$writeOpenBrushIncomingTangent(stroke, index, previousTangent, out) {
     const pointCount = stroke.controlPoints.length;
@@ -10461,20 +10564,22 @@ const $6fafcf15f6b61d60$var$surfaceFrameRight2 = [
     }
     $6fafcf15f6b61d60$var$normalizeInPlace(outNormal);
 }
-function $6fafcf15f6b61d60$var$computeSurfaceFrameUnityFloat(preferredRight, tangent, pointerForward, pointerUp, isFirst, outRight, outNormal, mirrored = false) {
+function $6fafcf15f6b61d60$var$computeSurfaceFrameUnityFloat(preferredRight, tangent, pointerForward, pointerUp, isFirst, outRight, outNormal, mirrored = false, preferPointerFacing = false) {
     $6fafcf15f6b61d60$var$crossUnityFloat(pointerForward, tangent, $6fafcf15f6b61d60$var$surfaceFrameRight1);
     $6fafcf15f6b61d60$var$crossUnityFloat(pointerUp, tangent, $6fafcf15f6b61d60$var$surfaceFrameRight2);
     if (mirrored) for(let axis = 0; axis < 3; axis += 1){
         $6fafcf15f6b61d60$var$surfaceFrameRight1[axis] = Math.fround(-$6fafcf15f6b61d60$var$surfaceFrameRight1[axis]);
         $6fafcf15f6b61d60$var$surfaceFrameRight2[axis] = Math.fround(-$6fafcf15f6b61d60$var$surfaceFrameRight2[axis]);
     }
-    const hasPreferredRight = !isFirst && $6fafcf15f6b61d60$var$dotUnityFloat(preferredRight, preferredRight) >= $6fafcf15f6b61d60$var$EPSILON * $6fafcf15f6b61d60$var$EPSILON;
-    const flip1 = hasPreferredRight && $6fafcf15f6b61d60$var$dotUnityFloat($6fafcf15f6b61d60$var$surfaceFrameRight1, preferredRight) < 0 ? -1 : 1;
-    const flip2 = hasPreferredRight && $6fafcf15f6b61d60$var$dotUnityFloat($6fafcf15f6b61d60$var$surfaceFrameRight2, preferredRight) < 0 ? -1 : 1;
+    const hasPreviousRight = !isFirst && $6fafcf15f6b61d60$var$dotUnityFloat(preferredRight, preferredRight) >= $6fafcf15f6b61d60$var$EPSILON * $6fafcf15f6b61d60$var$EPSILON;
+    const preferred = preferPointerFacing ? $6fafcf15f6b61d60$var$surfaceFrameRight1 : preferredRight;
+    const hasPreferred = preferPointerFacing || hasPreviousRight;
+    const flip1 = hasPreferred && $6fafcf15f6b61d60$var$dotUnityFloat($6fafcf15f6b61d60$var$surfaceFrameRight1, preferred) < 0 ? -1 : 1;
+    const flip2 = hasPreferred && $6fafcf15f6b61d60$var$dotUnityFloat($6fafcf15f6b61d60$var$surfaceFrameRight2, preferred) < 0 ? -1 : 1;
     const upWeight = Math.fround(Math.abs($6fafcf15f6b61d60$var$dotUnityFloat(pointerForward, tangent)) * flip2);
     for(let axis = 0; axis < 3; axis += 1)outRight[axis] = Math.fround(Math.fround($6fafcf15f6b61d60$var$surfaceFrameRight1[axis] * flip1) + Math.fround($6fafcf15f6b61d60$var$surfaceFrameRight2[axis] * upWeight));
     if (!$6fafcf15f6b61d60$var$normalizeUnityFloatVector(outRight)) {
-        $6fafcf15f6b61d60$var$copyVec3(hasPreferredRight ? preferredRight : $6fafcf15f6b61d60$var$surfaceFrameRight1, outRight);
+        $6fafcf15f6b61d60$var$copyVec3(hasPreferred ? preferred : $6fafcf15f6b61d60$var$surfaceFrameRight1, outRight);
         if (!$6fafcf15f6b61d60$var$normalizeUnityFloatVector(outRight)) $6fafcf15f6b61d60$var$anyPerpendicular(tangent, outRight);
     }
     $6fafcf15f6b61d60$var$crossUnityFloat(tangent, outRight, outNormal);
@@ -10519,6 +10624,15 @@ function $6fafcf15f6b61d60$var$writePosition(target, vertex, value) {
     target[offset] = value[0];
     target[offset + 1] = value[1];
     target[offset + 2] = value[2];
+}
+function $6fafcf15f6b61d60$var$writeOpenBrushOffsetPosition(target, vertex, center, direction, distance) {
+    $6fafcf15f6b61d60$var$writeOpenBrushComponentOffsetPosition(target, vertex, center, direction[0] * distance, direction[1] * distance, direction[2] * distance);
+}
+function $6fafcf15f6b61d60$var$writeOpenBrushComponentOffsetPosition(target, vertex, center, offsetX, offsetY, offsetZ) {
+    const targetOffset = vertex * 3;
+    target[targetOffset] = Math.fround(Math.fround(center[0] * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER) + Math.fround(offsetX * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER)) / $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER;
+    target[targetOffset + 1] = Math.fround(Math.fround(center[1] * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER) + Math.fround(offsetY * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER)) / $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER;
+    target[targetOffset + 2] = Math.fround(Math.fround(center[2] * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER) + Math.fround(offsetZ * $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER)) / $6fafcf15f6b61d60$var$OPEN_BRUSH_UNITS_PER_METER;
 }
 function $6fafcf15f6b61d60$var$writeNormal(target, vertex, value) {
     $6fafcf15f6b61d60$var$writePosition(target, vertex, value);
@@ -10582,9 +10696,9 @@ function $6fafcf15f6b61d60$var$writeColor(target, vertex, value, opacityMultipli
 }
 function $6fafcf15f6b61d60$var$writeColorFromAlpha(target, vertex, value, alpha) {
     const offset = vertex * 4;
-    target[offset] = $6fafcf15f6b61d60$var$quantizeColorByte($6fafcf15f6b61d60$var$clamp01(value[0]));
-    target[offset + 1] = $6fafcf15f6b61d60$var$quantizeColorByte($6fafcf15f6b61d60$var$clamp01(value[1]));
-    target[offset + 2] = $6fafcf15f6b61d60$var$quantizeColorByte($6fafcf15f6b61d60$var$clamp01(value[2]));
+    target[offset] = $6fafcf15f6b61d60$var$quantizeColorByteRounded($6fafcf15f6b61d60$var$clamp01(value[0]));
+    target[offset + 1] = $6fafcf15f6b61d60$var$quantizeColorByteRounded($6fafcf15f6b61d60$var$clamp01(value[1]));
+    target[offset + 2] = $6fafcf15f6b61d60$var$quantizeColorByteRounded($6fafcf15f6b61d60$var$clamp01(value[2]));
     target[offset + 3] = $6fafcf15f6b61d60$var$quantizeColorByte($6fafcf15f6b61d60$var$clamp01(alpha));
 }
 function $6fafcf15f6b61d60$var$writeUv(target, vertex, value) {

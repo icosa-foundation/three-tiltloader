@@ -4462,6 +4462,7 @@ export const OPEN_BRUSH_GEOMETRY_DEFAULTS = {
       "renderBackfaces": true,
       "backfaceHueShift": 0,
       "tubeStoreRadiusInTexcoord0Z": false,
+      "ribbonStoreWidthInTexcoord0Z": true,
       "opacity": 1,
       "solidMinLengthMeters": 0.002,
       "audioReactive": true,

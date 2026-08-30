@@ -32,6 +32,7 @@ export interface BrushGeometryParams {
   tubeBreakAngleMultiplier?: number;
   ribbonUvStyle?: "distance" | "stretch";
   ribbonOffsetInTexcoord1?: boolean;
+  ribbonStoreWidthInTexcoord0Z?: boolean;
   m11Compatibility?: boolean;
   opacity?: number;
   solidMinLengthMeters?: number;
