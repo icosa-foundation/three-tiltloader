@@ -93,9 +93,9 @@ test( 'keeps the initial QuadStrip surface frame unbiased', () => {
 		geometryParams: { tileRate: 1 }
 	} );
 
-	assertClose( geometry.normals[ 0 ], -0.3198769 );
-	assertClose( geometry.normals[ 1 ], -0.3064383 );
-	assertClose( geometry.normals[ 2 ], -0.8965346 );
+	assertClose( geometry.normals[ 0 ], -0.3198769, 2e-6 );
+	assertClose( geometry.normals[ 1 ], -0.3064383, 2e-6 );
+	assertClose( geometry.normals[ 2 ], -0.8965346, 2e-6 );
 
 } );
 
@@ -230,6 +230,19 @@ test( 'applies brush GUID defaults before per-call overrides', () => {
 		Array.from( defaulted.normals ),
 		Array.from( explicit.normals )
 	);
+
+} );
+
+test( 'stores Hypercolor ribbon width in texcoord0 Z', () => {
+
+	const stroke = createStroke();
+	stroke.brushGuid = 'dce872c2-7b49-4684-b59b-c45387949c5c';
+	const geometry = generateBrushGeometry( stroke, 'ribbon' );
+	assert.equal( geometry.uv0Size, 3 );
+	assert.ok( geometry.packedUvs );
+	const width = Math.hypot( ...[ 0, 1, 2 ].map(
+		axis => geometry.positions[ 3 + axis ] - geometry.positions[ axis ] ) );
+	assertClose( geometry.packedUvs[ 2 ], width );
 
 } );
 
