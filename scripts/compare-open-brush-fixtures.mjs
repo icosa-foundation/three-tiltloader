@@ -457,7 +457,8 @@ function comparePolygonFaces(
 	fixturePolygonFaces,
 	unitScale,
 	handedness,
-	tolerance
+	tolerance,
+	allowReferenceVertexCoverage
 ) {
 	const actual = buildPolygonFaces(
 		geometry,
@@ -569,12 +570,33 @@ function comparePolygonFaces(
 			closestError
 		);
 	}
+	let maximumActualPointError = 0;
+	for ( const actualPoint of actualPointsByKey.values() ) {
+		let closestError = Number.POSITIVE_INFINITY;
+		for ( const expectedPoint of expectedPointsByKey.values() ) {
+			closestError = Math.min(
+				closestError,
+				Math.max(
+					Math.abs( actualPoint[ 0 ] - expectedPoint[ 0 ] ),
+					Math.abs( actualPoint[ 1 ] - expectedPoint[ 1 ] ),
+					Math.abs( actualPoint[ 2 ] - expectedPoint[ 2 ] )
+				)
+			);
+		}
+		maximumActualPointError = Math.max(
+			maximumActualPointError,
+			closestError
+		);
+	}
 	const surfaceMatches =
 		maximumOutsidePlaneDistance <= actual.planeTolerance &&
 		maximumExpectedPointError <= actual.pointTolerance;
+	const referenceVerticesMatch =
+		maximumExpectedPointError <= actual.pointTolerance;
 	const countsMatch = actual.faces.length === expected.faces.length;
 	return {
-		status: countsMatch && surfaceMatches
+		status: ( allowReferenceVertexCoverage && referenceVerticesMatch ) ||
+			( countsMatch && surfaceMatches )
 			? 'match'
 			: countsMatch
 				? 'value-mismatch'
@@ -592,6 +614,10 @@ function comparePolygonFaces(
 		minimumNormalDot,
 		maximumOutsidePlaneDistance,
 		maximumExpectedPointError,
+		maximumActualPointError,
+		equivalence: allowReferenceVertexCoverage
+			? 'Open Brush surface vertices covered; additional decomposition permitted'
+			: 'polygon face count and convex surface',
 		pointTolerance: actual.pointTolerance,
 		planeTolerance: actual.planeTolerance,
 		normalDotTolerance: actual.normalDotTolerance
@@ -743,7 +769,8 @@ function compareStroke(
 			fixtureStroke.polygonFaces,
 			unitScale,
 			handedness,
-			tolerance
+			tolerance,
+			family === 'concave-hull'
 		)
 		: undefined;
 	const channels = {};
