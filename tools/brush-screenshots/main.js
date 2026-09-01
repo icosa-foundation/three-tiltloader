@@ -28,7 +28,7 @@ import {
 } from '../../src/open-brush-reference-stroke.js';
 
 const CAPTURE_SIZE = 1024;
-const SUPERSAMPLING = 2;
+const SUPERSAMPLING = 1;
 const statusElement = document.querySelector( '#status' );
 
 class RepositoryTiltShaderLoader extends TiltShaderLoader {
@@ -154,8 +154,7 @@ function canvasPng( renderer ) {
 	output.width = CAPTURE_SIZE;
 	output.height = CAPTURE_SIZE;
 	const context = output.getContext( '2d' );
-	context.imageSmoothingEnabled = true;
-	context.imageSmoothingQuality = 'high';
+	context.imageSmoothingEnabled = false;
 	context.drawImage( renderer.domElement, 0, 0, CAPTURE_SIZE, CAPTURE_SIZE );
 	return new Promise( ( resolve, reject ) => output.toBlob(
 		blob => blob ? resolve( blob ) : reject( new Error( 'PNG encoding returned no data.' ) ),
@@ -174,7 +173,7 @@ async function post( path, body, contentType = 'application/octet-stream' ) {
 async function capture() {
 
 	const manifest = await fetch( '/brush-manifest.json' ).then( response => response.json() );
-	const renderer = new WebGLRenderer( { antialias: true, alpha: false, preserveDrawingBuffer: true } );
+	const renderer = new WebGLRenderer( { antialias: false, alpha: false, preserveDrawingBuffer: true } );
 	renderer.setPixelRatio( 1 );
 	renderer.setSize( CAPTURE_SIZE * SUPERSAMPLING, CAPTURE_SIZE * SUPERSAMPLING, false );
 	renderer.outputColorSpace = SRGBColorSpace;
