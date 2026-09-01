@@ -14,7 +14,11 @@ import {
 	Vector4,
 	WebGLRenderer
 } from 'three';
-import { TiltShaderLoader } from 'three-icosa';
+import {
+	applyTiltBrushRenderGroups,
+	createTiltBrushRenderMaterial,
+	TiltShaderLoader
+} from 'three-icosa';
 import { generateBrushGeometry } from '../../src/brush-geometry.ts';
 import { getOpenBrushGeometryDefaults } from '../../src/brush-defaults.js';
 import {
@@ -133,6 +137,8 @@ function configureFixedUniforms( material, camera ) {
 
 	const time = OPEN_BRUSH_REFERENCE_TIME_SECONDS;
 	material.uniforms.u_isTiltInput = { value: true };
+	material.uniforms.u_isNewTiltExporter = { value: false };
+	material.uniforms.u_ElectricityHasBakedDisplacement = { value: false };
 	if ( material.uniforms?.u_time ) {
 
 		material.uniforms.u_time.value = new Vector4( time / 20, time, time * 2, time * 3 );
@@ -207,8 +213,11 @@ async function capture() {
 		} );
 		if ( generated.positions.length === 0 ) continue;
 		const geometry = createThreeGeometry( generated );
-		const material = await shaderLoader.loadAsync( materialName );
-		configureFixedUniforms( material, camera );
+		const sourceMaterial = await shaderLoader.loadAsync( materialName );
+		const material = createTiltBrushRenderMaterial( materialName, sourceMaterial );
+		const renderMaterials = Array.isArray( material ) ? material : [ material ];
+		for ( const renderMaterial of renderMaterials ) configureFixedUniforms( renderMaterial, camera );
+		applyTiltBrushRenderGroups( geometry, generated.indices.length, material );
 		const mesh = new Mesh( geometry, material );
 		scene.add( mesh );
 		renderer.render( scene, camera );
