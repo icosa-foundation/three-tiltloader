@@ -132,6 +132,7 @@ function addBlackEnvironmentLights( scene ) {
 function configureFixedUniforms( material, camera ) {
 
 	const time = OPEN_BRUSH_REFERENCE_TIME_SECONDS;
+	material.uniforms.u_isTiltInput = { value: true };
 	if ( material.uniforms?.u_time ) {
 
 		material.uniforms.u_time.value = new Vector4( time / 20, time, time * 2, time * 3 );

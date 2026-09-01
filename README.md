@@ -49,6 +49,9 @@ Generate deterministic 1024×1024 browser renders using the same authored path,
 color, brush size, camera framing, black-environment lighting, and fixed shader
 time as Open Brush's `UiScreenshotter`:
 
+The capture marks its generated packed geometry as Tilt input. Shader materials
+loaded for glTF remain in their default glTF input mode.
+
 ```sh
 npm run screenshots:brushes
 ```

@@ -114,6 +114,7 @@ export class TiltLoader extends Loader {
 			const materialName = this.tiltShaderLoader.lookupMaterialName( brushGuid );
 
 			const material = await this.tiltShaderLoader.loadAsync(materialName);
+			material.uniforms.u_isTiltInput = { value: true };
 			const mesh = new Mesh( geometry, material );
 			
 			const scope = this;

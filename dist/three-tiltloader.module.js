@@ -10990,6 +10990,9 @@ class $8fc1e38b542b44db$export$36ca96fcead4fad7 extends (0, $rINUR$Loader) {
             if (geometry.getAttribute("position").count === 0) continue;
             const materialName = this.tiltShaderLoader.lookupMaterialName(brushGuid);
             const material = await this.tiltShaderLoader.loadAsync(materialName);
+            material.uniforms.u_isTiltInput = {
+                value: true
+            };
             const mesh = new (0, $rINUR$Mesh)(geometry, material);
             const scope = this;
             mesh.onBeforeRender = (renderer, scene, camera, geometry, material, group)=>{
