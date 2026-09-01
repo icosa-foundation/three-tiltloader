@@ -15,6 +15,10 @@ if ( ! document.brushes || typeof document.brushes !== 'object' ) {
 }
 
 const geometryOverrides = {
+	'355b3579-bf1d-4ff5-a200-704437fe684b': {
+		// HullBrush.m_Faceted is serialized on the brush prefab, not BrushDescriptor.
+		hullFaceted: false
+	},
 	'f0a2298a-be80-432c-9fee-a86dcc06f4f9': {
 		// Open Brush BrushDescriptor.m_BackIsInvisible for SingleSided.
 		backIsInvisible: true

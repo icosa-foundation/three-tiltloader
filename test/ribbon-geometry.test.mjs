@@ -1390,6 +1390,26 @@ test( 'builds directed-sphere hull inputs with Unity-float rotations', () => {
 
 } );
 
+test( 'shares SmoothHull vertices for interpolated normals', () => {
+
+	const smoothHullGuid = '355b3579-bf1d-4ff5-a200-704437fe684b';
+	const options = getOpenBrushGeometryDefaults( smoothHullGuid );
+	const stroke = createStroke();
+	stroke.brushGuid = smoothHullGuid;
+	stroke.brushSize = 0.1125;
+	stroke.controlPoints.push( {
+		position: [ 1, 1, 0 ],
+		orientation: [ 0, 0, 0, 1 ],
+		pressure: 1,
+		timestampMs: 32
+	} );
+	const geometry = generateBrushGeometry( stroke, options.family, options );
+
+	assert.equal( options.geometryParams.hullFaceted, false );
+	assert.ok( getGeneratedVertexCount( geometry ) < getGeneratedIndexCount( geometry ) );
+
+} );
+
 test( 'builds ConcaveHull Quill extents with Unity floats', () => {
 
 	const stroke = createStroke();

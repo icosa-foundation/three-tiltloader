@@ -1252,7 +1252,8 @@ const $08377cc0b05604b7$export$8024ed36c08440c = {
             "particleSizeRatio": [
                 1,
                 1
-            ]
+            ],
+            "hullFaceted": false
         }
     },
     "39ee7377-7a9e-47a7-a0f8-0c77712f75d3": {
