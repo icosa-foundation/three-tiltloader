@@ -18,7 +18,7 @@ import { TiltShaderLoader } from 'three-icosa';
 import { generateBrushGeometry } from '../../src/brush-geometry.ts';
 import { getOpenBrushGeometryDefaults } from '../../src/brush-defaults.js';
 import {
-	createOpenBrushReferenceStroke,
+	createRendererOpenBrushReferenceStroke,
 	OPEN_BRUSH_REFERENCE_SIZE,
 	OPEN_BRUSH_REFERENCE_TIME_SECONDS
 } from '../../src/open-brush-reference-stroke.js';
@@ -121,7 +121,7 @@ function addBlackEnvironmentLights( scene ) {
 		);
 		const direction = new Vector3( 0, 0, -1 ).applyQuaternion( rotation );
 		const light = new DirectionalLight( new Color( ...definition.color ), definition.intensity );
-		light.target.position.set( 0, 100, -4 );
+		light.target.position.set( 0, 10, -0.4 );
 		light.position.copy( light.target.position ).addScaledVector( direction, -10 );
 		scene.add( light, light.target );
 
@@ -180,7 +180,7 @@ async function capture() {
 	scene.background = new Color( 0x000000 );
 	addBlackEnvironmentLights( scene );
 	const camera = new PerspectiveCamera( 60, 1, 0.1, 10000 );
-	camera.position.set( 0, 100, 0 );
+	camera.position.set( 0, 10, 0 );
 	camera.rotation.set( 0, 0, 0 );
 	camera.updateMatrixWorld();
 
@@ -199,7 +199,7 @@ async function capture() {
 		const brushSize = range
 			? Math.min( Math.max( OPEN_BRUSH_REFERENCE_SIZE, range[ 0 ] ), range[ 1 ] )
 			: OPEN_BRUSH_REFERENCE_SIZE;
-		const stroke = createOpenBrushReferenceStroke( entry.brushGuid, brushSize );
+		const stroke = createRendererOpenBrushReferenceStroke( entry.brushGuid, brushSize );
 		const generated = generateBrushGeometry( stroke, defaults.family, {
 			finalized: true,
 			lastControlPointIsKeeper: true,

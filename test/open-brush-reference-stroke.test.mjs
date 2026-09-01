@@ -4,6 +4,7 @@ import {
 	createOpenBrushReferenceControlPoints,
 	createOpenBrushReferencePath,
 	createOpenBrushReferenceStroke,
+	createRendererOpenBrushReferenceStroke,
 	OPEN_BRUSH_REFERENCE_COLOR,
 	OPEN_BRUSH_REFERENCE_SIZE
 } from '../src/open-brush-reference-stroke.js';
@@ -43,5 +44,16 @@ test( 'creates the fixed reference stroke settings', () => {
 	assert.deepEqual( stroke.color, OPEN_BRUSH_REFERENCE_COLOR );
 	assert.equal( stroke.seed, 0 );
 	assert.equal( stroke.controlPoints.length, 38 );
+
+} );
+
+test( 'converts the fixed reference stroke to renderer meters', () => {
+
+	const stroke = createRendererOpenBrushReferenceStroke( 'test-guid' );
+	assertClose( stroke.brushSize, OPEN_BRUSH_REFERENCE_SIZE * 0.1 );
+	assert.deepEqual( stroke.controlPoints[ 0 ].position, [ -0.125, 10, -0.4 ] );
+	assertClose( stroke.controlPoints[ 37 ].position[ 0 ], 0.005 );
+	assertClose( stroke.controlPoints[ 37 ].position[ 1 ], 10.0260216 );
+	assertClose( stroke.controlPoints[ 37 ].position[ 2 ], -0.396475673 );
 
 } );

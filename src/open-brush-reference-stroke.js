@@ -131,3 +131,21 @@ export function createOpenBrushReferenceStroke( brushGuid, brushSize = OPEN_BRUS
 	};
 
 }
+
+/** Converts the deterministic Open Brush reference stroke to renderer meters. */
+export function createRendererOpenBrushReferenceStroke(
+	brushGuid,
+	brushSize = OPEN_BRUSH_REFERENCE_SIZE
+) {
+
+	const stroke = createOpenBrushReferenceStroke( brushGuid, brushSize );
+	return {
+		...stroke,
+		brushSize: stroke.brushSize * 0.1,
+		controlPoints: stroke.controlPoints.map( point => ( {
+			...point,
+			position: point.position.map( coordinate => coordinate * 0.1 )
+		} ) )
+	};
+
+}
