@@ -42,3 +42,35 @@ loader.load( 'path/to/tilt/sketch.tilt', ( model ) => {
     scene.add( model );
 });
 ```
+
+## Brush reference screenshots
+
+Generate deterministic 1024×1024 browser renders using the same authored path,
+color, brush size, camera framing, black-environment lighting, and fixed shader
+time as Open Brush's `UiScreenshotter`:
+
+```sh
+npm run screenshots:brushes
+```
+
+The default output is `Support/Screenshots/brushes-postfx-disabled`. To select
+the exact brush GUIDs and durable filenames from an Open Brush reference run,
+pass its mesh-fixture directory:
+
+```sh
+npm run screenshots:brushes -- --fixtures <open-brush-checkout>/Support/BrushFixtures
+```
+
+As in `gallery-viewer`, brush shaders and textures are supplied independently
+of this library. Point the capture at the `brushes/` directory beneath the
+asset base URL or asset checkout:
+
+```sh
+npm run screenshots:brushes -- \
+  --fixtures <open-brush-checkout>/Support/BrushFixtures \
+  --assets <sketch-assets-checkout>/brushes
+```
+
+Use `--brush Marker` for a bounded single-brush run, `--output <directory>` to
+change the destination, or `--headed` to watch the capture in Chrome. Chrome is
+run with a temporary automation profile; normal browser profiles are not used.
