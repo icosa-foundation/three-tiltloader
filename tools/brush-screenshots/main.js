@@ -4,6 +4,7 @@ import {
 	BufferGeometry,
 	Color,
 	DirectionalLight,
+	Matrix4,
 	Mesh,
 	NoToneMapping,
 	PerspectiveCamera,
@@ -110,7 +111,8 @@ function createThreeGeometry( generated ) {
 
 function addBlackEnvironmentLights( scene ) {
 
-	scene.add( new AmbientLight( new Color( 0.39215687, 0.39215687, 0.39215687 ), 1 ) );
+	const environmentColor = values => new Color( ...values ).convertSRGBToLinear();
+	scene.add( new AmbientLight( environmentColor( [ 0.39215687, 0.39215687, 0.39215687 ] ), 1 ) );
 	const definitions = [
 		{ color: [ 0.4862745, 0.50980395, 0.61960787 ], intensity: 1.6,
 			rotation: [ 0.48718503, -0.11247552, 0.19481331, 0.8438292 ] },
@@ -124,7 +126,7 @@ function addBlackEnvironmentLights( scene ) {
 			-unityRotation[ 0 ], -unityRotation[ 1 ], unityRotation[ 2 ], unityRotation[ 3 ]
 		);
 		const direction = new Vector3( 0, 0, -1 ).applyQuaternion( rotation );
-		const light = new DirectionalLight( new Color( ...definition.color ), definition.intensity );
+		const light = new DirectionalLight( environmentColor( definition.color ), definition.intensity );
 		light.target.position.set( 0, 10, -0.4 );
 		light.position.copy( light.target.position ).addScaledVector( direction, -10 );
 		scene.add( light, light.target );
@@ -136,6 +138,8 @@ function addBlackEnvironmentLights( scene ) {
 function configureFixedUniforms( material, camera ) {
 
 	const time = OPEN_BRUSH_REFERENCE_TIME_SECONDS;
+	material.lights = true;
+	material.uniformsNeedUpdate = true;
 	material.uniforms.u_isTiltInput = { value: true };
 	material.uniforms.u_isNewTiltExporter = { value: false };
 	material.uniforms.u_ElectricityHasBakedDisplacement = { value: false };
@@ -145,6 +149,45 @@ function configureFixedUniforms( material, camera ) {
 
 	}
 	if ( material.uniforms?.cameraPosition ) material.uniforms.cameraPosition.value = camera.position;
+
+}
+
+function updateOpenBrushLightUniforms( renderer, scene, camera, geometry, material ) {
+
+	const directionalLights = material.uniforms?.directionalLights?.value;
+	if ( directionalLights ) {
+
+		for ( let index = 0; index < 2; index ++ ) {
+
+			const light = directionalLights[ index ];
+			const colorUniform = material.uniforms[ `u_SceneLight_${ index }_color` ];
+			const matrixUniform = material.uniforms[ `u_SceneLight_${ index }_matrix` ];
+			if ( ! light ) continue;
+			if ( colorUniform ) {
+
+				colorUniform.value.set( light.color.r, light.color.g, light.color.b, 1 );
+
+			}
+			if ( matrixUniform ) {
+
+				const direction = light.direction.clone().negate();
+				matrixUniform.value = new Matrix4().lookAt(
+					new Vector3(), direction, new Vector3( 0, 1, 0 )
+				);
+
+			}
+
+		}
+
+	}
+
+	const ambient = material.uniforms?.ambientLightColor?.value;
+	const ambientUniform = material.uniforms?.u_ambient_light_color;
+	if ( ambient?.length >= 3 && ambientUniform ) {
+
+		ambientUniform.value.set( ambient[ 0 ], ambient[ 1 ], ambient[ 2 ], 1 );
+
+	}
 
 }
 
@@ -218,7 +261,10 @@ async function capture() {
 		for ( const renderMaterial of renderMaterials ) configureFixedUniforms( renderMaterial, camera );
 		applyTiltBrushRenderGroups( geometry, generated.indices.length, material );
 		const mesh = new Mesh( geometry, material );
+		mesh.onBeforeRender = updateOpenBrushLightUniforms;
 		scene.add( mesh );
+		// Populate Three's light uniforms before translating them to the Open Brush uniforms.
+		renderer.render( scene, camera );
 		renderer.render( scene, camera );
 		const failedProgram = renderer.info.programs?.find( program =>
 			program.diagnostics && program.diagnostics.runnable === false );
