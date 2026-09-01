@@ -50,7 +50,7 @@ class RepositoryTiltShaderLoader extends TiltShaderLoader {
 		const definesFog = /\b(?:vec3|vec4)\s+ApplyFog\s*\(/.test( fragmentShader );
 		const callsFog = /\bApplyFog\s*\(/.test( fragmentShader );
 		const containsSurfacePackage = /\bstruct\s+SurfaceOutput/.test( fragmentShader ) ||
-			/\bvec3\s+UnpackNormal\s*\(/.test( fragmentShader );
+			/\bvec3\s+SurfaceShaderInternal\s*\(/.test( fragmentShader );
 		const prefixes = [];
 		if ( hadSurfaceInclude && !containsSurfacePackage ) prefixes.push( this.surfaceShaderCode );
 		if ( hadFogInclude && callsFog && !definesFog ) prefixes.push( this.fogShaderCode );
