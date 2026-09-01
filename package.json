@@ -3,10 +3,11 @@
   "version": "0.4.2-alpha.4",
   "description": "Load Tilt Brush / Open Brush files in three.js applications",
   "scripts": {
-    "watch": "parcel watch",
-    "build": "parcel build --no-cache",
+    "watch": "parcel watch --target module",
+    "build": "parcel build --no-cache --target module",
     "test": "npm run build && node --experimental-strip-types --test test/*.test.mjs",
-    "compare:open-brush-fixtures": "node --experimental-strip-types scripts/compare-open-brush-fixtures.mjs"
+    "compare:open-brush-fixtures": "node --experimental-strip-types scripts/compare-open-brush-fixtures.mjs",
+    "screenshots:brushes": "node scripts/generate-brush-screenshots.mjs"
   },
   "repository": {
     "type": "git",
@@ -25,7 +26,11 @@
     }
   },
   "targets": {
-    "types": false
+    "types": false,
+    "brushScreenshots": {
+      "source": "tools/brush-screenshots/index.html",
+      "context": "browser"
+    }
   },
   "bugs": {
     "url": "https://github.com/icosa-foundation/three-tiltloader/issues"
