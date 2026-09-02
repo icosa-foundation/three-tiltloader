@@ -5,7 +5,9 @@
   "scripts": {
     "watch": "parcel watch --target module",
     "build": "parcel build --no-cache --target module",
-    "test": "npm run build && node --experimental-strip-types --test test/*.test.mjs",
+    "test": "npm run check:pins && npm run build && node --experimental-strip-types --test test/*.test.mjs",
+    "check:pins": "node scripts/check-library-pins.mjs",
+    "check:dist": "git diff --exit-code -- dist/three-tiltloader.module.js dist/three-tiltloader.module.js.map",
     "compare:open-brush-fixtures": "node --experimental-strip-types scripts/compare-open-brush-fixtures.mjs",
     "screenshots:brushes": "node scripts/generate-brush-screenshots.mjs"
   },
@@ -69,6 +71,6 @@
     "xr"
   ],
   "dependencies": {
-    "three-icosa": "https://github.com/icosa-foundation/three-icosa/archive/f55b30ddbb3cdb36d90984e6c94518f771ae07ea.tar.gz"
+    "three-icosa": "https://github.com/icosa-foundation/three-icosa/archive/1277625059909fe03ad25f8a3f49fc6fac57730f.tar.gz"
   }
 }
