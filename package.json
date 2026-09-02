@@ -69,6 +69,6 @@
     "xr"
   ],
   "dependencies": {
-    "three-icosa": "https://github.com/icosa-foundation/three-icosa/archive/c9edd72.tar.gz"
+    "three-icosa": "https://github.com/icosa-foundation/three-icosa/archive/dcf3f1c.tar.gz"
   }
 }
